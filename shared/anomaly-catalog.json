@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "notes": "Single source of truth for injected anomalies. Read by shared/anomalies.ts (simulator) and ml/src/inject.py (offline evaluation). Magnitudes are simulation parameters, not clinical thresholds; they are calibrated in phase 6.",
+  "blockSeconds": 10,
+  "durationsS": [
+    30,
+    120,
+    600,
+    1800,
+    3600,
+    21600
+  ],
+  "maxDurationS": 21600,
+  "types": {
+    "activity_drop": {
+      "signal": "imu",
+      "label": "Reducción de actividad",
+      "unit": "fraction",
+      "min": 0.4,
+      "max": 0.7,
+      "default": 0.5,
+      "rampS": 0,
+      "rule": "Per block and channel: x' = mean + (1 - m) * (x - mean). Movement amplitude drops by m."
+    },
+    "immobility": {
+      "signal": "imu",
+      "label": "Inmovilidad prolongada",
+      "unit": "fraction",
+      "min": 0.9,
+      "max": 1,
+      "default": 0.97,
+      "rampS": 0,
+      "rule": "Same transform as activity_drop with m close to 1: only the posture (block mean) remains."
+    },
+    "tachycardia": {
+      "signal": "hr",
+      "label": "Taquicardia sostenida",
+      "unit": "relative",
+      "min": 0.2,
+      "max": 1,
+      "default": 0.4,
+      "rampS": 30,
+      "rule": "hr' = hr * (1 + m * ramp). Relative to the dog's own rate."
+    },
+    "bradycardia": {
+      "signal": "hr",
+      "label": "Bradicardia sostenida",
+      "unit": "relative",
+      "min": 0.2,
+      "max": 0.5,
+      "default": 0.3,
+      "rampS": 30,
+      "rule": "hr' = hr * (1 - m * ramp). Relative to the dog's own rate."
+    },
+    "fever": {
+      "signal": "temp",
+      "label": "Temperatura alta",
+      "unit": "celsius",
+      "min": 1,
+      "max": 2.5,
+      "default": 1.5,
+      "rampS": 120,
+      "rule": "temp' = temp + m * ramp (°C)."
+    },
+    "hypothermia": {
+      "signal": "temp",
+      "label": "Temperatura baja",
+      "unit": "celsius",
+      "min": 1,
+      "max": 3,
+      "default": 1.5,
+      "rampS": 120,
+      "rule": "temp' = temp - m * ramp (°C)."
+    }
+  }
+}

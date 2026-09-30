@@ -1,0 +1,145 @@
+rules_version = '2';
+
+// Security rules of the Firestore data model.
+// - Role comes from the custom claim request.auth.token.role: "owner" (every sign-up) | "admin" (script only).
+// - readings, results, alerts and csvUploads carry ownerId copied from the dog, so reads need no get().
+// - results, alerts creation, dogs.status/baseline, users profiles and simulator readings are written only by
+//   Cloud Functions or the Admin SDK, which bypass these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function role() { return request.auth.token.get('role', ''); }
+    function isAdmin() { return signedIn() && role() == 'admin'; }
+    function isOwner() { return signedIn() && role() == 'owner'; }
+
+    // Denormalized access: the owner of the dog, or an admin.
+    function canReadDogData(data) {
+      return isAdmin() || (signedIn() && data.ownerId == request.auth.uid);
+    }
+
+    // Only used on create, to check that copied permissions match the dog.
+    function dog(dogId) { return get(/databases/$(database)/documents/dogs/$(dogId)).data; }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      // The profile (with its role and consent) is created by setInitialRole. The client may only edit
+      // its own contact and notification fields, never the role.
+      allow create: if false;
+      // At most 10 browsers with notifications per account.
+      allow update: if signedIn() && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'fcmTokens', 'notificationPrefs'])
+        && request.resource.data.get('fcmTokens', []).size() <= 10;
+      allow delete: if isAdmin();
+    }
+
+    match /dogs/{dogId} {
+      function validDog(d) {
+        return d.name is string && d.name.size() > 0 && d.name.size() <= 40
+          && d.active is bool;
+      }
+      allow read: if canReadDogData(resource.data);
+      // Owners manage their dogs except ownerId, status and baseline (written by Functions).
+      allow create: if isAdmin()
+        || (isOwner() && validDog(request.resource.data)
+            && request.resource.data.ownerId == request.auth.uid
+            && !request.resource.data.keys().hasAny(['status', 'baseline']));
+      allow update: if isAdmin()
+        || (isOwner() && resource.data.ownerId == request.auth.uid
+            && validDog(request.resource.data)
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerId', 'status', 'baseline']));
+      allow delete: if isAdmin() || (isOwner() && resource.data.ownerId == request.auth.uid);
+    }
+
+    match /readings/{readingId} {
+      allow read: if canReadDogData(resource.data);
+      // Simulator readings use the Admin SDK. Clients may only upload CSV blocks of their own dogs, never with ground
+      // truth attached, within the block size and inside a CSV upload of the same owner and dog.
+      function upload(uploadId) { return get(/databases/$(database)/documents/csvUploads/$(uploadId)).data; }
+      allow create: if isAdmin()
+        || (isOwner()
+            && request.resource.data.source == 'csv'
+            && request.resource.data.ownerId == request.auth.uid
+            && dog(request.resource.data.dogId).ownerId == request.auth.uid
+            && !request.resource.data.keys().hasAny(['injectedAnomaly', 'injectedAnomalies'])
+            && request.resource.data.imu is list && request.resource.data.imu.size() <= 6000
+            && request.resource.data.hr is list && request.resource.data.hr.size() <= 10
+            && upload(request.resource.data.sourceRef).ownerId == request.auth.uid
+            && upload(request.resource.data.sourceRef).dogId == request.resource.data.dogId);
+      allow update, delete: if false;
+    }
+
+    match /results/{readingId} {
+      allow read: if canReadDogData(resource.data);
+      allow write: if false;
+    }
+
+    // Trend aggregates per dog and UTC day: read by the owner (and admin), written only by Functions.
+    match /trends/{trendId} {
+      allow read: if canReadDogData(resource.data);
+      allow write: if false;
+    }
+
+    // Per-dog engine memory between blocks: server only, no client reads or writes.
+    match /dogState/{dogId} {
+      allow read, write: if false;
+    }
+
+    match /alerts/{alertId} {
+      allow read: if canReadDogData(resource.data);
+      allow create, delete: if false;
+      // "Marcar como revisada": only status, acknowledgedBy and acknowledgedAt may change.
+      // expertReview (TP2, Cohen's kappa) is written only by an admin, the thesis reviewer.
+      allow update: if (canReadDogData(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acknowledgedBy', 'acknowledgedAt'])
+          && request.resource.data.status == 'acknowledged'
+          && request.resource.data.acknowledgedBy == request.auth.uid
+          && request.resource.data.acknowledgedAt == request.time)
+        || (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['expertReview'])
+          && request.resource.data.expertReview.reviewerId == request.auth.uid
+          && request.resource.data.expertReview.reviewedAt == request.time);
+    }
+
+    match /modelVersions/{versionId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin()
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // (HU27): one entry per saved change of config/fusion, with who and when; append-only.
+    match /configHistory/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.changes is list && request.resource.data.changes.size() <= 50;
+      allow update, delete: if false;
+    }
+
+    match /simulatorRuns/{runId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /csvUploads/{uploadId} {
+      allow read: if canReadDogData(resource.data);
+      // Status transitions (processing, done) and the processed count are written by Functions.
+      allow create: if isAdmin()
+        || (isOwner()
+            && request.resource.data.uploadedBy == request.auth.uid
+            && request.resource.data.ownerId == request.auth.uid
+            && dog(request.resource.data.dogId).ownerId == request.auth.uid
+            && request.resource.data.status == 'validated'
+            && request.resource.data.blocksExpected is int
+            && request.resource.data.blocksExpected > 0 && request.resource.data.blocksExpected <= 2000
+            && request.resource.data.blocksProcessed == 0);
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,9 @@
+# Build context of simulator/Dockerfile: only what the simulator image needs (never the datasets or the Python env).
+*
+!simulator/
+!shared/
+!functions/models/
+**/node_modules
+simulator/test/
+shared/test/
+**/*.md

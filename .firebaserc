@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "demo-perros-tesis",
+    "prod": "proyectotp1-15497"
+  },
+  "targets": {},
+  "etags": {}
+}

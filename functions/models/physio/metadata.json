@@ -1,0 +1,38 @@
+{
+ "version": "lstm-ae-v1",
+ "kind": "physiological",
+ "architecture": "LSTM(32) · RepeatVector(60) · LSTM(32, secuencias) · TimeDistributed(Dense(1))",
+ "sequenceLength": 60,
+ "hz": 1,
+ "normalization": "per-dog z-score: (hr - dogs.baseline.hrMean) / max(hrStd, 1)",
+ "threshold": 1.097233,
+ "thresholdQuantile": 0.95,
+ "criticalRatio": 6.896,
+ "criticalQuantile": 0.999,
+ "fullScaleRatio": 12.793,
+ "trainingData": [
+  "Invoxia, PhysioZoo y 23 perros: 56 perros de entrenamiento, 12 de validación y 12 de prueba (solo FC normal)"
+ ],
+ "metrics": {
+  "test_normal_flagged": 0.0501,
+  "tachycardia_auroc": 0.8109,
+  "tachycardia_f1": 0.6003,
+  "bradycardia_auroc": 0.7687,
+  "bradycardia_f1": 0.7384,
+  "combined_test_f1": 0.8251,
+  "combined_test_normal_flagged": 0.0589,
+  "rule_test_f1": 0.8186,
+  "autoencoder_test_f1": 0.6663,
+  "activity_flagged_autoencoder": 0.0338,
+  "activity_flagged_rule": 0.3718,
+  "activity_flagged_combined": 0.3757
+ },
+ "params": 12705,
+ "seed": 42,
+ "gitCommit": "35c295d",
+ "software": {
+  "tensorflow": "2.21.0",
+  "numpy": "2.5.3"
+ },
+ "trainedAt": "2026-09-30T00:56:21+00:00"
+}

@@ -1,0 +1,18 @@
+# Data pipeline and training. Python 3.13, pinned for reproducibility (RNF-05).
+numpy==2.5.3
+pandas==3.0.6
+pyarrow==25.0.1
+scipy==1.18.1
+scikit-learn==1.9.1
+openpyxl==3.1.5
+pytest==9.1.1
+
+# Phase 2: CNN-LSTM (CPU on Windows). tf-keras = Keras 2, the config format that TF.js layers models load.
+tensorflow==2.21.0
+tf-keras==2.21.0
+h5py==3.14.0
+six==1.17.0
+
+# Keras -> TF.js export: install separately WITHOUT dependencies (its full dependency set needs
+# tensorflow-decision-forests, which has no Windows build; the Keras path does not use it):
+#   .venv/Scripts/python -m pip install --no-deps tensorflowjs==4.22.0

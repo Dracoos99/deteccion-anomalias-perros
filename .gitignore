@@ -1,0 +1,51 @@
+# Data: never versioned
+ml/data/raw/
+ml/data/processed/
+ml/models/
+*.parquet
+*.h5
+*.keras
+
+# Python
+ml/.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Node
+node_modules/
+dist/
+functions/lib/
+*.tsbuildinfo
+.vite/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+emulator-data/
+
+# Secrets: service accounts and env files are never committed
+.env
+.env.*
+!.env.example
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+
+# E2E screenshots
+tests/e2e/shots/
+
+# Output of scripts/cloud/setup-gcp.ps1 (values to paste in GitHub)
+github-variables.txt

@@ -1,0 +1,57 @@
+# Tests and builds on every pull request and on develop. The deploy workflow runs it again before deploying.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+            web/package-lock.json
+            simulator/package-lock.json
+
+      # The Firestore emulator needs Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix functions
+          npm ci --prefix web
+          npm ci --prefix simulator
+
+      - name: Unit tests (engine, models, simulator, web)
+        run: npm run test:unit
+
+      - name: Type checks and builds
+        run: |
+          npm --prefix functions run build
+          npm --prefix simulator run typecheck
+          npm --prefix web run build
+
+      - name: Firestore rules (emulator)
+        run: npm run test:rules
+
+      - name: Cloud Functions against the Firestore emulator
+        run: npm run test:functions

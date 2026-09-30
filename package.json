@@ -1,0 +1,28 @@
+{
+  "name": "deteccion-anomalias-perros",
+  "private": true,
+  "description": "Tesis UPC: detección temprana de anomalías conductuales y fisiológicas en perros (CNN-LSTM + Firebase).",
+  "scripts": {
+    "emulators": "firebase emulators:start --project demo-perros-tesis",
+    "emulators:seed": "node scripts/seed-emulator.mjs",
+    "prod:bootstrap": "node scripts/bootstrap-prod.mjs",
+    "web:dev": "npm --prefix web run dev",
+    "build": "npm --prefix functions run build && npm --prefix web run build",
+    "test:unit": "vitest run functions/test/unit shared/test simulator/test/unit web/test",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-perros-tesis \"vitest run tests/rules\"",
+    "test:e2e": "node tests/e2e/smoke.mjs",
+    "test:functions": "npm --prefix functions run build && firebase emulators:exec --only firestore --project demo-perros-tesis \"vitest run functions/test/integration\"",
+    "test:sim": "npm --prefix functions run build && firebase emulators:exec --only firestore,functions --project demo-perros-tesis \"vitest run simulator/test/integration\"",
+    "sim": "npm --prefix simulator run sim --",
+    "test:e2e:panel": "node tests/e2e/simulator-panel.mjs",
+    "test:ml": "node scripts/ml.mjs -m pytest -q"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^15.31.0",
+    "puppeteer-core": "^25.12.0",
+    "vitest": "^5.0.2"
+  }
+}
