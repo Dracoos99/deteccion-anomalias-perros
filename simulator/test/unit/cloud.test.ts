@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { downloadFiles, parseGsUri, runDataFiles } from "../../src/cloud";
+import { describe, expect, it, vi } from "vitest";
+import { downloadFiles, metadataToken, parseGsUri, runDataFiles } from "../../src/cloud";
 
 describe("simulator data in Cloud Storage", () => {
   it("reads the bucket and folder of SIM_DATA_URI", () => {
@@ -36,5 +36,19 @@ describe("simulator data in Cloud Storage", () => {
     expect(fs.readFileSync(path.join(dir, "hr", "invoxia2023", "30.json"), "utf8")).toBe("abc");
     const failing = (async () => new Response("no", { status: 403 })) as typeof fetch;
     await expect(downloadFiles("gs://b/sim", ["manifest.json"], dir, async () => "tok", failing)).rejects.toThrow(/403/);
+  });
+  it("asks the metadata server for the token of the service account", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ access_token: "tok", expires_in: 3599 }));
+    });
+    try {
+      expect(await metadataToken()).toBe("tok");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(calls[0].url).toBe("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token");
+    expect((calls[0].init?.headers as Record<string, string>)["Metadata-Flavor"]).toBe("Google");
   });
 });

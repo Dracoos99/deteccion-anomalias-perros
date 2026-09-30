@@ -13,7 +13,7 @@ export type TokenFn = () => Promise<string>;
 
 /** Access token of the service account the job runs as (Cloud Run metadata server). */
 export const metadataToken: TokenFn = async () => {
-  const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-account/default/token",
+  const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
     { headers: { "Metadata-Flavor": "Google" } });
   if (!res.ok) throw new Error(`No se obtuvo el token de la cuenta de servicio (${res.status}).`);
   return ((await res.json()) as { access_token: string }).access_token;

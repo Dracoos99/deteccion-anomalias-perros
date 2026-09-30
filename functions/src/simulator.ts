@@ -23,8 +23,9 @@ export function shouldLaunch(run: Pick<SimulatorRunDoc, "state" | "worker" | "cl
 
 export type TokenFn = () => Promise<string>;
 
-const metadataToken: TokenFn = async () => {
-  const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-account/default/token",
+/** Access token of the Function's service account (metadata server of Cloud Run). */
+export const metadataToken: TokenFn = async () => {
+  const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
     { headers: { "Metadata-Flavor": "Google" } });
   if (!res.ok) throw new Error(`metadata token: ${res.status}`);
   return ((await res.json()) as { access_token: string }).access_token;
