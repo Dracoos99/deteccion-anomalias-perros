@@ -14,6 +14,8 @@ export interface BehaviorModelMeta {
   channels: string[];
   noveltyThreshold: number;
   noveltyQuantile: number;
+  /** Time constant of the causal average of the softmax for the class shown (absent or 0: no smoothing). */
+  smoothingTimeConstantS?: number;
   metrics: Record<string, number>;
   architecture: string;
   trainingData: string[];

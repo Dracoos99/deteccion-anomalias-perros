@@ -1,0 +1,3 @@
+# Build context of ml/Dockerfile: only the requirements (the data and the venv never enter the image).
+*
+!requirements.txt

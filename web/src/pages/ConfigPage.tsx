@@ -24,6 +24,7 @@ function toDraft(c: Fusion): Draft {
     hrMin: String(c.hrRange[0]), hrMax: String(c.hrRange[1]),
     critical: opt(c.physio?.criticalRatio), fullScale: opt(c.physio?.fullScaleRatio), levelSigma: opt(c.physio?.levelSigma),
     minBlocks: String(c.baseline?.minBlocks ?? 360),
+    minDuration: String(c.alertMinDurationS ?? 0), actSigma: opt(c.activityCriticalSigma ?? undefined),
   };
 }
 
@@ -50,6 +51,8 @@ function validate(d: Draft): { errors: string[]; next: (base: Fusion) => Fusion 
   const fullScale = optional("fullScale", (x) => x > 1 && x <= 100, "La escala del autoencoder debe estar entre 1 y 100 (o vacía para usar la del modelo).");
   const levelSigma = optional("levelSigma", (x) => x >= 1 && x <= 5, "La regla del promedio de FC debe estar entre 1 y 5 σ (o vacía para usar la de la línea base).");
   if (!(Number.isInteger(n("minBlocks")) && n("minBlocks") >= 30 && n("minBlocks") <= 1080)) errors.push("Los bloques para aprender el patrón normal deben ser un entero entre 30 (5 min) y 1 080 (3 h).");
+  if (!(Number.isInteger(n("minDuration")) && n("minDuration") >= 0 && n("minDuration") <= 1800)) errors.push("La duración mínima de una alerta debe ser un entero entre 0 y 1 800 s.");
+  const actSigma = optional("actSigma", (x) => x >= 1 && x <= 5, "La regla de actividad baja debe estar entre 1 y 5 σ (o vacía para no usarla).");
   const next = (base: Fusion): Fusion => {
     const physio = Object.fromEntries(Object.entries({ criticalRatio: critical, fullScaleRatio: fullScale, levelSigma }).filter(([, v]) => v != null));
     const out: Fusion = {
@@ -57,6 +60,7 @@ function validate(d: Draft): { errors: string[]; next: (base: Fusion) => Fusion 
       consecutiveCritical: n("consec"), baselineSigma: n("sigma"), episodeGapS: n("episodeGap"),
       tempRange: [n("tMin"), n("tMax")], tempMaxDeviation: n("tDev"), hrRange: [n("hrMin"), n("hrMax")],
       baseline: { minBlocks: n("minBlocks") },
+      alertMinDurationS: n("minDuration"), activityCriticalSigma: actSigma ?? null,
     };
     if (Object.keys(physio).length) out.physio = physio; else delete out.physio;
     return out;
@@ -80,6 +84,8 @@ export function configChanges(before: Fusion, after: Fusion): { field: string; b
     ["Autoencoder: escala de r_p", (c) => (c.physio?.fullScaleRatio == null ? "del modelo" : String(c.physio.fullScaleRatio))],
     ["Autoencoder: regla del promedio (σ)", (c) => (c.physio?.levelSigma == null ? "la de la línea base" : String(c.physio.levelSigma))],
     ["Bloques para aprender el patrón normal", (c) => String(c.baseline?.minBlocks ?? 360)],
+    ["Duración mínima de una alerta (s)", (c) => String(c.alertMinDurationS ?? 0)],
+    ["Regla de actividad baja (σ)", (c) => (c.activityCriticalSigma == null ? "sin regla" : String(c.activityCriticalSigma))],
   ];
   return show.flatMap(([field, f]) => (f(before) === f(after) ? [] : [{ field, before: f(before), after: f(after) }]));
 }
@@ -205,6 +211,10 @@ export function ConfigPage() {
                 {inp("consec", "Regla crítica: ventanas seguidas", undefined, "Ventanas de 2 s")}
                 {inp("sigma", "Desviación respecto a la línea base", "σ", "Actividad, FC y bandas del patrón normal")}
                 {inp("episodeGap", "Cierre de un episodio", "s", "Sin disparos durante este tiempo")}
+              </div>
+              <div className="grid-3" style={{ marginTop: 12 }}>
+                {inp("minDuration", "Duración mínima de una alerta", "s", "El disparo debe sostenerse este tiempo antes de avisar")}
+                {inp("actSigma", "Regla de actividad baja", "σ", "Bajo el patrón del perro. Vacío: sin regla")}
               </div>
             </div>
             <div>

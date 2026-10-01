@@ -1,5 +1,5 @@
 /* "En vivo" panel of the dog detail: while data keep arriving, the last 10 minutes from the dog's results,
-   with the heart rate second by second and movement and Health Score per 10 s block. Hidden when no data arrived in
+   with the heart rate second by second and movement and Health Score per block. Hidden when no data arrived in
    the last 2 minutes (a CSV loaded earlier, a stopped simulation): the trend tabs below cover that. */
 import { useLiveResults, type Dog, type Fusion, type Viewer } from "../data/hooks";
 import { isLive, liveSeries, type LiveBlock } from "../lib/live";
@@ -21,7 +21,7 @@ export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer:
     <section className="panel stack-sm live-panel" aria-labelledby="live-title">
       <div>
         <h2 className="section-title" id="live-title" style={{ margin: 0 }}><span className="live-dot" aria-hidden="true" />En vivo</h2>
-        <p className="xs muted" style={{ margin: 0 }}>Últimos 10 minutos de datos de {dog.name}. Llega un bloque nuevo cada 10 s.</p>
+        <p className="xs muted" style={{ margin: 0 }}>Últimos 10 minutos de datos de {dog.name}, actualizados con cada bloque nuevo (cada 2 s en tiempo real).</p>
       </div>
       <dl className="live-now">
         <div><dt>Ahora</dt><dd>{live.latest.behavior ? behaviorNow(live.latest.behavior, dog.sex) : "—"}</dd></div>
@@ -33,7 +33,7 @@ export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer:
         <TrendChart title="Frecuencia cardiaca, segundo a segundo" rangeKey="10m" unit="lpm" points={live.hr} band={band} height={150} gapMs={3_000}
           legendBand={band ? `Lo normal para ${dog.name}` : undefined} />
       )}
-      <TrendChart title="Movimiento en cada bloque de 10 s" rangeKey="10m" unit="%" domain={[0, 100]} points={live.activity} height={120} gapMs={30_000} />
+      <TrendChart title="Movimiento en cada bloque" rangeKey="10m" unit="%" domain={[0, 100]} points={live.activity} height={120} gapMs={30_000} />
       <TrendChart title="Health Score de cada bloque" rangeKey="10m" unit="puntos" domain={[0, 100]} points={live.health} height={120} gapMs={30_000}
         zones={[
           { from: 0, to: cfg.levels.amber, fill: "var(--color-status-red-bg)", label: "Revisar" },

@@ -60,7 +60,7 @@ describe("baseline learned from the first blocks", () => {
     const b = block(0, true);
     const learned = { ...finishInitial(addToBaseline(newBaselineAcc("initial"), { imu: b.imu, hr: b.hr, temp: b.temp, activeFlags: b.ruleFlags }), cfg) };
     const step = (acc: ReturnType<typeof newBaselineAcc> | null, version: string) =>
-      learnBaseline(learned, acc, { imu: b.imu, hr: b.hr, temp: b.temp, ruleFlags: b.ruleFlags, model: { version, flags: [true] } }, cfg, 10).acc;
+      learnBaseline(learned, acc, { imu: b.imu, hr: b.hr, temp: b.temp, ruleFlags: b.ruleFlags, model: { version, flags: Array(5).fill(true) } }, cfg, 10).acc;
     let acc = step(null, "v1");
     acc = step(acc, "v1");
     expect(acc!.blocks).toBe(2);

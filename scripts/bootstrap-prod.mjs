@@ -102,6 +102,12 @@ try {
   for (const m of modelVersionDocs()) {
     await db.doc(`modelVersions/${m.id}`).set(m.doc);
     console.log(`modelVersions/${m.id}: written from ${m.doc.bundlePath}/metadata.json.`);
+    // Only the bundle the Function serves is active; older versions of the same kind stay as history.
+    const older = await db.collection("modelVersions").where("kind", "==", m.doc.kind).where("active", "==", true).get();
+    for (const d of older.docs.filter((d) => d.id !== m.id)) {
+      await d.ref.update({ active: false });
+      console.log(`modelVersions/${d.id}: no longer active.`);
+    }
   }
 
   if (args.dogs) await createDemoDogs(args.owner);

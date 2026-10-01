@@ -1,6 +1,7 @@
 /**
- * The behavioral model in the simulator: only to compute baselines with the same definition of
- * "active" as the Cloud Function. Loads the TF.js bundle of functions/models/behavior with the WebAssembly backend.
+ * The behavioral model in the simulator: baselines with the same definition of "active" as the Cloud
+ * Function, and the softmax of each window for the offline evaluation of the alert rules. Loads the TF.js
+ * bundle of functions/models/behavior with the WebAssembly backend.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -17,6 +18,8 @@ export interface SimBehaviorModel {
   meta: BehaviorModelMeta;
   /** 0/1 active flag per consecutive 2 s window of a whole recording, and the share of novel windows. */
   activeFlags(imu: ArrayLike<number>, mean: number[], std: number[]): { active: number[]; novelShare: number };
+  /** Softmax of each consecutive 2 s window, as the Function computes it. */
+  predict(imu: ArrayLike<number>, mean: number[], std: number[]): number[][];
 }
 
 let cached: Promise<SimBehaviorModel | null> | null = null;
@@ -40,22 +43,26 @@ export function loadSimBehaviorModel(dir = BUNDLE_DIR): Promise<SimBehaviorModel
       modelTopology: mj.modelTopology, weightSpecs, weightData: all.buffer.slice(all.byteOffset, all.byteOffset + all.length) as ArrayBuffer,
     }));
     const w = meta.windowSamples;
+    const predict = (imu: ArrayLike<number>, mean: number[], std: number[]): number[][] => {
+      const [data, n] = normalizeWindows(imu, mean, std, w);
+      const out: number[][] = [];
+      for (let start = 0; start < n; start += 512) {
+        const count = Math.min(512, n - start);
+        out.push(...tf.tidy(() => (model.predict(tf.tensor3d(data.subarray(start * w * 6, (start + count) * w * 6), [count, w, 6])) as tf.Tensor).arraySync() as number[][]));
+      }
+      return out;
+    };
     return {
-      meta,
+      meta, predict,
       activeFlags(imu, mean, std) {
-        const [data, n] = normalizeWindows(imu, mean, std, w);
         const active: number[] = [];
         let novel = 0;
-        for (let start = 0; start < n; start += 512) {
-          const count = Math.min(512, n - start);
-          const probs = tf.tidy(() => (model.predict(tf.tensor3d(data.subarray(start * w * 6, (start + count) * w * 6), [count, w, 6])) as tf.Tensor).arraySync() as number[][]);
-          for (const p of probs) {
-            const r = readWindow(p, meta);
-            active.push(r.active ? 1 : 0);
-            if (r.novel) novel += 1;
-          }
+        for (const p of predict(imu, mean, std)) {
+          const r = readWindow(p, meta);
+          active.push(r.active ? 1 : 0);
+          if (r.novel) novel += 1;
         }
-        return { active, novelShare: n ? novel / n : 0 };
+        return { active, novelShare: active.length ? novel / active.length : 0 };
       },
     };
   })().catch((e) => {

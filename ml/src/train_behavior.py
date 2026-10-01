@@ -4,6 +4,8 @@ Trains on the fixed split by dog (splits.json), early-stops on the validation ma
 calibrates the novelty threshold of the softmax on validation and exports the model to TF.js for the Function.
 
 Usage (from ml/):.venv/Scripts/python -m src.train_behavior [--epochs 40] [--quick]
+v2 members, one per seed, not exported (src.ensemble_behavior averages and exports them):
+  python -m src.train_behavior --version cnn-lstm-v2 --seed 1 --label-smoothing 0.1 --cosine --epochs 60 --patience 15 --member
 Outputs:
   ml/models/behavior/<version>/        Keras model (h5), metrics.json, history.json (not versioned)
   functions/models/behavior/           model.json + weights (TF.js layers format) and metadata.json (versioned)
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -25,7 +28,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 from . import config as C
 from .tfsetup import keras, load_tfjs_keras_converter, seed_everything, tf
-from .dataset import load_windows
+from .dataset import load_sequences, load_windows
 
 REPO = C.ML_DIR.parent
 VERSION = "cnn-lstm-v1"
@@ -116,6 +119,8 @@ def novelty_report(p_clean_val: np.ndarray, p_clean_test: np.ndarray, p_unlab_te
 
 
 def git_commit() -> str | None:
+    if os.environ.get("GIT_COMMIT"):   # inside the training container, which has no git
+        return os.environ["GIT_COMMIT"]
     try:
         return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
     except Exception:  # noqa: BLE001 - informative only
@@ -140,8 +145,14 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--quick", action="store_true", help="2 epochs on a subset, to check the pipeline")
     ap.add_argument("--no-export", action="store_true")
+    ap.add_argument("--version", default=VERSION)
+    ap.add_argument("--seed", type=int, default=C.SEED)
+    ap.add_argument("--label-smoothing", type=float, default=0.0)
+    ap.add_argument("--cosine", action="store_true", help="cosine learning-rate decay over --epochs (instead of halving on plateaus)")
+    ap.add_argument("--member", action="store_true",
+                    help="ensemble member: saves the model and its probabilities under <version>/members/seed-<seed>/, no export")
     args = ap.parse_args()
-    seed_everything(C.SEED)
+    seed_everything(args.seed)
     t0 = time.time()
 
     x_tr, y_tr, _ = load_windows("train")
@@ -149,33 +160,44 @@ def main() -> None:
     x_te, y_te, _ = load_windows("test")
     u_te, _, _ = load_windows("test", status="unlabeled")
     if args.quick:
-        rng = np.random.default_rng(C.SEED)
+        rng = np.random.default_rng(args.seed)
         idx = rng.choice(len(x_tr), 4000, replace=False)
         x_tr, y_tr, args.epochs = x_tr[idx], y_tr[idx], 2
     print(f"train {len(y_tr)} · val {len(y_va)} · test {len(y_te)} · test unlabeled {len(u_te)}", flush=True)
 
     weights = compute_class_weight("balanced", classes=np.arange(len(C.CLASSES)), y=y_tr)
-    ds = (tf.data.Dataset.from_tensor_slices((x_tr, y_tr.astype(np.int32)))
-          .shuffle(len(y_tr), seed=C.SEED, reshuffle_each_iteration=True)
+    n_cls = len(C.CLASSES)
+    # Label smoothing needs one-hot targets; without it the loss and data are exactly those of v1.
+    onehot = args.label_smoothing > 0
+    target = (lambda y: keras.utils.to_categorical(y, n_cls).astype(np.float32)) if onehot else (lambda y: y.astype(np.int32))
+    ds = (tf.data.Dataset.from_tensor_slices((x_tr, target(y_tr)))
+          .shuffle(len(y_tr), seed=args.seed, reshuffle_each_iteration=True)
           .map(augment, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
           .batch(args.batch).prefetch(tf.data.AUTOTUNE))
     model = build_model(x_tr.shape[1])
-    model.compile(optimizer=keras.optimizers.Adam(1e-3), loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+    steps = int(np.ceil(len(y_tr) / args.batch))
+    lr = keras.optimizers.schedules.CosineDecay(1e-3, decay_steps=steps * args.epochs, alpha=0.02) if args.cosine else 1e-3
+    loss = (keras.losses.CategoricalCrossentropy(label_smoothing=args.label_smoothing) if onehot
+            else "sparse_categorical_crossentropy")
+    model.compile(optimizer=keras.optimizers.Adam(lr), loss=loss, metrics=["accuracy"])
     stopper = MacroF1EarlyStopping(x_va, y_va, args.patience)
-    model.fit(ds, validation_data=(x_va, y_va.astype(np.int32)), epochs=args.epochs, verbose=0,
-              class_weight={i: float(w) for i, w in enumerate(weights)},
-              callbacks=[stopper, keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, verbose=0)])
+    callbacks = [stopper] if args.cosine else [stopper, keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, verbose=0)]
+    model.fit(ds, validation_data=(x_va, target(y_va)), epochs=args.epochs, verbose=0,
+              class_weight={i: float(w) for i, w in enumerate(weights)}, callbacks=callbacks)
 
     p_va = model.predict(x_va, batch_size=512, verbose=0)
     p_te = model.predict(x_te, batch_size=512, verbose=0)
     p_un = model.predict(u_te, batch_size=512, verbose=0)
     metrics = {
-        "version": VERSION, "split": "fixed by dog (splits.json)", "best_epoch": stopper.best_epoch, "epochs_run": len(stopper.history),
+        "version": args.version, "seed": args.seed, "label_smoothing": args.label_smoothing, "cosine": args.cosine,
+        "split": "fixed by dog (splits.json)", "best_epoch": stopper.best_epoch, "epochs_run": len(stopper.history),
         "val": classification_report(y_va, p_va.argmax(axis=1)), "test": classification_report(y_te, p_te.argmax(axis=1)),
         "novelty": novelty_report(p_va, p_te, p_un), "train_seconds": round(time.time() - t0), "params": int(model.count_params()),
         "quick": bool(args.quick),
     }
-    out = C.ML_DIR / "models" / "behavior" / (VERSION + ("-quick" if args.quick else ""))
+    out = C.ML_DIR / "models" / "behavior" / (args.version + ("-quick" if args.quick else ""))
+    if args.member:
+        out = out / "members" / f"seed-{args.seed}"
     out.mkdir(parents=True, exist_ok=True)
     model.save(out / "model.h5")
     (out / "metrics.json").write_text(json.dumps(metrics, indent=1), encoding="utf-8", newline="\n")
@@ -184,6 +206,15 @@ def main() -> None:
         "val_macro_f1": metrics["val"]["macro_f1"], "test_macro_f1": metrics["test"]["macro_f1"], "test_accuracy": metrics["test"]["accuracy"],
         "novelty": metrics["novelty"]}, indent=1))
 
+    if args.member:
+        # Probabilities for the ensemble and the temporal smoothing (every window of val and test, in time order).
+        probs = {"val": p_va, "test": p_te, "test_unlabeled": p_un}
+        for split in ("val", "test"):
+            xs, _, _ = load_sequences(split)
+            probs[f"{split}_sequence"] = model.predict(xs, batch_size=512, verbose=0)
+        np.savez_compressed(out / "probs.npz", **{k: v.astype(np.float32) for k, v in probs.items()})
+        print(f"member saved to {out}")
+        return
     if args.quick or args.no_export:
         return
     splits = json.loads((C.VEHKAOJA_OUT / "splits.json").read_text(encoding="utf-8"))

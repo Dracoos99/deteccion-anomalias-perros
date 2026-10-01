@@ -8,12 +8,12 @@
 import os from "node:os";
 import { FieldValue, Timestamp, type DocumentReference, type Firestore } from "firebase-admin/firestore";
 import {
-  BLOCK_SECONDS, MAX_DOGS_PER_RUN, READING_TTL_DAYS, SCHEMA_VERSION, STATS_FLUSH_MS, readingId,
+  BLOCK_SECONDS, MAX_DOGS_PER_RUN, READING_TTL_DAYS, SCHEMA_VERSION, STATS_FLUSH_MS, SUB_BLOCK_MAX_SPEED, WINDOWS_PER_BLOCK, WINDOW_SECONDS, readingId,
 } from "./config";
 import { HR_DATASETS, IMU_DATASETS, loadHr, loadImu, loadManifest } from "./data";
 import { loadSimBehaviorModel } from "./behavior";
 import { imuStats } from "../../shared/behavior-model";
-import { DogStream } from "./stream";
+import { DogStream, splitBlock, type Block } from "./stream";
 import { LatencyStats } from "./stats";
 import { computeBaseline } from "./baseline";
 import { ANOMALY_CATALOG, schedule } from "../../shared/anomalies";
@@ -21,7 +21,8 @@ import type { EngineConfig } from "../../shared/engine";
 import { DEFAULT_FUSION_CONFIG, type DogDoc, type FusionConfig, type InjectionRequest, type SimulatorRunDoc } from "../../shared/types";
 
 type RunState = SimulatorRunDoc["state"];
-interface SimDog { stream: DogStream; name: string; ownerId: string; next: number }
+/** next: 10 s block of the stream; parts: that block as it goes out. */
+interface SimDog { stream: DogStream; name: string; ownerId: string; next: number; parts: Block[] | null; sub: number }
 
 export interface RunOptions {
   workerId: string;
@@ -115,8 +116,10 @@ export class SimulatorRun {
     for (const dogId of run.dogIds) {
       // A faster-than-real run leaves the dog's data ahead of the clock: continue after it, or the engine would
       // discard the new blocks as out of order.
-      const lastMs = (await this.db.doc(`dogState/${dogId}`).get()).get("lastBlockStartMs");
-      if (typeof lastMs === "number") latestBlockMs = Math.max(latestBlockMs, lastMs);
+      const state = (await this.db.doc(`dogState/${dogId}`).get()).data();
+      const lastEnd = typeof state?.lastBlockEndMs === "number" ? state.lastBlockEndMs
+        : typeof state?.lastBlockStartMs === "number" ? state.lastBlockStartMs + BLOCK_SECONDS * 1000 : null;
+      if (lastEnd != null) latestBlockMs = Math.max(latestBlockMs, lastEnd);
       const dogSnap = await this.db.doc(`dogs/${dogId}`).get();
       if (!dogSnap.exists) throw new Error(`No existe el perro ${dogId}.`);
       const dog = dogSnap.data() as DogDoc<Timestamp>;
@@ -137,10 +140,10 @@ export class SimulatorRun {
         await dogSnap.ref.update({ baseline: { ...baseline, computedAt: FieldValue.serverTimestamp() } });
         this.log(`línea base de ${dog.name} (${baseline.activitySource}): movimiento ${Math.round(baseline.activeRatioMean * 100)} %, FC ${baseline.hrMean} lpm, temperatura ${baseline.tempMean} °C`);
       }
-      this.dogs.set(dogId, { stream, name: dog.name, ownerId: dog.ownerId, next: 0 });
+      this.dogs.set(dogId, { stream, name: dog.name, ownerId: dog.ownerId, next: 0, parts: null, sub: 0 });
     }
 
-    if (!run.stats?.startedAt) this.timelineStartMs = Math.max(this.timelineStartMs, latestBlockMs + BLOCK_SECONDS * 1000);
+    if (!run.stats?.startedAt) this.timelineStartMs = Math.max(this.timelineStartMs, latestBlockMs);
     await this.ref.update({
       "stats.startedAt": run.stats?.startedAt ?? Timestamp.fromMillis(this.timelineStartMs),
       worker: { id: this.opts.workerId, host: os.hostname(), heartbeatAt: Timestamp.now() }, error: null,
@@ -191,7 +194,8 @@ export class SimulatorRun {
         try {
           if (!dog) throw new Error(`El perro ${p.dogId} no está en esta ejecución.`);
           const id = `inj_${Date.now().toString(36)}_${p.dogId}`;
-          const inj = schedule(id, p.type, p.magnitude, p.durationS, dog.next);
+          // A 10 s block already split into 2 s parts keeps its signals: the injection starts with the next one.
+          const inj = schedule(id, p.type, p.magnitude, p.durationS, dog.parts ? dog.next + 1 : dog.next);
           dog.stream.injections.push(inj);
           tx.update(this.ref, {
             pendingInjection: null, error: null,
@@ -208,9 +212,16 @@ export class SimulatorRun {
     }
   }
 
+  /** Seconds of data of the next block to write. */
+  private nextBlockSeconds(): number {
+    const d = this.dogs.values().next().value as SimDog | undefined;
+    if (d?.parts) return BLOCK_SECONDS / d.parts.length;
+    return this.speed <= SUB_BLOCK_MAX_SPEED ? WINDOW_SECONDS : BLOCK_SECONDS;
+  }
+
   private scheduleNext(): void {
     if (this.finished) return;
-    const interval = (BLOCK_SECONDS * 1000) / this.speed;
+    const interval = (this.nextBlockSeconds() * 1000) / this.speed;
     // After a pause or a slow tick, catch up by at most one block instead of bursting.
     this.nextAt = Math.max(this.nextAt + interval, Date.now() - interval);
     this.timer = setTimeout(() => void this.tick(), Math.max(0, this.nextAt - Date.now()));
@@ -229,11 +240,19 @@ export class SimulatorRun {
   }
 
   private async writeBlock(dogId: string, d: SimDog): Promise<void> {
-    const b = d.stream.block(d.next);
-    const blockStartMs = this.timelineStartMs + b.index * BLOCK_SECONDS * 1000;
+    if (!d.parts) {
+      // The stream advances in 10 s blocks (temperature and injections are per 10 s block); the speed decides how
+      // each one goes out.
+      d.parts = splitBlock(d.stream.block(d.next), this.speed <= SUB_BLOCK_MAX_SPEED ? WINDOWS_PER_BLOCK : 1);
+      d.sub = 0;
+    }
+    const b = d.parts[d.sub];
+    const seconds = BLOCK_SECONDS / d.parts.length;
+    const blockStartMs = this.timelineStartMs + (d.next * BLOCK_SECONDS + d.sub * seconds) * 1000;
+    const index = d.next * WINDOWS_PER_BLOCK + (d.sub * seconds) / WINDOW_SECONDS;
     const doc: Record<string, unknown> = {
       dogId, ownerId: d.ownerId, source: "simulator", sourceRef: this.runId,
-      blockStart: Timestamp.fromMillis(blockStartMs), imuHz: 100, imu: b.imu, hr: b.hr, temp: b.temp,
+      blockStart: Timestamp.fromMillis(blockStartMs), blockSeconds: seconds, imuHz: 100, imu: b.imu, hr: b.hr, temp: b.temp,
       processed: false, expireAt: Timestamp.fromMillis(Date.now() + READING_TTL_DAYS * 86_400_000),
       schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(),
     };
@@ -242,15 +261,20 @@ export class SimulatorRun {
       doc.injectedAnomalies = b.truth;
     }
     try {
-      await this.db.doc(`readings/${readingId(this.runId, dogId, b.index)}`).create(doc);
+      await this.db.doc(`readings/${readingId(this.runId, dogId, index)}`).create(doc);
     } catch (e) {
       if ((e as { code?: number }).code !== 6) {  // 6 = ALREADY_EXISTS: an earlier attempt landed, the block is written
         this.writeErrors += 1;
-        this.log(`no se pudo escribir el bloque ${b.index} de ${d.name} (se reintenta): ${(e as Error).message}`);
+        this.log(`no se pudo escribir el bloque ${index} de ${d.name} (se reintenta): ${(e as Error).message}`);
         return;
       }
     }
-    d.next += 1;
+    d.sub += 1;
+    if (d.sub >= d.parts.length) {
+      d.next += 1;
+      d.parts = null;
+      d.sub = 0;
+    }
     this.blocksWritten += 1;
     this.lastBlockAt = Date.now();
   }

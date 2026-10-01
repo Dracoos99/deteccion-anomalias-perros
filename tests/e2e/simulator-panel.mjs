@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 
 const BASE = process.env.BASE_URL || "http://localhost:5180";
 const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), "shots");
+// The behavioral model the Function and the simulator load (A2 must list it).
+const MODEL = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "functions", "models", "behavior", "metadata.json"), "utf8")).version;
 fs.mkdirSync(OUT, { recursive: true });
 const results = [];
 const errors = [];
@@ -59,7 +61,8 @@ check("run created from the panel is claimed by the simulator process", await wa
 check("blocks are being written", await page.waitForFunction(() => {
   const el = [...document.querySelectorAll(".stat")].find((s) => s.innerText.startsWith("Bloques escritos"));
   return el && Number(el.querySelector(".stat-value").innerText.replace(/\D/g, "")) > 0;
-}, { timeout: 20000 }).then(() => true, () => false));
+// The first run after a model change recomputes the dog's baseline with the new model before its first block.
+}, { timeout: 150000 }).then(() => true, () => false));
 
 // Inject a fever from the form.
 await page.select("#inj-type", "fever");
@@ -125,7 +128,7 @@ await page.click("button[type=submit]");
 await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
 await page.goto(BASE + "/admin/configuracion", { waitUntil: "load" });
 await page.waitForSelector("#c-wb", { timeout: 15000 }).catch(() => {});
-check("A2 shows the active models and the fusion form", await waitText("Fusión y umbrales", 10000) && await waitText("lstm-ae-v1", 10000) && (await text()).includes("cnn-lstm-v1"));
+check("A2 shows the active models and the fusion form", await waitText("Fusión y umbrales", 10000) && await waitText("lstm-ae-v1", 10000) && (await text()).includes(MODEL));
 await page.$eval("#c-wb", (el) => { el.value = ""; });
 await page.type("#c-wb", "0.5");
 const saveDisabled = await page.$eval("xpath/.//button[contains(., 'Guardar cambios')]", (b) => b.disabled).catch(() => null);

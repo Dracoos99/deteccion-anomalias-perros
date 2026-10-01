@@ -201,6 +201,70 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "trendsMinute",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ownerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dogId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startMs",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "trendsMinute",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dogId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startMs",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "trendsTenSec",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ownerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dogId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startMs",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "trendsTenSec",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dogId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startMs",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -232,6 +296,16 @@
     {
       "collectionGroup": "csvUploads",
       "fieldPath": "errors",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "trendsTenSec",
+      "fieldPath": "slots",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "trendsMinute",
+      "fieldPath": "slots",
       "indexes": []
     }
   ]

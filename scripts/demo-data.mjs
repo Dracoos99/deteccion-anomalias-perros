@@ -34,13 +34,15 @@ export const DOGS = [
   { id: "coco", name: "Coco", sex: "male", breed: "Schnauzer", weightKg: 15.1, birthDate: "2016-04-08", ownerId: "jorge-rios", source: src("27", "13") },
 ];
 
-// Same values as shared/types.ts#DEFAULT_FUSION_CONFIG; kept literal so these scripts have no TS build step.
+// The values of shared/types.ts#DEFAULT_FUSION_CONFIG plus the alert calibration (sustained trigger
+// of 5 min, low-activity rule at 2σ), which lives in config/fusion like every weight and threshold. Kept
+// literal so these scripts have no TS build step.
 export const FUSION = {
   weights: { b: 0.4, p: 0.4, t: 0.2 }, alertThreshold: 60, levels: { green: 80, amber: 60 }, consecutiveCritical: 2,
   hrRange: [100, 150], tempRange: [37.7, 39.5], tempMaxDeviation: 1.0, baselineSigma: 2,
   prefilter: { hrMin: 20, hrMax: 300, tempMin: 30, tempMax: 45 },
   activity: { thresholdG: 0.1129, timeConstantS: 1200 }, hrAverageS: 60, novelty: { timeConstantS: 300, fullScaleRate: 0.5 },
-  episodeGapS: 60, statusMinIntervalS: 10,
+  episodeGapS: 60, statusMinIntervalS: 2, alertMinDurationS: 300, activityCriticalSigma: 2,
 };
 
 // modelVersions/{version} from the exported bundles, with their real metrics: behavior/ is written by

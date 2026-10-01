@@ -1,6 +1,9 @@
 /**
- * Trend aggregates: 5-minute slots per dog and UTC day in trends/{dogId}_{YYYY-MM-DD}.
- * The Function adds each block to the current slot (write side); the web app merges slots into chart points and
+ * Trend aggregates: 5-minute slots per dog and UTC day in trends/{dogId}_{YYYY-MM-DD}, for 7 days and the
+ * vet view. adds two finer tiers in small documents, so a live chart never downloads a big one per block:
+ * 10 s slots with the 1 Hz heart rate in 10-minute documents (trendsTenSec, the 1 h chart) and 1-minute slots in hour
+ * documents (trendsMinute, the 24 h chart and alert episodes).
+ * The Function adds each block to the current slots (write side); the web app merges slots into chart points and
  * period summaries (read side). Pure functions, shared by functions/ and web/.
  */
 import { BEHAVIORS, type Behavior, type Level } from "./types";
@@ -21,6 +24,49 @@ export interface TrendSlot {
   hrSum: number; hrN: number; hrMin: number | null; hrMax: number | null;  // 1 Hz heart-rate values
   tSum: number; tN: number; tMin: number | null; tMax: number | null;      // temperature per block
   beh: number[];                // windows per behavior, order of BEHAVIORS
+  /**, 10 s tier only: the 1 Hz heart-rate values of the slot, in time order. */
+  hrv?: number[];
+}
+
+/** Finer tiers, each in documents that span docMs and hold slotMs slots. */
+export interface TrendTier { collection: "trendsTenSec" | "trendsMinute"; slotMs: number; docMs: number; hrValues: boolean }
+export const TEN_SEC_TIER: TrendTier = { collection: "trendsTenSec", slotMs: 10_000, docMs: 600_000, hrValues: true };
+export const MINUTE_TIER: TrendTier = { collection: "trendsMinute", slotMs: 60_000, docMs: 3_600_000, hrValues: false };
+
+export interface TrendTierDoc<T = unknown> {
+  dogId: string;
+  ownerId: string;
+  startMs: number;     // start of the span (for range queries)
+  slotMs: number;
+  slots: Record<string, TrendSlot>;
+  schemaVersion: number;
+  updatedAt: T;
+  expireAt?: T;        // 10 s tier: removed by the TTL policy after 7 days, like readings
+}
+
+export const tierDocStart = (tier: TrendTier, ms: number) => Math.floor(ms / tier.docMs) * tier.docMs;
+export const tierSlotIndex = (tier: TrendTier, ms: number) => Math.floor((ms - tierDocStart(tier, ms)) / tier.slotMs);
+/** e.g. toby_2026-10-01T1350 (10 s tier) or toby_2026-10-01T13 (minute tier). */
+export function tierDocId(tier: TrendTier, dogId: string, ms: number): string {
+  const iso = new Date(tierDocStart(tier, ms)).toISOString();
+  return `${dogId}_${tier.docMs < 3_600_000 ? iso.slice(0, 13) + iso.slice(14, 16) : iso.slice(0, 13)}`;
+}
+
+/** Slots of tier documents whose start is inside [fromMs, toMs), in time order. */
+export function collectTierSlots(docs: Pick<TrendTierDoc, "startMs" | "slotMs" | "slots">[], fromMs: number, toMs: number): TimedSlot[] {
+  const out: TimedSlot[] = [];
+  for (const d of docs) {
+    for (const [k, slot] of Object.entries(d.slots ?? {})) {
+      const t = d.startMs + Number(k) * d.slotMs;
+      if (t >= fromMs && t < toMs && slot.n > 0) out.push({ t, slot });
+    }
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/** The 1 Hz heart rate of 10 s slots as points: value i of a slot is second i after its start. */
+export function hrSeconds(items: TimedSlot[]): { t: number; v: number }[] {
+  return items.flatMap(({ t, slot }) => (slot.hrv ?? []).map((v, i) => ({ t: t + i * 1000, v })));
 }
 
 export interface TrendDayDoc<T = unknown> {
@@ -59,8 +105,8 @@ const minOf = (a: number | null, b: number | null) => (a == null ? b : b == null
 const maxOf = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.max(a, b));
 const LEVEL_INDEX: Record<Level, 0 | 1 | 2> = { green: 0, amber: 1, red: 2 };
 
-/** Adds one block to a slot (returns a new slot). */
-export function addBlock(slot: TrendSlot, b: BlockSummary): TrendSlot {
+/** Adds one block to a slot (returns a new slot). keepHr: also keep the 1 Hz values. */
+export function addBlock(slot: TrendSlot, b: BlockSummary, keepHr = false): TrendSlot {
   const lv = [...slot.lv] as TrendSlot["lv"];
   lv[LEVEL_INDEX[b.level]] += 1;
   const beh = [...slot.beh];
@@ -74,6 +120,7 @@ export function addBlock(slot: TrendSlot, b: BlockSummary): TrendSlot {
     tSum: slot.tSum + (b.temp ?? 0), tN: slot.tN + (b.temp == null ? 0 : 1),
     tMin: minOf(slot.tMin, b.temp), tMax: maxOf(slot.tMax, b.temp),
     beh,
+    ...(keepHr ? { hrv: [...(slot.hrv ?? []), ...b.hr.map((v) => Math.round(v * 10) / 10)] } : {}),
   };
 }
 

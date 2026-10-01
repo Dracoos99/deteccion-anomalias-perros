@@ -11,6 +11,7 @@
  *   npm run sim -- subjects         # subjects available in the exported data
  *   npm run sim -- sweep [--hours 2] # offline sweep of the alert rules (no Firestore)
  *   npm run sim -- sweep --physio [--ratios inf:3.81,6.9:12.8] [--cache f.json] # HR rule alone vs rule + autoencoder
+ *   npm run sim -- evaluate [--split val|test] [--hours 3] [--search] [--config '{...}'] [--out f.json] # rules with both models
  */
 import os from "node:os";
 import { parseArgs } from "node:util";
@@ -22,6 +23,10 @@ import { SimulatorRun, createRun, runJob, serveRuns } from "./run";
 import { fetchRunData, jobWorkerId } from "./cloud";
 import { buildReport, formatReport } from "./report";
 import { runPhysioSweep, runSweep } from "./sweep";
+import { Evaluator, describeConfig, formatOutcome, searchGrid, type Outcome, type Split } from "./evaluate";
+import { loadSimBehaviorModel } from "./behavior";
+import fs from "node:fs";
+import type { FusionConfig } from "../../shared/types";
 import { loadSimPhysioModel } from "./physio";
 import { ANOMALY_CATALOG, validateInjection } from "../../shared/anomalies";
 import type { SimulatorRunDoc } from "../../shared/types";
@@ -33,6 +38,7 @@ const { positionals, values } = parseArgs({
     dog: { type: "string" }, type: { type: "string" }, magnitude: { type: "string" }, duration: { type: "string" },
     value: { type: "string" }, json: { type: "boolean" }, rebaseline: { type: "boolean" }, "run-id": { type: "string" },
     hours: { type: "string" }, physio: { type: "boolean" }, ratios: { type: "string" }, cache: { type: "string" },
+    split: { type: "string" }, search: { type: "boolean" }, config: { type: "string" }, out: { type: "string" },
   },
 });
 
@@ -137,6 +143,43 @@ async function main(): Promise<void> {
         });
         runPhysioSweep(physio, Number(values.hours ?? 2), pairs, values.cache);
       } else runSweep(Number(values.hours ?? 2));
+      break;
+    }
+    case "evaluate": {
+      const model = await loadSimBehaviorModel();
+      const physio = await loadSimPhysioModel();
+      if (!model || !physio) throw new Error("Faltan los modelos en functions/models (behavior y physio).");
+      const split = (values.split ?? "val") as Split;
+      if (split !== "val" && split !== "test") throw new Error("--split debe ser val o test.");
+      const hours = Number(values.hours ?? 3);
+      const ev = new Evaluator(split, model, physio, hours);
+      console.log(`Modelos: ${model.meta.version} y ${physio.meta.version} · ${ev.description} · ${hours} h normales por perro\n`);
+      // JSON has no Infinity: "inf" turns the autoencoder's critical rule off.
+      const parse = (text: string): Partial<FusionConfig> => JSON.parse(text, (k, v) => (v === "inf" ? Number.POSITIVE_INFINITY : v));
+      const results: { config: Partial<FusionConfig>; outcome: Outcome }[] = [];
+      const current = ev.run({});
+      console.log(formatOutcome("Configuración actual", current));
+      results.push({ config: {}, outcome: current });
+      const candidates = values.search ? searchGrid() : values.config ? [parse(values.config)] : [];
+      candidates.forEach((c, i) => {
+        const o = ev.run(c);
+        results.push({ config: c, outcome: o });
+        if (!values.search) console.log(formatOutcome(describeConfig(c), o));
+        else if ((i + 1) % 20 === 0) console.log(`  … ${i + 1}/${candidates.length} configuraciones`);
+      });
+      if (values.search) {
+        // Every anomaly detected in every dog first; then the fewest false alerts; then the quickest detection.
+        const delay = (o: Outcome) => Object.values(o.detection).reduce((a, x) => a + (x.meanDelayS ?? 1e6), 0);
+        const ranked = results.slice(1).sort((a, b) => b.outcome.minDetectionRate - a.outcome.minDetectionRate
+          || a.outcome.falseAlertsPerDogHour - b.outcome.falseAlertsPerDogHour || delay(a.outcome) - delay(b.outcome));
+        console.log("\nMejores configuraciones:");
+        for (const r of ranked.slice(0, 12)) console.log(formatOutcome(describeConfig(r.config), r.outcome));
+      }
+      if (values.out) {
+        fs.writeFileSync(values.out, JSON.stringify({ split, hours, models: [model.meta.version, physio.meta.version], results },
+          (k, v) => (v === Number.POSITIVE_INFINITY ? "inf" : v), 1));
+        console.log(`\nResultados en ${values.out}`);
+      }
       break;
     }
     case "subjects": {

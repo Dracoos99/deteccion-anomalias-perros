@@ -218,6 +218,13 @@ export interface FusionConfig<T = unknown> {
   episodeGapS: number;
   /** dogs.status is written at most once per this many seconds of data time, unless the level changes. */
   statusMinIntervalS: number;
+  /** An alert opens only after its trigger held this many seconds without interruption (0: at once). The
+   * anomalies are sustained; brief excursions of normal data are not. Optional so older config docs still read. */
+  alertMinDurationS?: number;
+  /** Critical rule of low activity, in standard deviations of the dog's active-time ratio below its mean
+   * (null: off). Without it a drop of activity alone can never open an alert: behavior weighs 0.4, so the Health
+   * Score stays at 60 or above. */
+  activityCriticalSigma?: number | null;
   updatedBy: string;
   updatedAt: T;
 }
@@ -238,7 +245,9 @@ export const DEFAULT_FUSION_CONFIG: Omit<FusionConfig, "updatedBy" | "updatedAt"
   novelty: { timeConstantS: 300, fullScaleRate: 0.5 },
   baseline: { minBlocks: 360 },
   episodeGapS: 60,
-  statusMinIntervalS: 10,
+  statusMinIntervalS: 2,   // Blocks of 2 s refresh the card one by one
+  alertMinDurationS: 0,
+  activityCriticalSigma: null,
 };
 
 export interface InjectionRequest { dogId: string; type: AnomalyType; magnitude: number; durationS: number }

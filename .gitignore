@@ -49,3 +49,9 @@ tests/e2e/shots/
 
 # Output of scripts/cloud/setup-gcp.ps1 (values to paste in GitHub)
 github-variables.txt
+
+# Cache of model outputs of the offline evaluation of the alert rules
+simulator/.eval-cache/
+
+# Crash dumps of Git Bash processes stopped from scripts
+*.stackdump

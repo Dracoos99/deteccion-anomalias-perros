@@ -12,6 +12,9 @@ import { activityBaselineFromFlags, hrBaseline, type EngineConfig } from "./engi
 import type { Baseline } from "./types";
 
 export const DEFAULT_BASELINE_BLOCKS = 360;   // 1 h of 10 s blocks
+/** Blocks may last 2 to 10 s, so progress counts 2 s windows; minBlocks stays in 10 s blocks (5 windows). */
+const WINDOWS_PER_BLOCK = 5;
+const enough = (acc: BaselineAcc, minBlocks: number) => acc.activeFlags.length >= minBlocks * WINDOWS_PER_BLOCK;
 const CHANNELS = 6;
 
 export type BaselineValues = Omit<Baseline, "computedAt">;
@@ -70,7 +73,7 @@ export function addToBaseline(acc: BaselineAcc, block: BaselineBlock): BaselineA
 }
 
 export function baselineShare(acc: BaselineAcc, minBlocks: number): number {
-  return Math.min(1, acc.blocks / Math.max(1, minBlocks));
+  return Math.min(1, acc.activeFlags.length / Math.max(1, minBlocks * WINDOWS_PER_BLOCK));
 }
 
 export function meanStd(values: number[]): { mean: number; std: number } | null {
@@ -140,13 +143,13 @@ export function learnBaseline(current: BaselineValues | null, acc: BaselineAcc |
   if (!current) {
     const a = addToBaseline(acc?.stage === "initial" ? acc : newBaselineAcc("initial"),
       { imu: block.imu, hr: block.hr, temp: block.temp, activeFlags: block.ruleFlags });
-    return a.blocks >= minBlocks ? { acc: null, learned: finishInitial(a, cfg) } : { acc: a, learned: null };
+    return enough(a, minBlocks) ? { acc: null, learned: finishInitial(a, cfg) } : { acc: a, learned: null };
   }
   if (current.origin === "function" && current.activitySource === "rules" && current.imuMean && block.model) {
     const same = acc?.stage === "model" && acc.modelVersion === block.model.version;
     const a = addToBaseline(same ? acc! : newBaselineAcc("model", block.model.version),
       { imu: null, hr: [], temp: null, activeFlags: block.model.flags });
-    return a.blocks >= minBlocks ? { acc: null, learned: finishModel(current, a, cfg) } : { acc: a, learned: null };
+    return enough(a, minBlocks) ? { acc: null, learned: finishModel(current, a, cfg) } : { acc: a, learned: null };
   }
   return { acc: null, learned: null };
 }

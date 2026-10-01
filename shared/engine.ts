@@ -7,7 +7,8 @@
  * The ramps that turn a deviation into r ∈ [0, 1] follow the prototype with
  * the heart rate relative to the dog's baseline. Pure functions: used by Cloud Functions and the simulator.
  *
- * Per 10 s block: 5 windows of 2 s. Per window:
+ * Per block: 1 to 5 windows of 2 s.
+ * Per window:
  *   active     = std(|acc|) > activity.thresholdG            (stand-in for the behavioral model)
  *   ratio      = exponential average of active, time constant activity.timeConstantS
  *   hr         = mean of the last hrAverageS heart-rate values
@@ -24,7 +25,9 @@ import { ratioToScore, sequenceZ, type PhysioScorer } from "./physio-model";
 export const ENGINE_VERSION = "provisional-rules-3";
 export const IMU_CHANNELS = 6;
 export const WINDOW_SAMPLES = 200;   // 2 s at 100 Hz
+/** Length of the blocks of CSV uploads and older readings; live blocks may be shorter. */
 export const BLOCK_SECONDS = 10;
+export const WINDOW_S = 2;
 const ACTIVITY_SD_FLOOR = 0.02;      // 2 percentage points
 const HR_SD_FLOOR = 1;               // bpm
 const WINDOW_MS = (WINDOW_SAMPLES / 100) * 1000;
@@ -61,13 +64,20 @@ export interface EngineState {
   openAlerts: number;
   /** BlockStart of the block that last wrote dogs.status (data time, not wall clock). */
   lastStatusBlockMs?: number | null;
+  /** End of the last block (blocks of 2 to 10 s); absent in older states, which had 10 s blocks. */
+  lastBlockEndMs?: number | null;
+  /** Causal average of the behavioral softmax, for the class shown. */
+  behaviorEma?: number[] | null;
+  /** Consecutive windows with an alert trigger, and data time of the first one. */
+  triggerRun?: number;
+  triggerRunStartMs?: number | null;
   lastLevel: Level | null;
   blocks: number;
 }
 
 export function initialState(openAlerts = 0): EngineState {
   return { lastBlockStartMs: null, activityEma: null, noveltyEma: null, hrBuffer: [], hrRun: 0, streak: { hr: 0, temp: 0 }, episode: null,
-    openAlerts, lastStatusBlockMs: null, lastLevel: null, blocks: 0 };
+    openAlerts, lastStatusBlockMs: null, lastBlockEndMs: null, behaviorEma: null, triggerRun: 0, triggerRunStartMs: null, lastLevel: null, blocks: 0 };
 }
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -115,6 +125,9 @@ export interface WindowEval {
   hrCritical: boolean;
   tempCritical: boolean;
   trigger: boolean;
+  /** The trigger has held alertMinDurationS, so it may open an alert; runStartMs is where it began. */
+  armed: boolean;
+  runStartMs: number | null;
 }
 
 export interface AlertAction {
@@ -232,18 +245,24 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
   let physioWarmup = false;
   // The buffer keeps what the level rule averages and what the autoencoder reads, whichever is longer.
   const keepHr = Math.max(cfg.hrAverageS, physio?.meta.sequenceLength ?? 0);
+  const samples = Math.floor(input.imu.length / IMU_CHANNELS);
+  const nWin = Math.max(1, Math.floor(samples / WINDOW_SAMPLES));
+  const blockSeconds = nWin * WINDOW_S;
   if (!outOfOrder && prev.lastBlockStartMs != null) {
-    const gapS = (input.blockStartMs - prev.lastBlockStartMs) / 1000;
-    if (gapS > 1.5 * BLOCK_SECONDS) {
-      flags.push(`gap:${Math.round(gapS / BLOCK_SECONDS) - 1}`);
+    // Blocks of 2 to 10 s, so the gap is measured from where the previous block ended; states from before
+    // it had 10 s blocks. gap:n counts the missing 2 s windows.
+    const prevEnd = prev.lastBlockEndMs ?? prev.lastBlockStartMs + BLOCK_SECONDS * 1000;
+    const gapS = (input.blockStartMs - prevEnd) / 1000;
+    if (gapS > WINDOW_S / 2) {
+      flags.push(`gap:${Math.round(gapS / WINDOW_S)}`);
       st.streak = { hr: 0, temp: 0 };
       st.hrRun = 0;
+      st.behaviorEma = null;
+      st.triggerRun = 0;
+      st.triggerRunStartMs = null;
       if (gapS > keepHr) st.hrBuffer = [];
     }
   }
-
-  const samples = Math.floor(input.imu.length / IMU_CHANNELS);
-  const nWin = Math.max(1, Math.floor(samples / WINDOW_SAMPLES));
   const alpha = emaAlpha(cfg);
   const alphaNovelty = emaAlpha(cfg, cfg.novelty.timeConstantS);
   const expected = model?.meta.noveltyQuantile ?? null;
@@ -254,7 +273,7 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
   // makes a jump the model never saw in training.
   const hrAfter: number[][] = [];
   const runAfter: number[] = [];
-  const fullHr = input.hr.length >= BLOCK_SECONDS;
+  const fullHr = input.hr.length >= blockSeconds;
   let run = st.hrRun ?? 0;
   for (let w = 0; w < nWin; w++) {
     const lo = Math.floor((w * input.hr.length) / nWin), hi = Math.floor(((w + 1) * input.hr.length) / nWin);
@@ -280,9 +299,25 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
   }
 
   const windows: WindowEval[] = [];
+  const tauB = model?.meta.smoothingTimeConstantS ?? 0;
+  const alphaB = tauB > 0 ? 1 - Math.exp(-WINDOW_S / tauB) : 1;
+  const minRun = Math.max(1, Math.ceil((cfg.alertMinDurationS ?? 0) / WINDOW_S));
+  st.triggerRun = st.triggerRun ?? 0;
+  st.triggerRunStartMs = st.triggerRunStartMs ?? null;
   for (let w = 0; w < nWin; w++) {
     let intensity: number | null = null, active: boolean | null = null;
     const reading = model && model.probs[w] ? readWindow(model.probs[w], model.meta) : null;
+    // The class shown is the argmax of a causal average of the softmax (a posture lasts many seconds).
+    // Activity and novelty keep the raw window, as the dog's baseline and the novelty threshold were made with it.
+    let shown = reading?.predicted ?? null;
+    if (model && model.probs[w] && tauB > 0) {
+      const p = model.probs[w];
+      st.behaviorEma = st.behaviorEma && st.behaviorEma.length === p.length
+        ? st.behaviorEma.map((e, i) => round(e + alphaB * (p[i] - e), 4)) : p.map((x) => round(x, 4));
+      let best = 0;
+      for (let i = 1; i < st.behaviorEma.length; i++) if (st.behaviorEma[i] > st.behaviorEma[best]) best = i;
+      shown = model.meta.classes[best];
+    }
     if (samples >= (w + 1) * WINDOW_SAMPLES) {
       intensity = windowIntensity(input.imu, w * WINDOW_SAMPLES);
       active = modelActivity && reading ? reading.active : intensity > cfg.activity.thresholdG;
@@ -314,12 +349,24 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
     const levelSigma = cfg.physio?.levelSigma ?? cfg.baselineSigma;
     const hrCritical = (zHrSigned != null && Math.abs(zHrSigned) > levelSigma) || (hrRatio != null && hrRatio >= criticalRatio);
     const tempCritical = input.temp != null && (input.temp < cfg.tempRange[0] || input.temp > cfg.tempRange[1]);
+    // Sustained low activity (lethargy, immobility) opens an alert by itself.
+    const actCritical = cfg.activityCriticalSigma != null && zActivity != null && zActivity < -cfg.activityCriticalSigma;
     st.streak.hr = hrCritical ? st.streak.hr + 1 : 0;
     st.streak.temp = tempCritical ? st.streak.temp + 1 : 0;
-    const trigger = hs < cfg.alertThreshold || st.streak.hr >= cfg.consecutiveCritical || st.streak.temp >= cfg.consecutiveCritical;
-    windows.push({ intensity, active, activityRatio: st.activityEma, predicted: reading?.predicted ?? null, maxProb: reading?.maxProb ?? null,
+    const trigger = hs < cfg.alertThreshold || st.streak.hr >= cfg.consecutiveCritical || st.streak.temp >= cfg.consecutiveCritical || actCritical;
+    // The trigger must hold alertMinDurationS before it can open an alert.
+    if (trigger) {
+      st.triggerRun += 1;
+      st.triggerRunStartMs ??= input.blockStartMs + w * WINDOW_MS;
+    } else {
+      st.triggerRun = 0;
+      st.triggerRunStartMs = null;
+    }
+    const armed = trigger && st.triggerRun >= minRun;
+    windows.push({ intensity, active, activityRatio: st.activityEma, predicted: shown, maxProb: reading?.maxProb ?? null,
       novel: reading?.novel ?? null, noveltyRatio: st.noveltyEma ?? null, noveltyExpected: expected, rActivity, rNovelty,
-      hr, hrRatio, temp: input.temp, zActivity, zHr: zHrSigned, rB, rP, rT, healthScore: hs, level: levelOf(hs, cfg.levels), hrCritical, tempCritical, trigger });
+      hr, hrRatio, temp: input.temp, zActivity, zHr: zHrSigned, rB, rP, rT, healthScore: hs, level: levelOf(hs, cfg.levels), hrCritical, tempCritical,
+      trigger, armed, runStartMs: st.triggerRunStartMs });
   }
   if (physioWarmup) flags.push("physio_warmup");
 
@@ -344,12 +391,18 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
   // Alert episodes.
   let alert: AlertAction | null = null;
   let closed: ClosedEpisode | null = null;
-  const triggered = windows.filter((w) => w.trigger);
+  // Without an open episode, only windows from the first armed one count; the alert starts where its
+  // uninterrupted trigger began (possibly in an earlier block).
+  const openAt = st.episode ? 0 : windows.findIndex((w) => w.armed);
+  const counted = openAt < 0 ? [] : windows.slice(openAt);
+  const triggered = counted.filter((w) => w.trigger);
   if (triggered.length) {
-    const firstTriggerMs = input.blockStartMs + windows.findIndex((w) => w.trigger) * WINDOW_MS;
+    const runStart = windows[openAt].runStartMs;
+    const firstTriggerMs = st.episode ? input.blockStartMs + windows.findIndex((w) => w.trigger) * WINDOW_MS
+      : runStart ?? input.blockStartMs + openAt * WINDOW_MS;
     const lastTriggerEndMs = input.blockStartMs + (windows.map((w) => w.trigger).lastIndexOf(true) + 1) * WINDOW_MS;
     const worst = triggered.reduce((a, b) => (b.healthScore < a.healthScore ? b : a));
-    const severity: "amber" | "red" = windows.some((w) => w.trigger && w.level === "red") ? "red" : "amber";
+    const severity: "amber" | "red" = counted.some((w) => w.trigger && w.level === "red") ? "red" : "amber";
     const reasons = buildReasons(last.trigger ? last : triggered[triggered.length - 1], baseline, cfg);
     const components = reasons.map((r) => r.component);
     if (!st.episode) {
@@ -392,6 +445,7 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
     st.lastLevel = last.level;
   }
   st.lastBlockStartMs = input.blockStartMs;
+  st.lastBlockEndMs = input.blockStartMs + nWin * WINDOW_MS;
   st.blocks += 1;
   return { windows, result, state: st, flags, alert, closed, statusDue };
 }

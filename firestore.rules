@@ -80,6 +80,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Finer trend tiers: 1-minute slots per hour and 10 s slots per 10 minutes, same access as trends.
+    match /trendsMinute/{trendId} {
+      allow read: if canReadDogData(resource.data);
+      allow write: if false;
+    }
+    match /trendsTenSec/{trendId} {
+      allow read: if canReadDogData(resource.data);
+      allow write: if false;
+    }
+
     // Per-dog engine memory between blocks: server only, no client reads or writes.
     match /dogState/{dogId} {
       allow read, write: if false;

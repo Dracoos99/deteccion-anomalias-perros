@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DogStream, hrBlocks } from "../../src/stream";
+import { DogStream, hrBlocks, splitBlock } from "../../src/stream";
 import { LatencyStats, percentile, summarize } from "../../src/stats";
 import { readingId } from "../../src/config";
 import { validateRunRequest } from "../../src/run";
@@ -13,6 +13,24 @@ function ramp(samples = 2500): Float32Array {
   for (let i = 0; i < samples; i++) for (let c = 0; c < 6; c++) a[i * 6 + c] = i;
   return a;
 }
+
+describe("splitBlock", () => {
+  const block = (hr: number[]) => ({ index: 7, imu: Array.from({ length: 6000 }, (_, i) => i), hr, temp: 38.6, truth: [] });
+  it("cuts a 10 s block into five 2 s blocks: 200 IMU samples and 2 heart-rate values each", () => {
+    const parts = splitBlock(block([60, 61, 62, 63, 64, 65, 66, 67, 68, 69]), 5);
+    expect(parts.map((p) => p.imu.length)).toEqual([1200, 1200, 1200, 1200, 1200]);
+    expect(parts[1].imu[0]).toBe(1200);
+    expect(parts.map((p) => p.hr)).toEqual([[60, 61], [62, 63], [64, 65], [66, 67], [68, 69]]);
+    expect(parts.every((p) => p.temp === 38.6 && p.index === 7)).toBe(true);
+  });
+  it("keeps a heart-rate break: the parts after it are short", () => {
+    expect(splitBlock(block([60, 61, 62]), 5).map((p) => p.hr.length)).toEqual([2, 1, 0, 0, 0]);
+  });
+  it("leaves the block whole with one part", () => {
+    const b = block([60]);
+    expect(splitBlock(b, 1)).toEqual([b]);
+  });
+});
 
 describe("DogStream", () => {
   it("cuts 1 000-sample blocks, loops at the end and takes 10 HR values per block", () => {

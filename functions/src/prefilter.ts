@@ -10,10 +10,14 @@ export interface PrefilterResult {
   flags: string[];         // stored in results.prefilterFlags
 }
 
+/** A block lasts 1 to 5 windows of 2 s (200 samples × 6 channels each): 10 s from CSV uploads, 2 s from the
+ * live simulator. */
+const WINDOW_VALUES = 1200;
+const MAX_WINDOWS = 5;
+
 export function prefilterBlock(
   block: { hr?: number[] | null; temp?: number | null; imu?: number[] | null },
   limits: FusionConfig["prefilter"],
-  expectedImuLength = 6000,
 ): PrefilterResult {
   const flags: string[] = [];
   const hrIn = Array.isArray(block.hr) ? block.hr : [];
@@ -27,7 +31,7 @@ export function prefilterBlock(
   }
 
   const imu = Array.isArray(block.imu) ? block.imu : [];
-  if (imu.length !== expectedImuLength) flags.push(`imu_length:${imu.length}`);
+  if (imu.length === 0 || imu.length % WINDOW_VALUES !== 0 || imu.length > MAX_WINDOWS * WINDOW_VALUES) flags.push(`imu_length:${imu.length}`);
   if (imu.some((v) => !Number.isFinite(v))) flags.push("imu_not_finite");
 
   return { hr, temp, flags };

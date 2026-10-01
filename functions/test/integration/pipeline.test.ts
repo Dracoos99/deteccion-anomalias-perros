@@ -147,6 +147,31 @@ describe("processReading", () => {
     expect(await at()).toBe(T0 + 40_000);
   });
 
+  it("writes the 1-minute and 10 s trend tiers with every block, in small documents", async () => {
+    for (let k = 0; k < 7; k++) await processReading(db, `b${k}`, reading(k));
+    const minute = (await db.doc("trendsMinute/toby_2026-10-01T10").get()).data()!;
+    expect(minute).toMatchObject({ dogId: "toby", ownerId: "lucia", startMs: T0, slotMs: 60_000 });
+    expect([minute.slots["0"].n, minute.slots["1"].n]).toEqual([6, 1]);         // 10:00-10:01 and 10:01-10:02
+    const ten = (await db.doc("trendsTenSec/toby_2026-10-01T1000").get()).data()!;
+    expect(ten).toMatchObject({ startMs: T0, slotMs: 10_000 });
+    expect(Object.keys(ten.slots)).toHaveLength(7);
+    expect(ten.slots["6"]).toMatchObject({ n: 1, hrN: 10, hrv: Array(10).fill(70) });
+    expect(ten.expireAt.toMillis()).toBe(T0 + 600_000 + 7 * 86_400_000);
+    expect(minute.slots["0"].hrv).toBeUndefined();
+  });
+
+  it("processes a 2 s block like the simulator sends it", async () => {
+    const imu: number[] = [];
+    for (let i = 0; i < 200; i++) imu.push(0, 0, 1, 0, 0, 0);
+    await processReading(db, "s0", reading(0, { imu, hr: [70, 71], blockSeconds: 2 }));
+    await processReading(db, "s1", reading(0, { imu, hr: [72, 73], blockStart: Timestamp.fromMillis(T0 + 2_000), blockSeconds: 2 }));
+    const r = (await db.doc("results/s1").get()).data()!;
+    expect(r.prefilterFlags.filter((f: string) => f.startsWith("imu_length") || f.startsWith("gap"))).toEqual([]);
+    expect(r.hrValues).toEqual([72, 73]);
+    expect((await db.doc("dogState/toby").get()).get("lastBlockEndMs")).toBe(T0 + 4_000);
+    expect((await db.doc("trendsTenSec/toby_2026-10-01T1000").get()).get("slots")["0"]).toMatchObject({ n: 2, hrv: [70, 71, 72, 73] });
+  });
+
   it("keeps the heart-rate values of the block in its result for the live view", async () => {
     await processReading(db, "b0", reading(0, { hr: [70, 71, 72, 400, 73] }));
     expect((await db.doc("results/b0").get()).get("hrValues")).toEqual([70, 71, 72, 73]);   // 400 lpm: prefiltered out

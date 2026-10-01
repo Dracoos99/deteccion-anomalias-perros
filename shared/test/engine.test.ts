@@ -111,13 +111,13 @@ describe("evaluateBlock", () => {
     expect(late.flags).toContain("out_of_order");
     expect(late.state).toBe(a.state);
     const gap = evaluateBlock({ imu: imuBlock(false), hr: [70], temp: 38.6, blockStartMs: 1_000_000 + 60_000 }, a.state, baseline, cfg, { alertId: "y" });
-    expect(gap.flags).toContain("gap:5");
+    expect(gap.flags).toContain("gap:25");   // Missing 2 s windows (50 s after the end of the block)
   });
 
   it("throttles dogs.status to statusMinIntervalS of data time unless the level changes", () => {
     const s0 = { ...initialState(), activityEma: 0.4, hrBuffer: Array(60).fill(70) };
     const blk = { imu: imuBlock(false), hr: Array(10).fill(70), temp: 38.6 };
-    // Default 10 s: every 10 s block refreshes the card, however fast the blocks arrive.
+    // Default 2 s: every block refreshes the card, however fast the blocks arrive.
     const x = evaluateBlock({ ...blk, blockStartMs: 0 }, s0, baseline, cfg, { alertId: "x" });
     const y = evaluateBlock({ ...blk, blockStartMs: 10_000 }, x.state, baseline, cfg, { alertId: "y" });
     expect([x.statusDue, y.statusDue]).toEqual([true, true]);
@@ -165,12 +165,98 @@ describe("evaluateBlock with the behavioral model", () => {
     expect(last!.windows[4].novel).toBe(true);
   });
 
+  it("shows the argmax of a causal average of the softmax when the model asks for smoothing", () => {
+    const smooth = { ...meta, smoothingTimeConstantS: 6 };
+    const b = (probs: number[][], k: number, st: EngineState) =>
+      evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(70), temp: 38.6, blockStartMs: k * 10_000, behavior: { meta: smooth, probs } },
+        st, withModel, cfg, { alertId: `s${k}` });
+    // Lying for a whole block, then one window that looks like sitting: the class shown stays "lie".
+    const first = b(Array(5).fill(onehot(2)), 0, initialState());
+    const blip = b([onehot(0, 0.6), onehot(2), onehot(2), onehot(2), onehot(2)], 1, first.state);
+    expect(blip.windows[0].predicted).toBe("lie");
+    expect(blip.windows[0].maxProb).toBeCloseTo(0.6);             // the raw window is kept for novelty
+    // A sustained change wins within a few windows.
+    const change = b(Array(5).fill(onehot(0)), 2, blip.state);
+    expect(change.result.predictedBehavior).toBe("sit");
+    // Without smoothing each window shows its own class (v1).
+    expect(block([onehot(0, 0.6), onehot(2), onehot(2), onehot(2), onehot(2)], 1, first.state).windows[0].predicted).toBe("sit");
+  });
+
   it("keeps rB at 0 with confident, habitual behavior", () => {
     let st = { ...initialState(), activityEma: 0.4 };
     let last;
     for (let k = 0; k < 30; k++) { last = block([onehot(2), onehot(2), onehot(4), onehot(4), onehot(2)], k, st); st = last.state; }
     expect(last!.result.signals.noveltyRatio!).toBeLessThan(0.05);
     expect(last!.result.rB).toBe(0);
+  });
+});
+
+describe("blocks of 2 s and alert rules", () => {
+  /** 200 samples (one 2 s window). */
+  const short = (k: number, st: EngineState, hr = [70, 70], c = cfg) =>
+    evaluateBlock({ imu: imuBlock(false).slice(0, 1200), hr, temp: 38.6, blockStartMs: 1_000_000 + k * 2_000 }, st, baseline, c, { alertId: `w${k}` });
+
+  it("evaluates one window per 2 s block and detects gaps from where the last block ended", () => {
+    const a = short(0, initialState());
+    expect(a.windows).toHaveLength(1);
+    expect(a.state.lastBlockEndMs).toBe(1_002_000);
+    const b = short(1, a.state);
+    expect(b.flags.some((f) => f.startsWith("gap"))).toBe(false);
+    const c = short(4, b.state);                                       // windows 2 and 3 missing
+    expect(c.flags).toContain("gap:2");
+  });
+
+  it("counts 2 heart-rate values as a full 2 s block for the contiguous minute", () => {
+    let st = initialState();
+    for (let k = 0; k < 30; k++) st = short(k, st).state;
+    expect(st.hrRun).toBe(60);
+    expect(short(30, st, [70]).state.hrRun).toBe(0);                  // a short block restarts it
+  });
+
+  it("opens an alert only after its trigger held alertMinDurationS", () => {
+    const c60 = { ...cfg, alertMinDurationS: 60 };
+    let st = initialState();
+    const opened: number[] = [];
+    for (let k = 0; k < 40; k++) {
+      const e = short(k, st, [70, 70], c60);
+      st = e.state;
+      if (k >= 5) { /* fever from block 5 on */ }
+      if (e.alert?.action === "open") opened.push(k);
+    }
+    expect(opened).toEqual([]);                                        // no trigger, no alert
+    let s2 = initialState();
+    const hot = (k: number) => evaluateBlock({ imu: imuBlock(false).slice(0, 1200), hr: [70, 70], temp: 40.5, blockStartMs: 1_000_000 + k * 2_000 },
+      s2, baseline, c60, { alertId: `h${k}` });
+    let at = -1;
+    for (let k = 0; k < 60; k++) { const e = hot(k); s2 = e.state; if (e.alert?.action === "open" && at < 0) { at = k; expect(e.alert.startedAtMs).toBe(1_002_000); } }
+    // The temperature rule fires from the second window (consecutiveCritical 2); 30 windows later it has held 60 s.
+    expect(at).toBe(30);
+  });
+
+  it("a brief trigger shorter than alertMinDurationS opens nothing", () => {
+    const c60 = { ...cfg, alertMinDurationS: 60 };
+    let st = initialState();
+    let opened = false;
+    for (let k = 0; k < 60; k++) {
+      const e = evaluateBlock({ imu: imuBlock(false).slice(0, 1200), hr: [70, 70], temp: k >= 10 && k < 25 ? 40.5 : 38.6,
+        blockStartMs: 1_000_000 + k * 2_000 }, st, baseline, c60, { alertId: `b${k}` });
+      st = e.state;
+      opened ||= e.alert?.action === "open";
+    }
+    expect(opened).toBe(false);
+  });
+
+  it("low activity alone alerts with activityCriticalSigma (it never did before, C3)", () => {
+    const withRule = { ...cfg, activityCriticalSigma: 2 };
+    let st = initialState();
+    let alert = null;
+    for (let k = 0; k < 360 && !alert; k++) {
+      const e = evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(70), temp: 38.6, blockStartMs: 1_000_000 + k * 10_000 }, st, baseline, withRule, { alertId: `a${k}` });
+      st = e.state;
+      if (e.alert?.action === "open") alert = e.alert;
+    }
+    expect(alert?.reasons.map((r) => r.code)).toContain("activity_low");
+    expect(alert?.severity).toBe("amber");
   });
 });
 
@@ -318,7 +404,7 @@ describe("evaluateBlock with the physiological model", () => {
     expect(last.state.hrRun).toBe(60);                         // 6 full blocks later
     expect(last.result.signals.hrRatio).toBe(0.5);
     const afterGap = blk(Array(10).fill(70), 10, st);          // two blocks missing
-    expect(afterGap.flags).toContain("gap:2");
+    expect(afterGap.flags).toContain("gap:10");                // 20 s missing: ten 2 s windows
     expect(afterGap.state.hrRun).toBe(10);
     expect(afterGap.result.signals.hrRatio).toBeNull();
     expect(batches.every((b) => b.length > 0)).toBe(true);     // the model is not called for a block with nothing to score

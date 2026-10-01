@@ -4,7 +4,7 @@ import {
   DEFAULT_FUSION_CONFIG, type AlertDoc, type CsvUploadDoc, type DogDoc, type FusionConfig, type ModelVersionDoc, type ResultDoc, type SimulatorRunDoc,
   type UserDoc,
 } from "@shared/types";
-import type { TrendDayDoc } from "@shared/trends";
+import type { TrendDayDoc, TrendTier, TrendTierDoc } from "@shared/trends";
 import { db } from "../firebase";
 
 export type Dog = DogDoc<Timestamp> & { id: string };
@@ -126,7 +126,7 @@ export function useTrendDocs(dogId: string | undefined, viewer: Viewer, fromDay:
 export type Result = ResultDoc<Timestamp> & { id: string };
 
 /** Latest results of one dog, newest first, live: the "En vivo" panel. */
-export function useLiveResults(dogId: string | undefined, viewer: Viewer, max = 60): Live<Result[]> {
+export function useLiveResults(dogId: string | undefined, viewer: Viewer, max = 300): Live<Result[]> {
   const [state, setState] = useState<Live<Result[]>>({ data: [], loading: true, error: null });
   useEffect(() => {
     if (!dogId) { setState({ data: [], loading: false, error: null }); return; }
@@ -138,6 +138,27 @@ export function useLiveResults(dogId: string | undefined, viewer: Viewer, max = 
       (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as ResultDoc<Timestamp>) })), loading: false, error: null }),
       (err) => setState({ data: [], loading: false, error: err.message }));
   }, [dogId, viewer.uid, viewer.isAdmin, max]);
+  return state;
+}
+
+/** Documents of a finer trend tier that start in [fromMs, toMs] (no upper bound: up to now), live.
+ * tier null: nothing to read. */
+export function useTierDocs(tier: TrendTier | null, dogId: string | undefined, viewer: Viewer, fromMs: number | null,
+  toMs: number | null = null): Live<TrendTierDoc<Timestamp>[]> {
+  const [state, setState] = useState<Live<TrendTierDoc<Timestamp>[]>>({ data: [], loading: !!tier, error: null });
+  const coll = tier?.collection ?? null;
+  useEffect(() => {
+    if (!coll || !dogId || fromMs == null) { setState({ data: [], loading: !!coll && !!dogId && fromMs == null, error: null }); return; }
+    setState((s) => ({ ...s, loading: true }));
+    const ref = collection(db, coll);
+    const range = [where("startMs", ">=", fromMs), ...(toMs != null ? [where("startMs", "<=", toMs)] : [])];
+    const q = viewer.isAdmin
+      ? query(ref, where("dogId", "==", dogId), ...range)
+      : query(ref, where("ownerId", "==", viewer.uid), where("dogId", "==", dogId), ...range);
+    return onSnapshot(q,
+      (snap) => setState({ data: snap.docs.map((d) => d.data() as TrendTierDoc<Timestamp>), loading: false, error: null }),
+      (err) => setState({ data: [], loading: false, error: err.message }));
+  }, [coll, dogId, viewer.uid, viewer.isAdmin, fromMs, toMs]);
   return state;
 }
 

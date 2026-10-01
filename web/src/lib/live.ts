@@ -1,10 +1,10 @@
 /* Live panel of the dog detail: the last minutes of a dog from its results. The heart rate goes second by
-   second (results.hrValues); movement and the Health Score, one point per 10 s block. Pure functions, no Firestore. */
+   second (results.hrValues); movement and the Health Score, one point per block (2 or 10 s). Pure functions, no Firestore. */
 import type { Behavior } from "@shared/types";
 
 export const LIVE_SPAN_MS = 10 * 60_000;
 export const LIVE_MAX_AGE_MS = 2 * 60_000;
-const BLOCK_MS = 10_000;
+const BLOCK_MS = 10_000;   // results written before had 10 s blocks
 
 export interface LivePoint { t: number; v: number }
 

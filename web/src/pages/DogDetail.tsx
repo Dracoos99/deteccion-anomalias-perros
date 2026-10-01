@@ -69,7 +69,8 @@ export function DogDetail() {
   const [range, setRange] = useState<RangeKey>("24h");
   const [tab, setTab] = useState<Tab>("resumen");
   const r = RANGES[range];
-  const trend = useDogTrend(dog, viewer, r.ms, r.bucketMs);
+  const trend = useDogTrend(dog, viewer, r.ms, r.bucketMs, r.tier);
+  const gapMs = 3 * r.bucketMs;   // no line across missing data
   const { data: alerts } = useDogAlerts(dog?.id, viewer, 50);
 
   if (loading) return <div className="boot" aria-busy="true">Cargando…</div>;
@@ -128,7 +129,7 @@ export function DogDetail() {
           {tab === "resumen" && !empty && (
             <>
               <ChartPanel>
-                <TrendChart title="Salud general (Health Score)" sub={sub} rangeKey={range} unit="puntos" domain={[0, 100]}
+                <TrendChart title="Salud general (Health Score)" sub={sub} rangeKey={range} gapMs={gapMs} unit="puntos" domain={[0, 100]}
                   points={trend.points.flatMap((p) => (p.healthScore == null ? [] : [{ t: p.t, v: p.healthScore, mark: p.level !== "green" }]))}
                   zones={[
                     { from: 0, to: cfg.levels.amber, fill: "var(--color-status-red-bg)", label: "Revisar" },
@@ -152,7 +153,7 @@ export function DogDetail() {
           {tab === "actividad" && !empty && (
             <>
               <ChartPanel>
-                <TrendChart title="Tiempo en movimiento" sub={sub} rangeKey={range} unit="%" domain={[0, 100]}
+                <TrendChart title="Tiempo en movimiento" sub={sub} rangeKey={range} gapMs={gapMs} unit="%" domain={[0, 100]}
                   points={series(trend, (p) => (p.activity == null ? null : 100 * p.activity), aBand && [100 * aBand[0], 100 * aBand[1]])}
                   band={aBand && [100 * aBand[0], 100 * aBand[1]]} legendBand={`Lo normal para ${dog.name}`} legendMarks="Fuera de lo normal" />
               </ChartPanel>
@@ -168,15 +169,18 @@ export function DogDetail() {
 
           {tab === "corazon" && !empty && (
             <ChartPanel>
-              <TrendChart title="Frecuencia cardiaca" sub={sub} rangeKey={range} unit="lpm"
-                points={series(trend, (p) => p.hr, hBand)} band={hBand} legendBand={`Lo normal para ${dog.name}`} legendMarks="Fuera de lo normal" />
+              {trend.hr && trend.hr.length > 0
+                ? <TrendChart title="Frecuencia cardiaca, segundo a segundo" sub={sub} rangeKey={range} unit="lpm" points={trend.hr} band={hBand} gapMs={3_000}
+                    legendBand={`Lo normal para ${dog.name}`} />
+                : <TrendChart title="Frecuencia cardiaca" sub={sub} rangeKey={range} unit="lpm" gapMs={gapMs}
+                    points={series(trend, (p) => p.hr, hBand)} band={hBand} legendBand={`Lo normal para ${dog.name}`} legendMarks="Fuera de lo normal" />}
               <p className="xs muted" style={{ margin: "8px 0 0" }}>Se compara con el ritmo habitual de {dog.name}. El rango de referencia general ({cfg.hrRange.join("–")} lpm) es solo informativo.</p>
             </ChartPanel>
           )}
 
           {tab === "temperatura" && !empty && (
             <ChartPanel>
-              <TrendChart title="Temperatura" sub={sub} rangeKey={range} unit="°C" decimals={1}
+              <TrendChart title="Temperatura" sub={sub} rangeKey={range} gapMs={gapMs} unit="°C" decimals={1}
                 points={series(trend, (p) => p.temp, cfg.tempRange)} band={cfg.tempRange}
                 legendBand={`Rango de referencia (${fmtNum(cfg.tempRange[0], 1)}–${fmtNum(cfg.tempRange[1], 1)} °C)`} legendMarks="Fuera del rango" />
               {dog.source?.temp?.datasetId === "synthetic" && <p className="xs muted" style={{ margin: "8px 0 0" }}>Temperatura simulada: no existen series públicas de temperatura de perros.</p>}

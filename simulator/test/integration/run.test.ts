@@ -54,7 +54,7 @@ describe.skipIf(!hasData)("simulator end to end", () => {
     await run.start();
     await run.done;
     const report = await waitFor(() => buildReport(db, runId), (r) => r.results === 12);
-    expect(report).toMatchObject({ readings: 12, results: 12, lostBlocks: 0, blocksExpected: 12, ok: true, state: "stopped" });
+    expect(report).toMatchObject({ readings: 12, results: 12, lostBlocks: 0, windowsExpected: 60, windowsWritten: 60, ok: true, state: "stopped" });
     expect(report.latency.avgMs).toBeGreaterThanOrEqual(0);
     const reading = (await db.doc(`readings/${runId}_toby_000000`).get()).data()!;
     expect(reading.imu).toHaveLength(6000);
@@ -74,6 +74,22 @@ describe.skipIf(!hasData)("simulator end to end", () => {
     expect(stats).toMatchObject({ blocksWritten: 12, resultsSeen: 12 });
     expect(stats.stoppedAt).toBeInstanceOf(Timestamp);
   }, 120_000);
+
+  it("sends 2 s blocks up to ×2, so the app gets data every 2 s of real time", async () => {
+    const runId = await createRun(db, { dogIds: ["luna"], speed: 2, durationS: 20, createdBy: "test", worker: "test" });
+    const run = new SimulatorRun(db, runId, { workerId: "test", log: quiet, drainMs: 60_000 });
+    await run.start();
+    await run.done;
+    const report = await waitFor(() => buildReport(db, runId), (r) => r.results === 10);
+    expect(report).toMatchObject({ readings: 10, results: 10, lostBlocks: 0, windowsExpected: 10, windowsWritten: 10, ok: true });
+    const r2 = (await db.doc(`readings/${runId}_luna_000002`).get()).data()!;
+    const r3 = (await db.doc(`readings/${runId}_luna_000003`).get()).data()!;
+    expect(r3.imu).toHaveLength(1200);
+    expect(r3.blockSeconds).toBe(2);
+    expect(r3.hr.length).toBeLessThanOrEqual(2);
+    expect(r3.blockStart.toMillis() - r2.blockStart.toMillis()).toBe(2000);
+    expect((await db.doc(`results/${runId}_luna_000003`).get()).get("prefilterFlags")).not.toContain("imu_length:1200");
+  }, 90_000);
 
   it("injects a fever from the run document and the Function opens an alert with the ground truth stored", async () => {
     const runId = await createRun(db, { dogIds: ["toby"], speed: 10, durationS: 150, createdBy: "test", worker: "test" });

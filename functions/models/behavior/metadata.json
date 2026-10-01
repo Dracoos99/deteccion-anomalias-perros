@@ -1,7 +1,7 @@
 {
- "version": "cnn-lstm-v1",
+ "version": "cnn-lstm-v2",
  "kind": "behavior",
- "architecture": "Conv1D(64,5)+BN+ReLU · MaxPool(2) · Conv1D(128,3)+BN+ReLU · Dropout(0.3) · LSTM(64) · Dense(64) · Dense(7, softmax)",
+ "architecture": "Promedio de 5 CNN-LSTM (Conv1D(64,5)+BN+ReLU · MaxPool(2) · Conv1D(128,3)+BN+ReLU · Dropout(0.3) · LSTM(64) · Dense(64) · Dense(7, softmax)), semillas 1, 2, 3, 4, 5",
  "classes": [
   "sit",
   "stand",
@@ -28,25 +28,33 @@
   "gyr_z"
  ],
  "normalization": "per-dog z-score per channel (dogs.baseline.imuMean / imuStd)",
- "noveltyThreshold": 0.4734,
+ "noveltyThreshold": 0.4057,
  "noveltyQuantile": 0.05,
+ "smoothingTimeConstantS": 6,
  "trainingData": [
   "Vehkaoja et al. (2022), sensor del cuello: 31 perros de entrenamiento, 7 de validación y 7 de prueba"
  ],
  "metrics": {
-  "test_macro_f1": 0.8239,
-  "test_accuracy": 0.8072,
-  "val_macro_f1": 0.7325,
-  "test_active_balanced_accuracy": 0.9911,
-  "novelty_auroc": 0.6142
+  "test_macro_f1": 0.8635,
+  "test_accuracy": 0.8495,
+  "val_macro_f1": 0.766,
+  "test_active_balanced_accuracy": 0.9928,
+  "novelty_auroc": 0.6561,
+  "test_macro_f1_smoothed": 0.9025
  },
- "params": 81479,
- "seed": 42,
- "gitCommit": "eff1f4d",
+ "params": 407395,
+ "seeds": [
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "gitCommit": "d4a36fc",
  "software": {
   "tensorflow": "2.21.0",
   "tf_keras": "2.21.0",
   "numpy": "2.5.3"
  },
- "trainedAt": "2026-09-27T06:27:37+00:00"
+ "trainedAt": "2026-10-01T19:31:32+00:00"
 }

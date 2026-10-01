@@ -24,4 +24,8 @@ describe("prefilterBlock", () => {
   it("accepts a block without heart rate or temperature", () => {
     expect(prefilterBlock({ imu }, limits).flags).toEqual([]);
   });
+  it("accepts blocks of 1 to 5 windows of 2 s, and nothing in between", () => {
+    for (const n of [1200, 2400, 6000]) expect(prefilterBlock({ imu: new Array(n).fill(0) }, limits).flags).toEqual([]);
+    for (const n of [600, 7200]) expect(prefilterBlock({ imu: new Array(n).fill(0) }, limits).flags).toEqual([`imu_length:${n}`]);
+  });
 });

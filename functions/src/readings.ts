@@ -22,7 +22,8 @@ import { DEFAULT_BASELINE_BLOCKS, baselineShare, learnBaseline, type BaselineAcc
 import { readWindow } from "./shared/behavior-model";
 import { DEFAULT_FUSION_CONFIG, type CsvUploadDoc, type DogDoc, type FusionConfig, type ReadingDoc } from "./shared/types";
 import {
-  FLUSH_EVERY_BLOCKS, SLOT_MINUTES, addBlock, dayKey, emptySlot, slotIndex, trendDocId, type TrendSlot,
+  MINUTE_TIER, SLOT_MINUTES, TEN_SEC_TIER, addBlock, dayKey, emptySlot, slotIndex, tierDocId, tierDocStart, tierSlotIndex, trendDocId,
+  type BlockSummary, type TrendSlot, type TrendTier,
 } from "./shared/trends";
 
 const CONFIG_TTL_MS = 15_000;
@@ -52,6 +53,11 @@ export type ProcessOutcome = "written" | "duplicate" | "missing_dog";
 
 /** The slot being filled, kept in dogState between blocks and written to trends/. */
 interface TrendState { day: string; index: number; slot: TrendSlot; pending: number }
+/** The slot being filled of a finer tier. */
+interface TierState { docStart: number; index: number; slot: TrendSlot }
+
+const TIER_STATE_KEY = { trendsTenSec: "trendTenSec", trendsMinute: "trendMinute" } as const;
+const TEN_SEC_TTL_MS = 7 * 86_400_000;
 
 export async function processReading(db: Firestore, readingId: string, reading: ReadingDoc<Timestamp>): Promise<ProcessOutcome> {
   const cfg = await getConfig(db);
@@ -113,19 +119,32 @@ export async function processReading(db: Firestore, readingId: string, reading: 
         updatedAt: FieldValue.serverTimestamp(), slots: { [String(t.index)]: t.slot },
       }, { merge: true });
       const day = dayKey(blockStartMs), index = slotIndex(blockStartMs);
-      if (trend && (trend.day !== day || trend.index !== index)) {
-        if (trend.pending > 0) writeSlot(trend);
-        trend = null;
-      }
       const measured = ev.windows.filter((w) => w.active != null);
-      const slot = addBlock(trend?.slot ?? emptySlot(), {
+      const summary: BlockSummary = {
         healthScore: ev.result.healthScore, level: ev.result.level, windows: measured.length,
         active: measured.filter((w) => w.active).length, novel: ev.windows.filter((w) => w.novel).length,
         behaviors: ev.windows.map((w) => w.predicted), hr: pre.hr, temp: pre.temp,
-      });
-      trend = { day, index, slot, pending: (trend?.pending ?? 0) + 1 };
-      if (trend.pending >= FLUSH_EVERY_BLOCKS || uploadDone) { writeSlot(trend); trend = { ...trend, pending: 0 }; }
-      tx.set(stateRef, { ...ev.state, trend, baselineAcc: acc, updatedAt: FieldValue.serverTimestamp() });
+      };
+      // Every block writes its slot, so a slot never waits for the next one.
+      const same = trend && trend.day === day && trend.index === index;
+      trend = { day, index, slot: addBlock(same ? trend!.slot : emptySlot(), summary), pending: 0 };
+      writeSlot(trend);
+      // The 1-minute and 10-second tiers, in small documents.
+      const tiers: Record<string, TierState> = {};
+      for (const tier of [MINUTE_TIER, TEN_SEC_TIER] as TrendTier[]) {
+        const key = TIER_STATE_KEY[tier.collection];
+        const prevTier = (stateSnap.exists ? stateSnap.get(key) : null) as TierState | null;
+        const docStart = tierDocStart(tier, blockStartMs), tIndex = tierSlotIndex(tier, blockStartMs);
+        const keep = prevTier && prevTier.docStart === docStart && prevTier.index === tIndex;
+        const tierState: TierState = { docStart, index: tIndex, slot: addBlock(keep ? prevTier!.slot : emptySlot(), summary, tier.hrValues) };
+        tiers[key] = tierState;
+        tx.set(db.doc(`${tier.collection}/${tierDocId(tier, reading.dogId, blockStartMs)}`), {
+          dogId: reading.dogId, ownerId: dog.ownerId, startMs: docStart, slotMs: tier.slotMs, schemaVersion: SCHEMA_VERSION,
+          updatedAt: FieldValue.serverTimestamp(), slots: { [String(tIndex)]: tierState.slot },
+          ...(tier.hrValues ? { expireAt: Timestamp.fromMillis(docStart + tier.docMs + TEN_SEC_TTL_MS) } : {}),
+        }, { merge: true });
+      }
+      tx.set(stateRef, { ...ev.state, trend, ...tiers, baselineAcc: acc, updatedAt: FieldValue.serverTimestamp() });
     }
 
     if (ev.alert) {

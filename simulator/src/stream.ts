@@ -83,3 +83,16 @@ export function hrBlocks(values: number[], breaks: number[]): number[][] {
   if (last.length === BLOCK_SECONDS && values.length > 1) last.pop();
   return out;
 }
+
+/**
+ * A 10 s block as `parts` consecutive shorter blocks (5 → one 2 s window each). The IMU goes in equal slices
+ * and the heart rate by second, so a short block (the sensor lost the signal) stays short: its later parts get fewer
+ * values or none and the engine still sees the break. Temperature and ground truth are those of the 10 s block.
+ */
+export function splitBlock(b: Block, parts: number): Block[] {
+  if (parts <= 1) return [b];
+  const per = b.imu.length / parts, secs = BLOCK_SECONDS / parts;
+  return Array.from({ length: parts }, (_, j) => ({
+    index: b.index, imu: b.imu.slice(j * per, (j + 1) * per), hr: b.hr.slice(j * secs, (j + 1) * secs), temp: b.temp, truth: b.truth,
+  }));
+}

@@ -4,13 +4,13 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { collectSlots, dayKey, toPoint } from "@shared/trends";
+import { MINUTE_TIER, collectSlots, collectTierSlots, dayKey, tierDocStart, toPoint } from "@shared/trends";
 import type { AlertReason } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { RangeBar, TrendChart, type ChartPoint } from "../components/charts";
 import { Callout, EmptyState, Icon, LevelTag, Notice, PageHead, fmtNum } from "../components/ui";
 import { db } from "../firebase";
-import { useAlert, useFusionConfig, useTrendDocs, type Alert, type Viewer } from "../data/hooks";
+import { useAlert, useFusionConfig, useTierDocs, useTrendDocs, type Alert, type Viewer } from "../data/hooks";
 import { COMPONENT_LABEL, alertTitle, dateTimeText, durationText, primaryReason, reasonUnit, whatToDo } from "../lib/plain";
 import { alertStartMs } from "./AlertsPage";
 
@@ -36,14 +36,17 @@ function ReasonRow({ r }: { r: AlertReason }) {
   );
 }
 
-/** The primary variable around the episode, from the 5-minute trend slots. */
+/** The primary variable around the episode, from the 1-minute slots; older data only have 5-minute ones. */
 function EpisodeChart({ alert, reason, viewer }: { alert: Alert; reason: AlertReason; viewer: Viewer }) {
   const start = alertStartMs(alert), end = alert.endedAt?.toMillis?.() ?? start + MARGIN_MS;
   const from = start - MARGIN_MS, to = end + MARGIN_MS;
+  const { data: minuteDocs } = useTierDocs(MINUTE_TIER, alert.dogId, viewer, tierDocStart(MINUTE_TIER, from), to);
   const { data: docs } = useTrendDocs(alert.dogId, viewer, dayKey(from));
+  const minute = collectTierSlots(minuteDocs, from, to);
+  const fine = minute.length >= 2;
   const pick = reason.component === "temperature" ? "temp" : reason.component === "heart_rate" ? "hr" : "activity";
   const band = reason.normalRange;
-  const points: ChartPoint[] = collectSlots(docs, from, to).map(toPoint).flatMap((p) => {
+  const points: ChartPoint[] = (fine ? minute : collectSlots(docs, from, to)).map(toPoint).flatMap((p) => {
     const raw = p[pick];
     const v = raw == null ? null : pick === "activity" ? 100 * raw : raw;
     return v == null ? [] : [{ t: p.t, v, mark: v < band[0] || v > band[1] }];
@@ -53,8 +56,8 @@ function EpisodeChart({ alert, reason, viewer }: { alert: Alert; reason: AlertRe
   const title = reason.component === "temperature" ? "Temperatura" : reason.component === "heart_rate" ? "Frecuencia cardiaca" : "Tiempo en movimiento";
   return (
     <section className="panel">
-      <TrendChart title={title} sub="Antes, durante y después del aviso (promedios de 5 minutos)" rangeKey="1h" unit={unit} decimals={decimals}
-        points={points} band={band} legendBand="Rango normal" legendMarks="Fuera de lo normal" height={170} />
+      <TrendChart title={title} sub={`Antes, durante y después del aviso (promedios de ${fine ? "1 minuto" : "5 minutos"})`} rangeKey="1h" unit={unit}
+        decimals={decimals} points={points} band={band} legendBand="Rango normal" legendMarks="Fuera de lo normal" height={170} gapMs={fine ? 180_000 : 900_000} />
     </section>
   );
 }

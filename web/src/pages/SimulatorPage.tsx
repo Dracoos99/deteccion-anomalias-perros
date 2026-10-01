@@ -71,6 +71,7 @@ function NewRun({ dogs, uid }: { dogs: Dog[]; uid: string }) {
       </div>
       {error && <Callout kind="error">{error}</Callout>}
       <button className="btn btn-primary" type="button" disabled={busy || !selected.length} onClick={create}><Icon name="play" />Crear ejecución</button>
+      <p className="xs muted" style={{ margin: 0 }}>A ×1 y ×2 cada perro envía bloques de 2 s (la app se actualiza cada 2 s en tiempo real); desde ×5, bloques de 10 s.</p>
       <p className="xs muted" style={{ margin: 0 }}>En el proyecto real, la ejecución arranca sola en la nube (Cloud Run). Con los emuladores, la toma el proceso local del simulador (<span className="mono">npm run sim -- serve</span>).</p>
     </section>
   );
