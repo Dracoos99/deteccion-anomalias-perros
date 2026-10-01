@@ -21,8 +21,13 @@ import type { EngineConfig } from "../../shared/engine";
 import { DEFAULT_FUSION_CONFIG, type DogDoc, type FusionConfig, type InjectionRequest, type SimulatorRunDoc } from "../../shared/types";
 
 type RunState = SimulatorRunDoc["state"];
-/** next: 10 s block of the stream; parts: that block as it goes out. */
-interface SimDog { stream: DogStream; name: string; ownerId: string; next: number; parts: Block[] | null; sub: number }
+/** next: 10 s block of the stream; parts: that block as it goes out.
+ * awaiting: id of the dog's last block while its result has not arrived. */
+interface SimDog { stream: DogStream; name: string; ownerId: string; next: number; parts: Block[] | null; sub: number;
+  awaiting: string | null; awaitingSince: number }
+
+/** A dog's next block waits for the result of the previous one at most this long (then it goes out anyway). */
+const RESULT_WAIT_MS = 30_000;
 
 export interface RunOptions {
   workerId: string;
@@ -69,6 +74,10 @@ export class SimulatorRun {
   private timelineStartMs = 0;
   private blocksWritten = 0;
   private writeErrors = 0;
+  /** Ids with a result (this run). A dog's next block goes out only after the previous one has its result. */
+  private readonly resultIds = new Set<string>();
+  private waits = 0;
+  private resultTimeouts = 0;
   private lastBlockAt: number | null = null;
   private nextAt = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -140,7 +149,7 @@ export class SimulatorRun {
         await dogSnap.ref.update({ baseline: { ...baseline, computedAt: FieldValue.serverTimestamp() } });
         this.log(`línea base de ${dog.name} (${baseline.activitySource}): movimiento ${Math.round(baseline.activeRatioMean * 100)} %, FC ${baseline.hrMean} lpm, temperatura ${baseline.tempMean} °C`);
       }
-      this.dogs.set(dogId, { stream, name: dog.name, ownerId: dog.ownerId, next: 0, parts: null, sub: 0 });
+      this.dogs.set(dogId, { stream, name: dog.name, ownerId: dog.ownerId, next: 0, parts: null, sub: 0, awaiting: null, awaitingSince: 0 });
     }
 
     if (!run.stats?.startedAt) this.timelineStartMs = Math.max(this.timelineStartMs, latestBlockMs);
@@ -157,7 +166,11 @@ export class SimulatorRun {
       }));
     }
     this.unsubs.push(this.db.collection("results").where("sourceRef", "==", this.runId).onSnapshot((s) => {
-      for (const ch of s.docChanges()) if (ch.type === "added") this.latency.add(ch.doc.get("latencyMs"));
+      for (const ch of s.docChanges()) {
+        if (ch.type !== "added") continue;
+        this.latency.add(ch.doc.get("latencyMs"));
+        this.resultIds.add(ch.doc.id);
+      }
     }, (e) => this.log(`error al seguir los resultados: ${e.message}`)));
 
     this.log(`inicia con ${this.dogs.size} perros a ×${this.speed}${this.durationS ? ` durante ${this.durationS / 60} min simulados` : ""}`);
@@ -240,6 +253,18 @@ export class SimulatorRun {
   }
 
   private async writeBlock(dogId: string, d: SimDog): Promise<void> {
+    // The Function processes each block in a transaction on the dog's memory, and Firestore triggers keep no
+    // order. If blocks of a dog overlap (a fast run, cold instances), later ones finish first and the earlier ones are
+    // scored as out of order, without updating the memory: the heart-rate minute and the activity average break.
+    // So a dog's next block waits for the result of the previous one; a slow Function then slows the run down.
+    if (d.awaiting && !this.resultIds.has(d.awaiting)) {
+      if (Date.now() - d.awaitingSince < RESULT_WAIT_MS) {
+        this.waits += 1;
+        return;
+      }
+      this.resultTimeouts += 1;
+      this.log(`sin resultado del bloque ${d.awaiting} de ${d.name} tras ${RESULT_WAIT_MS / 1000} s: se envía el siguiente`);
+    }
     if (!d.parts) {
       // The stream advances in 10 s blocks (temperature and injections are per 10 s block); the speed decides how
       // each one goes out.
@@ -262,12 +287,16 @@ export class SimulatorRun {
     }
     try {
       await this.db.doc(`readings/${readingId(this.runId, dogId, index)}`).create(doc);
+      d.awaiting = readingId(this.runId, dogId, index);
+      d.awaitingSince = Date.now();
     } catch (e) {
       if ((e as { code?: number }).code !== 6) {  // 6 = ALREADY_EXISTS: an earlier attempt landed, the block is written
         this.writeErrors += 1;
         this.log(`no se pudo escribir el bloque ${index} de ${d.name} (se reintenta): ${(e as Error).message}`);
         return;
       }
+      d.awaiting = readingId(this.runId, dogId, index);
+      d.awaitingSince = Date.now();
     }
     d.sub += 1;
     if (d.sub >= d.parts.length) {
@@ -321,7 +350,7 @@ export class SimulatorRun {
     await this.flushStats(true);
     for (const u of this.unsubs) u();
     const s = this.latency.summary();
-    this.log(`terminó${reason ? ` (${reason})` : ""}: ${this.blocksWritten} bloques, ${this.latency.count} resultados, latencia media ${s.avgMs ?? "—"} ms, p95 ${s.p95Ms ?? "—"} ms, errores de escritura reintentados ${this.writeErrors}`);
+    this.log(`terminó${reason ? ` (${reason})` : ""}: ${this.blocksWritten} bloques, ${this.latency.count} resultados, latencia media ${s.avgMs ?? "—"} ms, p95 ${s.p95Ms ?? "—"} ms, errores de escritura reintentados ${this.writeErrors}, esperas por resultados ${this.waits}${this.resultTimeouts ? ` (${this.resultTimeouts} sin resultado a tiempo)` : ""}`);
     this.resolveDone();
   }
 }

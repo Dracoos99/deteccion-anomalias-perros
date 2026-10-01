@@ -6,8 +6,8 @@ import { Timestamp, getFirestore, type Firestore } from "firebase-admin/firestor
 import fs from "node:fs";
 import path from "node:path";
 import { countOpenAlerts, processReading, resetConfigCache } from "../../src/readings";
-import { BUNDLE_DIR } from "../../src/behavior";
-import { PHYSIO_BUNDLE_DIR } from "../../src/physio";
+import { BUNDLE_DIR, getBehaviorRunner } from "../../src/behavior";
+import { PHYSIO_BUNDLE_DIR, getPhysioRunner } from "../../src/physio";
 import { ENGINE_VERSION } from "../../src/shared/engine";
 import { DEFAULT_FUSION_CONFIG } from "../../src/shared/types";
 import { resetDogBaseline } from "../../src/baseline";
@@ -36,10 +36,13 @@ async function clearFirestore() {
   if (!res.ok) throw new Error(`clear failed: ${res.status}`);
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   app = initializeApp({ projectId: PROJECT }, "pipeline-test");
   db = getFirestore(app);
-});
+  // The models load once per instance, as in production; here before the first test, so no test pays for it.
+  // The behavioral model v2 is 5 networks.
+  await Promise.all([getBehaviorRunner(), getPhysioRunner()]);
+}, 120_000);
 afterAll(async () => { await deleteApp(app); });
 beforeEach(async () => {
   await clearFirestore();
@@ -168,6 +171,7 @@ describe("processReading", () => {
     const r = (await db.doc("results/s1").get()).data()!;
     expect(r.prefilterFlags.filter((f: string) => f.startsWith("imu_length") || f.startsWith("gap"))).toEqual([]);
     expect(r.hrValues).toEqual([72, 73]);
+    expect(r.blockSeconds).toBe(2);
     expect((await db.doc("dogState/toby").get()).get("lastBlockEndMs")).toBe(T0 + 4_000);
     expect((await db.doc("trendsTenSec/toby_2026-10-01T1000").get()).get("slots")["0"]).toMatchObject({ n: 2, hrv: [70, 71, 72, 73] });
   });

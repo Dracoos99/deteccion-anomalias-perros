@@ -92,7 +92,7 @@ export async function processReading(db: Firestore, readingId: string, reading: 
       readingId, dogId: reading.dogId, ownerId: reading.ownerId, blockStart: reading.blockStart,
       sourceRef: reading.sourceRef ?? null, predictedBehavior: ev.result.predictedBehavior, behaviorProbs: ev.result.behaviorProbs,
       rB: ev.result.rB, rP: ev.result.rP, rT: ev.result.rT, healthScore: ev.result.healthScore, level: ev.result.level,
-      signals: ev.result.signals, hrValues: pre.hr, prefilterFlags: flags,
+      signals: ev.result.signals, hrValues: pre.hr, blockSeconds: ev.windows.length * 2, prefilterFlags: flags,
       modelVersions: { behavior: behavior?.meta.version ?? ENGINE_VERSION, physiological: ev.result.signals.hrRatio != null ? physio!.meta.version : ENGINE_VERSION },
       latencyMs: Date.now() - createdMs, schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(),
     });
@@ -204,9 +204,10 @@ export async function processReading(db: Firestore, readingId: string, reading: 
 const MIN_INSTANCES = defineInt("READINGS_MIN_INSTANCES", { default: 0, description: "Warm instances of onReadingCreated (0 = none)" });
 
 // retry: transient failures are retried; the transaction above makes a retry harmless (RNF-02).
-// memory: TF.js with the WebAssembly backend and the model fit comfortably in 1 GiB.
+// memory: 2 GiB, which also gives a whole vCPU (1 GiB has a fraction of one): the behavioral model v2 is 5 networks
+// and with a fractional CPU a fast simulation queued its blocks for tens of seconds.: 1-2 GB.
 export const onReadingCreated = onDocumentCreated({
-  document: "readings/{readingId}", region: REGION, retry: true, memory: "1GiB", minInstances: MIN_INSTANCES,
+  document: "readings/{readingId}", region: REGION, retry: true, memory: "2GiB", minInstances: MIN_INSTANCES,
 }, async (event) => {
   const data = event.data?.data() as ReadingDoc<Timestamp> | undefined;
   if (!data) return;

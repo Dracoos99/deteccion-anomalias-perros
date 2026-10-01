@@ -11,7 +11,7 @@
     "test:unit": "vitest run functions/test/unit shared/test simulator/test/unit web/test",
     "test:rules": "firebase emulators:exec --only firestore --project demo-perros-tesis \"vitest run tests/rules\"",
     "test:e2e": "node tests/e2e/smoke.mjs",
-    "test:functions": "npm --prefix functions run build && firebase emulators:exec --only firestore --project demo-perros-tesis \"vitest run functions/test/integration\"",
+    "test:functions": "npm --prefix functions run build && firebase emulators:exec --only firestore --project demo-perros-tesis \"vitest run functions/test/integration --testTimeout 20000\"",
     "test:sim": "npm --prefix functions run build && firebase emulators:exec --only firestore,functions --project demo-perros-tesis \"vitest run simulator/test/integration\"",
     "sim": "npm --prefix simulator run sim --",
     "test:e2e:panel": "node tests/e2e/simulator-panel.mjs",

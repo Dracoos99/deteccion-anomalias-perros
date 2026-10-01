@@ -11,7 +11,7 @@ describe("live panel series", () => {
   it("puts the heart rate second by second and the other signals once per block, oldest first", () => {
     const s = liveSeries([block(1), block(0)]);
     expect(s.hr).toEqual([{ t: T0, v: 100 }, { t: T0 + 1000, v: 101 }, { t: T0 + 10_000, v: 101 }, { t: T0 + 11_000, v: 102 }]);
-    expect(s.activity).toEqual([{ t: T0, v: 40 }, { t: T0 + 10_000, v: 40 }]);
+    expect(s.activity).toEqual([{ t: T0 + 10_000, v: 40 }, { t: T0 + 20_000, v: 40 }]);   // at the end of each block
     expect(s.health.map((p) => p.v)).toEqual([90, 89]);
     expect([s.latest?.blockStartMs, s.lastHr, s.lastActivity]).toEqual([T0 + 10_000, 102, 40]);
   });
@@ -21,6 +21,15 @@ describe("live panel series", () => {
     const s = liveSeries(blocks);
     expect(s.health).toHaveLength(60);
     expect(s.health[0].t).toBe(T0 + 10 * 10_000);
+  });
+
+  it("shows movement as the share of the last minute, so 2 s blocks (0 or 100 % each) read as a share", () => {
+    // 30 blocks of 2 s: moving in the first 15, still in the last 15.
+    const blocks = Array.from({ length: 30 }, (_, k) => block(0, { blockStartMs: T0 + k * 2_000, blockSeconds: 2, activeFraction: k < 15 ? 1 : 0 }));
+    const s = liveSeries(blocks);
+    expect(s.activity[14].v).toBe(100);            // after 30 s of movement
+    expect(s.lastActivity).toBe(50);              // the last minute: half moving, half still
+    expect(s.activity.every((p) => p.v >= 50)).toBe(true);
   });
 
   it("falls back to the 60 s mean of older results and skips missing signals", () => {

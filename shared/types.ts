@@ -137,6 +137,8 @@ export interface ResultDoc<T = unknown> {
     hrRatio?: number | null };
   /** The block's heart-rate values (1 Hz from blockStart, prefiltered, in time order) for the live view. */
   hrValues?: number[];
+  /** Length of the block (2 or 10 s); older results had 10 s blocks. */
+  blockSeconds?: number;
   prefilterFlags: string[];
   modelVersions: { behavior: string | null; physiological: string | null };
   latencyMs: number;
