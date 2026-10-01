@@ -107,17 +107,18 @@ describe("processReading", () => {
 
   it("aggregates 5-minute trend slots and anchors dogs.status at the last block", async () => {
     for (let k = 0; k < 7; k++) await processReading(db, `b${k}`, reading(k));
-    // Six blocks flush the slot; the seventh stays pending in dogState.
+    // Every block writes the slot being filled, so the charts move with each block.
     const day = new Date(T0).toISOString().slice(0, 10);
     const doc = await db.doc(`trends/toby_${day}`).get();
     expect(doc.data()).toMatchObject({ dogId: "toby", ownerId: "lucia", day, slotMinutes: 5 });
-    expect(doc.get("slots")[String((10 * 60) / 5)]).toMatchObject({ n: 6, hrN: 60, hrMin: 70, hrMax: 70, tN: 6, w: 30, act: 0 });
-    expect((await db.doc("dogState/toby").get()).get("trend")).toMatchObject({ day, pending: 1 });
-    // dogs.status is throttled (statusMinIntervalS of wall clock): lastBlockAt is the block of its last write.
-    expect((await db.doc("dogs/toby").get()).get("status.lastBlockAt").toMillis()).toBe(T0);
-    // A block in the next slot writes the pending one.
+    expect(doc.get("slots")[String((10 * 60) / 5)]).toMatchObject({ n: 7, hrN: 70, hrMin: 70, hrMax: 70, tN: 7, w: 35, act: 0 });
+    expect((await db.doc("dogState/toby").get()).get("trend")).toMatchObject({ day, pending: 0 });
+    // With blocks 10 s apart the status (statusMinIntervalS of data time) follows every block.
+    expect((await db.doc("dogs/toby").get()).get("status.lastBlockAt").toMillis()).toBe(T0 + 60_000);
+    // A block in the next slot starts a new one and leaves the previous slot as it was.
     await processReading(db, "b30", reading(30));
-    expect((await db.doc(`trends/toby_${day}`).get()).get("slots")[String(120)].n).toBe(7);
+    const slots = (await db.doc(`trends/toby_${day}`).get()).get("slots");
+    expect([slots[String(120)].n, slots[String(121)].n]).toEqual([7, 1]);
   });
 
   it("does not overwrite the acknowledgement when the episode keeps updating its alert", async () => {
@@ -131,13 +132,24 @@ describe("processReading", () => {
     expect((await db.collection("alerts").get()).size).toBe(1);
   });
 
-  it("writes dogs.status at most every statusMinIntervalS unless the level changes", async () => {
+  it("writes dogs.status at most every statusMinIntervalS of data time unless the level changes", async () => {
+    await db.doc("config/fusion").set({ statusMinIntervalS: 30, updatedBy: "admin", updatedAt: Timestamp.now() });
+    resetConfigCache();
+    const at = async () => (await db.doc("dogs/toby").get()).get("status.lastBlockAt").toMillis();
     await processReading(db, "b0", reading(0));
-    const t1 = (await db.doc("dogs/toby").get()).get("status.updatedAt");
+    expect(await at()).toBe(T0);
     await processReading(db, "b1", reading(1));
-    expect((await db.doc("dogs/toby").get()).get("status.updatedAt")).toEqual(t1);
-    await processReading(db, "b2", reading(2, { temp: 41.5 }));
-    expect((await db.doc("dogs/toby").get()).get("status.updatedAt")).not.toEqual(t1);
+    await processReading(db, "b2", reading(2));
+    expect(await at()).toBe(T0);
+    await processReading(db, "b3", reading(3));
+    expect(await at()).toBe(T0 + 30_000);
+    await processReading(db, "b4", reading(4, { temp: 41.5 }));   // the level changes: written at once
+    expect(await at()).toBe(T0 + 40_000);
+  });
+
+  it("keeps the heart-rate values of the block in its result for the live view", async () => {
+    await processReading(db, "b0", reading(0, { hr: [70, 71, 72, 400, 73] }));
+    expect((await db.doc("results/b0").get()).get("hrValues")).toEqual([70, 71, 72, 73]);   // 400 lpm: prefiltered out
   });
 
   it("does not let a late block rewind the engine memory", async () => {

@@ -40,7 +40,7 @@ function replay(dog: [string, string, string], cfg: EngineConfig, blocks: number
   for (let k = 0; k < blocks; k++) {
     const b = stream.block(k);
     const ev = evaluateBlock({ imu: b.imu, hr: b.hr, temp: b.temp, blockStartMs: k * BLOCK_SECONDS * 1000, physio }, state, baseline, cfg,
-      { alertId: String(k), nowMs: k * BLOCK_SECONDS * 1000 });
+      { alertId: String(k) });
     if (ev.alert?.action === "open") {
       opened.push(k);
       if (ev.alert.reasons.some((r) => r.component === "heart_rate")) hrOpened++;

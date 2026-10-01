@@ -135,6 +135,8 @@ export interface ResultDoc<T = unknown> {
   signals?: { activeFraction: number; activityRatio: number | null; noveltyRatio?: number | null; hr: number | null; temp: number | null;
     /** Reconstruction error / threshold of the physiological model (null with the rule or while warming up). */
     hrRatio?: number | null };
+  /** The block's heart-rate values (1 Hz from blockStart, prefiltered, in time order) for the live view. */
+  hrValues?: number[];
   prefilterFlags: string[];
   modelVersions: { behavior: string | null; physiological: string | null };
   latencyMs: number;
@@ -214,7 +216,7 @@ export interface FusionConfig<T = unknown> {
   baseline?: { minBlocks: number };
   /** An alert episode closes after this many seconds without trigger (one alert per episode, not per window). */
   episodeGapS: number;
-  /** dogs.status is written at most once per this many seconds, unless the level changes. */
+  /** dogs.status is written at most once per this many seconds of data time, unless the level changes. */
   statusMinIntervalS: number;
   updatedBy: string;
   updatedAt: T;

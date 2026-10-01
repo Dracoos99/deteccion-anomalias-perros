@@ -3,7 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { Alert, Dog, Fusion } from "../data/hooks";
 import { BaselineProgress } from "./BaselineProgress";
 import { ageText, alertTitle, behaviorNow, describeDog, type Friendly } from "../lib/plain";
-import { HealthGauge, Icon, LEVELS, LevelTag, fmtAgo } from "./ui";
+import { Ago, HealthGauge, Icon, LEVELS, LevelTag, LiveBadge } from "./ui";
 
 function FriendlyRow({ icon, name, f, extra }: { icon: string; name: string; f: Friendly; extra?: string | null }) {
   const out = f.dev === "low" || f.dev === "high";
@@ -70,7 +70,8 @@ export function DogCard({ dog, cfg, openAlert }: { dog: Dog; cfg: Fusion; openAl
         </div>
       )}
       <div className="dog-card-foot">
-        <span className="xs muted"><Icon name="clock" size={13} /> {s ? `Actualizado ${fmtAgo(s.updatedAt?.toDate?.())}` : "Sin datos"}</span>
+        <span className="xs muted"><Icon name="clock" size={13} /> {s ? <>Actualizado <Ago t={s.updatedAt?.toDate?.()} /></> : "Sin datos"}
+          <LiveBadge t={s?.updatedAt?.toDate?.()} /></span>
         <Link className="small" to={`/perros/${dog.id}`}>Ver detalle <Icon name="chevron-right" size={14} /></Link>
       </div>
     </article>

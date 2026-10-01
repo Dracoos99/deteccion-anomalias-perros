@@ -22,7 +22,7 @@ function run(blocks: { hr?: number[]; temp?: number | null; active?: boolean }[]
   for (let k = 0; k < blocks.length; k++) {
     const b = blocks[k];
     const e = evaluateBlock({ imu: imuBlock(b.active ?? false), hr: b.hr ?? Array(10).fill(70), temp: b.temp === undefined ? 38.6 : b.temp,
-      blockStartMs: 1_000_000 + k * 10_000 }, state, base, cfg, { alertId: `r${k}`, nowMs: 5_000_000 + k * 10_000 });
+      blockStartMs: 1_000_000 + k * 10_000 }, state, base, cfg, { alertId: `r${k}` });
     state = e.state;
     out.push(e);
   }
@@ -107,20 +107,25 @@ describe("evaluateBlock", () => {
 
   it("ignores out-of-order blocks for the state and flags gaps", () => {
     const [a] = run([{}]);
-    const late = evaluateBlock({ imu: imuBlock(false), hr: [70], temp: 38.6, blockStartMs: 900_000 }, a.state, baseline, cfg, { alertId: "x", nowMs: 0 });
+    const late = evaluateBlock({ imu: imuBlock(false), hr: [70], temp: 38.6, blockStartMs: 900_000 }, a.state, baseline, cfg, { alertId: "x" });
     expect(late.flags).toContain("out_of_order");
     expect(late.state).toBe(a.state);
-    const gap = evaluateBlock({ imu: imuBlock(false), hr: [70], temp: 38.6, blockStartMs: 1_000_000 + 60_000 }, a.state, baseline, cfg, { alertId: "y", nowMs: 0 });
+    const gap = evaluateBlock({ imu: imuBlock(false), hr: [70], temp: 38.6, blockStartMs: 1_000_000 + 60_000 }, a.state, baseline, cfg, { alertId: "y" });
     expect(gap.flags).toContain("gap:5");
   });
 
-  it("throttles dogs.status to statusMinIntervalS unless the level changes", () => {
+  it("throttles dogs.status to statusMinIntervalS of data time unless the level changes", () => {
     const s0 = { ...initialState(), activityEma: 0.4, hrBuffer: Array(60).fill(70) };
     const blk = { imu: imuBlock(false), hr: Array(10).fill(70), temp: 38.6 };
-    const a = evaluateBlock({ ...blk, blockStartMs: 0 }, s0, baseline, cfg, { alertId: "a", nowMs: 0 });
-    const b = evaluateBlock({ ...blk, blockStartMs: 10_000 }, a.state, baseline, cfg, { alertId: "b", nowMs: 1_000 });
-    const c = evaluateBlock({ ...blk, blockStartMs: 20_000 }, b.state, baseline, cfg, { alertId: "c", nowMs: 10_500 });
-    const d = evaluateBlock({ ...blk, temp: 41, blockStartMs: 30_000 }, c.state, baseline, cfg, { alertId: "d", nowMs: 11_000 });
+    // Default 10 s: every 10 s block refreshes the card, however fast the blocks arrive.
+    const x = evaluateBlock({ ...blk, blockStartMs: 0 }, s0, baseline, cfg, { alertId: "x" });
+    const y = evaluateBlock({ ...blk, blockStartMs: 10_000 }, x.state, baseline, cfg, { alertId: "y" });
+    expect([x.statusDue, y.statusDue]).toEqual([true, true]);
+    const c30 = { ...cfg, statusMinIntervalS: 30 };
+    const a = evaluateBlock({ ...blk, blockStartMs: 0 }, s0, baseline, c30, { alertId: "a" });
+    const b = evaluateBlock({ ...blk, blockStartMs: 10_000 }, a.state, baseline, c30, { alertId: "b" });
+    const c = evaluateBlock({ ...blk, blockStartMs: 30_000 }, b.state, baseline, c30, { alertId: "c" });
+    const d = evaluateBlock({ ...blk, temp: 41, blockStartMs: 40_000 }, c.state, baseline, c30, { alertId: "d" });
     expect([a.statusDue, b.statusDue, c.statusDue, d.statusDue]).toEqual([true, false, true, true]);
   });
 });
@@ -134,7 +139,7 @@ describe("evaluateBlock with the behavioral model", () => {
   const withModel = { ...baseline, activitySource: "cnn-lstm-test" };
   const block = (probs: number[][], k: number, state: EngineState, base: BaselineStats | null = withModel) =>
     evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(70), temp: 38.6, blockStartMs: k * 10_000, behavior: { meta, probs } },
-      state, base, cfg, { alertId: `m${k}`, nowMs: k * 10_000 });
+      state, base, cfg, { alertId: `m${k}` });
 
   it("takes the class of the last window and activity from the model", () => {
     const e = block([onehot(2), onehot(2), onehot(4), onehot(4), onehot(3)], 0, initialState());
@@ -234,7 +239,7 @@ describe("evaluateBlock with the physiological model", () => {
     const out = [];
     for (let k = 0; k < n; k++) {
       const e = evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(hr), temp: 38.6, blockStartMs: 1_000_000 + k * 10_000, physio },
-        state, baseline, c, { alertId: `p${k}`, nowMs: 5_000_000 + k * 10_000 });
+        state, baseline, c, { alertId: `p${k}` });
       state = e.state;
       out.push(e);
     }
@@ -300,7 +305,7 @@ describe("evaluateBlock with the physiological model", () => {
   it("reads only contiguous heart rate: a short block or a gap between blocks restarts the minute", () => {
     const { s, batches } = scorer(0.5);
     const blk = (hr: number[], k: number, st: EngineState) => evaluateBlock({ imu: imuBlock(false), hr, temp: 38.6, blockStartMs: 1_000_000 + k * 10_000, physio: s },
-      st, baseline, cfg, { alertId: `c${k}`, nowMs: k * 10_000 });
+      st, baseline, cfg, { alertId: `c${k}` });
     const a = blk(Array(10).fill(70), 0, full());
     expect(a.result.signals.hrRatio).toBe(0.5);
     const short = blk(Array(7).fill(70), 1, a.state);         // the sensor lost the signal inside the block

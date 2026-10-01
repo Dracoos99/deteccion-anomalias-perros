@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { collection, doc, limit, onSnapshot, orderBy, query, where, type Query, type Timestamp } from "firebase/firestore";
 import {
-  DEFAULT_FUSION_CONFIG, type AlertDoc, type CsvUploadDoc, type DogDoc, type FusionConfig, type ModelVersionDoc, type SimulatorRunDoc, type UserDoc,
+  DEFAULT_FUSION_CONFIG, type AlertDoc, type CsvUploadDoc, type DogDoc, type FusionConfig, type ModelVersionDoc, type ResultDoc, type SimulatorRunDoc,
+  type UserDoc,
 } from "@shared/types";
 import type { TrendDayDoc } from "@shared/trends";
 import { db } from "../firebase";
@@ -119,6 +120,24 @@ export function useTrendDocs(dogId: string | undefined, viewer: Viewer, fromDay:
       (snap) => setState({ data: snap.docs.map((d) => d.data() as TrendDayDoc<Timestamp>), loading: false, error: null }),
       (err) => setState({ data: [], loading: false, error: err.message }));
   }, [dogId, viewer.uid, viewer.isAdmin, fromDay]);
+  return state;
+}
+
+export type Result = ResultDoc<Timestamp> & { id: string };
+
+/** Latest results of one dog, newest first, live: the "En vivo" panel. */
+export function useLiveResults(dogId: string | undefined, viewer: Viewer, max = 60): Live<Result[]> {
+  const [state, setState] = useState<Live<Result[]>>({ data: [], loading: true, error: null });
+  useEffect(() => {
+    if (!dogId) { setState({ data: [], loading: false, error: null }); return; }
+    const results = collection(db, "results");
+    const q = viewer.isAdmin
+      ? query(results, where("dogId", "==", dogId), orderBy("blockStart", "desc"), limit(max))
+      : query(results, where("ownerId", "==", viewer.uid), where("dogId", "==", dogId), orderBy("blockStart", "desc"), limit(max));
+    return onSnapshot(q,
+      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as ResultDoc<Timestamp>) })), loading: false, error: null }),
+      (err) => setState({ data: [], loading: false, error: err.message }));
+  }, [dogId, viewer.uid, viewer.isAdmin, max]);
   return state;
 }
 

@@ -61,6 +61,29 @@ export function fmtNum(x: number | null | undefined, d = 0): string {
   return x == null || Number.isNaN(x) ? "—" : x.toLocaleString("es-PE", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+/** The current time, refreshed every `intervalMs`, so "hace 12 s" keeps counting between snapshots. */
+export function useNow(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+/** "hace 12 s", counting. */
+export function Ago({ t }: { t: Date | null | undefined }) {
+  const now = useNow();
+  return <>{fmtAgo(t, now)}</>;
+}
+
+/** "En vivo" while the latest data are less than maxAgeS old: dot and text, never the color alone. */
+export function LiveBadge({ t, maxAgeS = 30 }: { t: Date | null | undefined; maxAgeS?: number }) {
+  const now = useNow();
+  if (!t || now - t.getTime() > maxAgeS * 1000) return null;
+  return <span className="live-badge"><span className="live-dot" aria-hidden="true" />En vivo</span>;
+}
+
 export function fmtAgo(t: Date | null | undefined, now = Date.now()): string {
   if (!t) return "—";
   const s = Math.max(0, Math.round((now - t.getTime()) / 1000));

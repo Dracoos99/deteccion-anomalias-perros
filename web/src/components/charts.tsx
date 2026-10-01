@@ -27,8 +27,9 @@ function niceTicks(lo: number, hi: number, n = 4): number[] {
   return out;
 }
 
-export type RangeKey = "1h" | "24h" | "7d";
+export type RangeKey = "10m" | "1h" | "24h" | "7d";   // 10m: the live panel
 const fmtHM = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const fmtHMS = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 const fmtWD = new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric" });
 const fmtDM = new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short" });
 const xLabel = (t: number, r: RangeKey) => (r === "7d" ? fmtWD.format(t) : fmtHM.format(t));
@@ -37,10 +38,12 @@ export interface ChartPoint { t: number; v: number; mark?: boolean }
 export interface Zone { from: number; to: number; fill: string; label: string }
 
 export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height = 190,
-  legendBand, legendRefs, legendMarks }: {
+  legendBand, legendRefs, legendMarks, gapMs }: {
   title: string; sub?: string; points: ChartPoint[]; unit: string; decimals?: number; rangeKey: RangeKey;
   band?: [number, number] | null; refs?: { value: number; label: string }[]; zones?: Zone[]; domain?: [number, number];
   height?: number; legendBand?: string; legendRefs?: string; legendMarks?: string;
+  /** The line breaks where two points are further apart than this (no data in between). */
+  gapMs?: number;
 }) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
@@ -57,7 +60,7 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
   const ticks = niceTicks(lo, hi, 4).filter((v) => v >= lo && v <= hi);
   const fractions = W < 480 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];  // fewer labels on narrow screens
   const xticks = points.length > 1 ? fractions.map((f) => t0 + f * (t1 - t0)) : points.map((p) => p.t);
-  const path = points.map((p, i) => (i ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
+  const path = points.map((p, i) => (i && !(gapMs && p.t - points[i - 1].t > gapMs) ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
   const last = points[points.length - 1];
   const fmtV = (v: number) => fmtNum(v, decimals);
   const marks = points.filter((p) => p.mark);
@@ -132,7 +135,7 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
         )}
         {hp && (
           <div className="chart-tip" style={{ left: Math.min(Math.max(0, X(hp.t) - 60), W - 150), top: 0 }}>
-            <strong>{fmtV(hp.v)} {unit}</strong><br />{rangeKey === "7d" ? `${fmtDM.format(hp.t)}, ${fmtHM.format(hp.t)}` : fmtHM.format(hp.t)}
+            <strong>{fmtV(hp.v)} {unit}</strong><br />{rangeKey === "7d" ? `${fmtDM.format(hp.t)}, ${fmtHM.format(hp.t)}` : rangeKey === "10m" ? fmtHMS.format(hp.t) : fmtHM.format(hp.t)}
           </div>
         )}
       </div>

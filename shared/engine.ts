@@ -59,14 +59,15 @@ export interface EngineState {
   streak: { hr: number; temp: number };
   episode: Episode | null;
   openAlerts: number;
-  lastStatusWriteMs: number | null;
+  /** BlockStart of the block that last wrote dogs.status (data time, not wall clock). */
+  lastStatusBlockMs?: number | null;
   lastLevel: Level | null;
   blocks: number;
 }
 
 export function initialState(openAlerts = 0): EngineState {
   return { lastBlockStartMs: null, activityEma: null, noveltyEma: null, hrBuffer: [], hrRun: 0, streak: { hr: 0, temp: 0 }, episode: null,
-    openAlerts, lastStatusWriteMs: null, lastLevel: null, blocks: 0 };
+    openAlerts, lastStatusBlockMs: null, lastLevel: null, blocks: 0 };
 }
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -213,7 +214,7 @@ export function buildReasons(w: WindowEval, baseline: BaselineStats | null, cfg:
 
 /** Scores one block and returns the next per-dog state. alertId is used if this block opens an alert episode. */
 export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: BaselineStats | null, cfg: EngineConfig,
-  opts: { alertId: string; nowMs: number }): BlockEval {
+  opts: { alertId: string }): BlockEval {
   const flags: string[] = [];
   const outOfOrder = prev.lastBlockStartMs != null && input.blockStartMs <= prev.lastBlockStartMs;
   const st: EngineState = structuredClone(prev);
@@ -382,10 +383,12 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
     }
   }
 
-  const statusDue = prev.lastStatusWriteMs == null || opts.nowMs - prev.lastStatusWriteMs >= cfg.statusMinIntervalS * 1000
+  // Measured in data time. At ×1 (one block every 10 s) the card refreshes with every block, as before; a
+  // faster simulation or a CSV upload no longer skips blocks.
+  const statusDue = prev.lastStatusBlockMs == null || input.blockStartMs - prev.lastStatusBlockMs >= cfg.statusMinIntervalS * 1000
     || last.level !== prev.lastLevel || alert != null;
   if (statusDue) {
-    st.lastStatusWriteMs = opts.nowMs;
+    st.lastStatusBlockMs = input.blockStartMs;
     st.lastLevel = last.level;
   }
   st.lastBlockStartMs = input.blockStartMs;

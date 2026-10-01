@@ -4,8 +4,7 @@
  * Without the model or the dog's IMU statistics, the provisional movement rule applies (flagged in the result).
  *
  * One transaction per block keeps it idempotent (RNF-02): if results/{readingId} exists the retry does nothing.
- * It writes results/{readingId}, the per-dog engine memory dogState/{dogId}, dogs.status (at most every
- * statusMinIntervalS unless the level changes) and alerts/{readingId} when an episode opens.
+ * It writes results/{readingId}, the per-dog engine memory dogState/{dogId}, dogs.status and alerts/{readingId} when an episode opens.
  * A dog without baseline learns it from its first blocks (shared/baseline.ts), and a CSV block counts in
  * its csvUploads document.
  */
@@ -80,14 +79,14 @@ export async function processReading(db: Firestore, readingId: string, reading: 
     const imuOk = !pre.flags.some((f) => f.startsWith("imu_"));
     const behavior = runner && imuOk ? runner.run(imu, dog.baseline?.imuMean, dog.baseline?.imuStd) : null;
     const ev = evaluateBlock({ imu, hr: pre.hr, temp: pre.temp, blockStartMs, behavior, physio }, prev, dog.baseline ?? null, cfg,
-      { alertId: readingId, nowMs: Date.now() });
+      { alertId: readingId });
     const flags = [...pre.flags, ...ev.flags];
 
     tx.set(resultRef, {
       readingId, dogId: reading.dogId, ownerId: reading.ownerId, blockStart: reading.blockStart,
       sourceRef: reading.sourceRef ?? null, predictedBehavior: ev.result.predictedBehavior, behaviorProbs: ev.result.behaviorProbs,
       rB: ev.result.rB, rP: ev.result.rP, rT: ev.result.rT, healthScore: ev.result.healthScore, level: ev.result.level,
-      signals: ev.result.signals, prefilterFlags: flags,
+      signals: ev.result.signals, hrValues: pre.hr, prefilterFlags: flags,
       modelVersions: { behavior: behavior?.meta.version ?? ENGINE_VERSION, physiological: ev.result.signals.hrRatio != null ? physio!.meta.version : ENGINE_VERSION },
       latencyMs: Date.now() - createdMs, schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(),
     });

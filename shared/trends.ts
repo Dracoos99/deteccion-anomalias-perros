@@ -10,7 +10,7 @@ export const SLOT_MS = SLOT_MINUTES * 60_000;
 export const DAY_MS = 86_400_000;
 export const SLOTS_PER_DAY = DAY_MS / SLOT_MS;
 /** A slot is written when a block falls into another slot, or after this many blocks (1 min of data). */
-export const FLUSH_EVERY_BLOCKS = 6;
+export const FLUSH_EVERY_BLOCKS = 1;
 
 /** Sums, minimums and maximums of the blocks of one slot, so slots can be merged into any coarser bucket. */
 export interface TrendSlot {

@@ -5,7 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import { summarize } from "@shared/trends";
 import { useAuth } from "../auth/AuthContext";
 import { BarList, TrendChart, type ChartPoint } from "../components/charts";
-import { Callout, EmptyState, HealthGauge, Icon, LevelTag, Notice, PageHead, Seg, fmtAgo, fmtNum } from "../components/ui";
+import { Ago, Callout, EmptyState, HealthGauge, Icon, LevelTag, LiveBadge, Notice, PageHead, Seg, fmtNum } from "../components/ui";
+import { LivePanel } from "../components/LivePanel";
 import { useDog, useDogAlerts, useFusionConfig, type Dog, type Fusion } from "../data/hooks";
 import { RANGES, useDogTrend, type DogTrend, type RangeKey } from "../data/useDogTrend";
 import { BEHAVIOR_LABEL, activityBand, ageText, dateTimeText, describeDog, hrBand } from "../lib/plain";
@@ -100,10 +101,13 @@ export function DogDetail() {
           <div className="stack-sm" style={{ minWidth: 0 }}>
             <LevelTag level={s?.level ?? null} />
             <p className="dog-phrase" style={{ margin: 0 }}>{d.phrase}</p>
-            <div className="xs muted">{s ? `Actualizado ${fmtAgo(s.updatedAt?.toDate?.())}` : "Sin datos todavía"}</div>
+            <div className="xs muted row" style={{ gap: 8 }}>{s ? <span>Actualizado <Ago t={s.updatedAt?.toDate?.()} /></span> : "Sin datos todavía"}
+              <LiveBadge t={s?.updatedAt?.toDate?.()} /></div>
           </div>
           {s && <HealthGauge score={s.healthScore} level={s.level} levels={cfg.levels} size={120} />}
         </section>
+
+        <LivePanel dog={dog} cfg={cfg} viewer={viewer} />
 
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div className="tabs" role="tablist" aria-label="Secciones del detalle" style={{ marginBottom: 0 }}>
