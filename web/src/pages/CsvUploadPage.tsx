@@ -49,7 +49,7 @@ function RecentUploads({ uploads, dogs }: { uploads: CsvUpload[]; dogs: Map<stri
   return (
     <section className="panel" aria-labelledby="recent-title">
       <h2 className="panel-title" id="recent-title">Cargas recientes</h2>
-      <div className="table-wrap">
+      <div className="table-wrap" role="region" aria-label="Cargas recientes" tabIndex={0}>
         <table className="table table-compact">
           <thead><tr><th scope="col">Archivo</th><th scope="col">Perro</th><th scope="col">Datos</th><th scope="col">Estado</th></tr></thead>
           <tbody>{uploads.map((u) => {
@@ -211,7 +211,7 @@ export function CsvUploadPage() {
               {file && check && check.preview.length > 0 && (
                 <section className="panel" aria-labelledby="prev-title">
                   <h2 className="panel-title" id="prev-title">Vista previa</h2>
-                  <div className="table-wrap">
+                  <div className="table-wrap" role="region" aria-label="Vista previa del archivo" tabIndex={0}>
                     <table className="table table-compact">
                       <thead><tr><th scope="col">Fila</th>{check.header.map((h) => <th scope="col" key={h}>{h}</th>)}</tr></thead>
                       <tbody>{check.preview.map((p) => (
@@ -271,7 +271,7 @@ export function CsvUploadPage() {
           <section className="panel stack-sm">
             <h2 className="panel-title">Formato esperado</h2>
             <p className="small" style={{ margin: 0 }}>Una fila por muestra, separada por comas, con esta cabecera:</p>
-            <div className="codeblock">{CSV_HEADER.join(",")}</div>
+            <div className="codeblock" role="region" aria-label="Cabecera del archivo CSV" tabIndex={0}>{CSV_HEADER.join(",")}</div>
             <table className="table table-compact small"><tbody>{COLUMNS.map(([c, d]) => <tr key={c}><td className="mono nowrap">{c}</td><td>{d}</td></tr>)}</tbody></table>
             <button className="btn btn-secondary btn-sm" type="button" onClick={() => download("plantilla_lecturas.csv", templateCsv())}><Icon name="download" size={14} />Descargar plantilla</button>
           </section>

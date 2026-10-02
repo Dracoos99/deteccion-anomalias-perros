@@ -170,7 +170,7 @@ function RunDetail({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
       <div className="split">
         <section className="panel" aria-labelledby="dogs-title">
           <h2 className="panel-title" id="dogs-title">Perros de la ejecución</h2>
-          <div className="table-wrap">
+          <div className="table-wrap" role="region" aria-label="Perros de la ejecución" tabIndex={0}>
             <table className="table table-compact">
               <thead><tr><th scope="col">Perro</th><th scope="col">Estado</th><th scope="col" className="num">HS</th><th scope="col">Anomalía activa</th></tr></thead>
               <tbody>{run.dogIds.map((id) => {
@@ -311,7 +311,7 @@ export function SimulatorPage() {
         {!loading && runs.length > 0 && (
           <section className="panel" aria-labelledby="runs-title">
             <h2 className="panel-title" id="runs-title">Ejecuciones recientes</h2>
-            <div className="table-wrap">
+            <div className="table-wrap" role="region" aria-label="Ejecuciones recientes" tabIndex={0}>
               <table className="table table-compact">
                 <thead><tr><th scope="col">Ejecución</th><th scope="col">Estado</th><th scope="col">Perros</th><th scope="col" className="num">Bloques</th><th scope="col" className="num">Latencia media</th><th scope="col"><span className="sr-only">Abrir</span></th></tr></thead>
                 <tbody>{runs.map((r) => (

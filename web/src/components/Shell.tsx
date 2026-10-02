@@ -11,10 +11,10 @@ const NAV = [
   { to: "/perfil", label: "Perfil", icon: "user", end: false },
 ];
 
-/** Unreviewed alerts next to "Alertas": the number, and its meaning for screen readers. */
+/** Unreviewed alerts on the "Alertas" icon. Screen readers get the meaning after the label (see NavItems). */
 function NavBadge({ count }: { count: number }) {
   if (!count) return null;
-  return <span className="nav-badge"><span aria-hidden="true">{count > 99 ? "99+" : count}</span><span className="sr-only">, {count} sin revisar</span></span>;
+  return <span className="nav-badge" aria-hidden="true">{count > 99 ? "99+" : count}</span>;
 }
 
 function NavItems({ linkClass, iconSize, openCount }: { linkClass: string; iconSize: number; openCount: number }) {
@@ -24,6 +24,7 @@ function NavItems({ linkClass, iconSize, openCount }: { linkClass: string; iconS
         <NavLink key={n.to} to={n.to} end={n.end} className={linkClass}>
           <span className="nav-icon"><Icon name={n.icon} size={iconSize} />{n.to === "/alertas" && <NavBadge count={openCount} />}</span>
           <span className="nav-label">{n.label}</span>
+          {n.to === "/alertas" && openCount > 0 && <span className="sr-only">, {openCount} sin revisar</span>}
         </NavLink>
       ))}
     </>

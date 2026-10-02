@@ -5,7 +5,7 @@ import { useLiveResults, type Dog, type Fusion, type Viewer } from "../data/hook
 import { isLive, liveSeries, type LiveBlock } from "../lib/live";
 import { behaviorNow, hrBand } from "../lib/plain";
 import { TrendChart } from "./charts";
-import { fmtNum, useNow } from "./ui";
+import { Icon, fmtNum, useNow } from "./ui";
 
 export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer: Viewer }) {
   const { data, error } = useLiveResults(dog.id, viewer);
@@ -42,10 +42,15 @@ export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer:
           { from: cfg.levels.amber, to: cfg.levels.green, fill: "var(--color-status-amber-bg)", label: "Atención" },
           { from: cfg.levels.green, to: 100, fill: "var(--color-status-green-bg)", label: "Normal" },
         ]} />
-      <p className="xs muted" style={{ margin: 0 }}>Los cortes en la frecuencia cardiaca son segundos en que el sensor no la midió. El estado, la tarjeta de Inicio y las alertas usan el promedio del último minuto para no reaccionar a un pico aislado; por eso pueden diferir un poco de estos valores.</p>
-      {simulated && (
-        <p className="xs muted" style={{ margin: 0 }}>Datos simulados: el movimiento y la frecuencia cardiaca vienen de perros distintos de los datasets públicos (ninguno trae las dos señales del mismo perro), así que la frecuencia puede subir mientras el perro simulado está quieto.</p>
-      )}
+      <details className="disclosure">
+        <summary><Icon name="chevron-right" size={14} />¿Qué muestran estos gráficos?</summary>
+        <div className="stack-sm" style={{ marginTop: 8 }}>
+          <p className="xs muted" style={{ margin: 0 }}>Los cortes en la frecuencia cardiaca son segundos en que el sensor no la midió. El estado, la tarjeta de Inicio y las alertas usan el promedio del último minuto para no reaccionar a un pico aislado; por eso pueden diferir un poco de estos valores.</p>
+          {simulated && (
+            <p className="xs muted" style={{ margin: 0 }}>Datos simulados: el movimiento y la frecuencia cardiaca vienen de perros distintos de los datasets públicos (ninguno trae las dos señales del mismo perro), así que la frecuencia puede subir mientras el perro simulado está quieto.</p>
+          )}
+        </div>
+      </details>
     </section>
   );
 }

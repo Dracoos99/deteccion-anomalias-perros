@@ -97,7 +97,7 @@ export function VetView() {
         <>
           <section className="vet-section" aria-labelledby="v-signals">
             <h2 className="section-title" id="v-signals">Señales del periodo</h2>
-            <div className="table-wrap">
+            <div className="table-wrap" role="region" aria-label="Señales del periodo" tabIndex={0}>
               <table className="table table-compact">
                 <thead><tr><th>Señal</th><th className="num">Mínimo</th><th className="num">Máximo</th><th className="num">Promedio</th><th className="num">Línea base del perro (media ± DE)</th><th>Referencia</th></tr></thead>
                 <tbody>
@@ -127,7 +127,7 @@ export function VetView() {
           <section className="vet-section" aria-labelledby="v-events">
             <h2 className="section-title" id="v-events">Eventos anómalos ({inPeriod.length})</h2>
             {!inPeriod.length ? <p className="small muted">Sin eventos en el periodo.</p> : (
-              <div className="table-wrap">
+              <div className="table-wrap" role="region" aria-label="Eventos anómalos" tabIndex={0}>
                 <table className="table table-compact">
                   <thead><tr><th>Fecha y hora</th><th>Duración</th><th>Variable</th><th className="num">Valor</th><th>Rango de referencia</th><th>Estado</th></tr></thead>
                   <tbody>

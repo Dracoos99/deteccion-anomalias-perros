@@ -100,7 +100,7 @@ function ChangeLog({ uid }: { uid: string }) {
     <section className="panel" aria-labelledby="log-title">
       <h2 className="panel-title" id="log-title">Bitácora de cambios</h2>
       {!entries.length ? <p className="small muted" style={{ margin: 0 }}>Todavía no hay cambios guardados desde esta pantalla.</p> : (
-        <div className="table-wrap">
+        <div className="table-wrap" role="region" aria-label="Bitácora de cambios" tabIndex={0}>
           <table className="table table-compact">
             <thead><tr><th scope="col">Fecha</th><th scope="col">Quién</th><th scope="col">Parámetro</th><th scope="col">Antes</th><th scope="col">Después</th></tr></thead>
             <tbody>{entries.flatMap((e) => e.changes.map((c, i) => (
@@ -200,7 +200,7 @@ export function ConfigPage() {
               <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Pesos de cada señal</h3>
               <div className="grid-3">{inp("wb", "Conducta y actividad (b)")}{inp("wp", "Frecuencia cardiaca (p)")}{inp("wt", "Temperatura (t)")}</div>
             </div>
-            <div className="codeblock">HealthScore = 100 × (1 − ({fmtNum(num(d.wb), 2)}·r_b + {fmtNum(num(d.wp), 2)}·r_p + {fmtNum(num(d.wt), 2)}·r_t))</div>
+            <div className="codeblock" role="region" aria-label="Fórmula del Health Score" tabIndex={0}>HealthScore = 100 × (1 − ({fmtNum(num(d.wb), 2)}·r_b + {fmtNum(num(d.wp), 2)}·r_p + {fmtNum(num(d.wt), 2)}·r_t))</div>
             <div>
               <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Niveles y alertas</h3>
               <div className="grid-3">
