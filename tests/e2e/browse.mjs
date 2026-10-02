@@ -21,7 +21,9 @@
 //   view:name                          screenshot of the visible part only
 //   text                               print the visible text of <main> (default at the end)
 //   focus                              print the element that has the keyboard focus
-//   check                              print layout problems: horizontal overflow, small tap targets, images without alt
+//   check                              print layout problems: horizontal overflow, small tap targets, buttons without a name
+//   offline:on | offline:off           cut or restore the network (the app should say "Sin conexión")
+//   pdf:name                           print the page to tests/e2e/shots/browse/<name>.pdf (as "Descargar PDF" does)
 import puppeteer from "puppeteer-core";
 import fs from "node:fs";
 import os from "node:os";
@@ -164,6 +166,16 @@ for (const step of steps) {
       case "text": console.log(await mainText()); printedText = true; break;
       case "focus": console.log("focus:", await page.evaluate(() => { const e = document.activeElement; return e ? `${e.tagName.toLowerCase()} «${(e.innerText || e.getAttribute("aria-label") || e.id || "").trim().slice(0, 60)}»` : "none"; })); break;
       case "check": { const p = await layoutCheck(); console.log(p.length ? p.join("\n") : "layout: no problems found"); break; }
+      case "offline": await page.setOfflineMode(arg !== "off"); await sleep(800); break;
+      case "pdf": {
+        fs.mkdirSync(SHOTS, { recursive: true });
+        const file = path.join(SHOTS, `${arg || "page"}.pdf`);
+        await page.emulateMediaType("print");
+        await page.pdf({ path: file, format: "A4", printBackground: true, preferCSSPageSize: true });
+        await page.emulateMediaType(null);
+        console.log("pdf:", file);
+        break;
+      }
       default: throw new Error(`unknown step ${verb}`);
     }
   } catch (e) {

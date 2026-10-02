@@ -120,7 +120,7 @@ export function VetView() {
                 </tbody>
               </table>
             </div>
-            <p className="xs muted">Mínimo y máximo de FC sobre valores de 1 s; de temperatura, por bloque de 10 s; de movimiento, por franja de 5 minutos.
+            <p className="xs muted">Mínimo y máximo de FC sobre valores de 1 s; de temperatura, por bloque de datos (2 o 10 s); de movimiento, por franja de 5 minutos.
               Tiempo en cada estado: normal {fmtNum(100 * sum.levels.green)} %, atención {fmtNum(100 * sum.levels.amber)} %, revisar {fmtNum(100 * sum.levels.red)} %.</p>
           </section>
 

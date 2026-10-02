@@ -1,7 +1,7 @@
 /* Screen 2 · Inicio: one card per dog, live from dogs.status, with a banner when an alert is open.
    Screen 9 · Primer uso: until one of the owner's dogs has data, a three-step guide leads from the account
    to registering the dog and loading its data. */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DogCard } from "../components/DogCard";
@@ -76,8 +76,19 @@ export function Home() {
     return m;
   }, [open]);
   const sorted = [...dogs].sort((a, b) => a.name.localeCompare(b.name, "es"));
-  // Cards: the dogs that need a look first.
-  const cards = byAttention(sorted.map((d) => ({ dog: d, name: d.name, level: d.status?.level ?? null }))).map((x) => x.dog);
+  // Cards: the dogs that need a look first, in the order they had when the page
+  // opened. With live data a level can change every few seconds, and cards that move while the owner reads them are
+  // disorienting; a dog added later goes after the others. The summary above keeps updating.
+  const ids = sorted.map((d) => d.id).join(",");
+  const orderRef = useRef<string[]>([]);
+  const order = useMemo(() => {
+    const kept = orderRef.current.filter((id) => sorted.some((d) => d.id === id));
+    const added = byAttention(sorted.filter((d) => !kept.includes(d.id)).map((d) => ({ id: d.id, name: d.name, level: d.status?.level ?? null })));
+    return [...kept, ...added.map((d) => d.id)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids]);
+  orderRef.current = order;
+  const cards = order.map((id) => sorted.find((d) => d.id === id)!).filter(Boolean);
   const summary = homeSummary(sorted.map((d) => ({ name: d.name, level: d.status?.level ?? null, learning: !d.baseline })));
   const anyData = sorted.some((d) => d.status);
   // The guide shows until a dog has data; with dogs registered it can be hidden (without dogs it is the empty state).
