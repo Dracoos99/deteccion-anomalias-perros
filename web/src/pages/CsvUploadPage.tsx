@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, PageHead, fmtNum } from "../components/ui";
+import { Callout, EmptyState, Icon, PageHead, fmtNum, usePageTitle } from "../components/ui";
 import { useCsvUploads, useDogs, useFusionConfig, type CsvUpload, type Dog } from "../data/hooks";
 import { CSV_HEADER, CSV_MAX_BYTES, checkCsv, sampleCsv, templateCsv, type CsvCheck } from "../lib/csv";
 import { uploadCsv, type UploadProgress } from "../lib/csvUpload";
@@ -72,6 +72,7 @@ function RecentUploads({ uploads, dogs }: { uploads: CsvUpload[]; dogs: Map<stri
 
 export function CsvUploadPage() {
   const { user, isAdmin } = useAuth();
+  usePageTitle("Cargar datos");
   const viewer = { uid: user!.uid, isAdmin };
   const [params] = useSearchParams();
   const { data: allDogs, loading: dogsLoading } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });

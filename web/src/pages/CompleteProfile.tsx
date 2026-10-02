@@ -3,10 +3,11 @@ import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { completeSignUp } from "../auth/signup";
-import { Callout, EmulatorBanner, Icon, PageHead } from "../components/ui";
+import { Callout, EmulatorBanner, Icon, PageHead, usePageTitle } from "../components/ui";
 
 export function CompleteProfile() {
   const { user, role, loading, refreshRole, logout } = useAuth();
+  usePageTitle("Completa tu perfil");
   const navigate = useNavigate();
   const [name, setName] = useState(user?.displayName ?? "");
   const [consent, setConsent] = useState(false);

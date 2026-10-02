@@ -5,12 +5,13 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { summarize, type TimedSlot } from "@shared/trends";
+import type { AlertReason } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { BarList } from "../components/charts";
-import { EmptyState, Icon, Seg, fmtNum } from "../components/ui";
-import { useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
+import { EmptyState, Icon, Seg, fmtNum, usePageTitle } from "../components/ui";
+import { useActiveModels, useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
 import { useDogTrend } from "../data/useDogTrend";
-import { BEHAVIOR_LABEL, COMPONENT_LABEL, ageText, dateText, dateTimeText, durationText, reasonUnit } from "../lib/plain";
+import { BEHAVIOR_LABEL, COMPONENT_LABEL, ageText, dateText, dateTimeText, durationText, primaryReason, reasonUnit } from "../lib/plain";
 import { alertStartMs } from "./AlertsPage";
 
 const PERIODS = [{ value: 7, label: "7 días" }, { value: 30, label: "30 días" }];
@@ -19,6 +20,12 @@ const DATASET_TEXT: Record<string, string> = {
   uwbdvs2024: "UWB-DVS", synthetic: "serie sintética", csv: "carga de CSV",
 };
 const pm = (mean: number | null, sd: number | null, d = 0) => (mean == null ? "—" : `${fmtNum(mean, d)} ± ${fmtNum(sd ?? 0, d)}`);
+
+/** The reason that names the alert first, as in its detail. */
+function orderedReasons(reasons: AlertReason[]): AlertReason[] {
+  const first = primaryReason(reasons);
+  return first ? [first, ...reasons.filter((r) => r !== first)] : reasons;
+}
 
 function activityRange(items: TimedSlot[]): { min: number; max: number } | null {
   const v = items.filter((i) => i.slot.w > 0).map((i) => i.slot.act / i.slot.w);
@@ -30,10 +37,12 @@ export function VetView() {
   const { user, isAdmin } = useAuth();
   const viewer = { uid: user!.uid, isAdmin };
   const { data: dog, loading } = useDog(dogId);
+  usePageTitle(dog ? `${dog.name} · Vista para el veterinario` : "Vista para el veterinario");
   const { data: cfg } = useFusionConfig();
   const [days, setDays] = useState(7);
   const trend = useDogTrend(dog, viewer, days * 86_400_000);
   const { data: alerts } = useDogAlerts(dog?.id, viewer, 200);
+  const { data: models } = useActiveModels();
 
   if (loading) return <div className="boot" aria-busy="true">Cargando…</div>;
   if (!dog) {
@@ -44,6 +53,11 @@ export function VetView() {
     );
   }
   const b = dog.baseline, sum = summarize(trend.items), act = activityRange(trend.items);
+  // The models the system applies (modelVersions), not only the ones that scored the latest block: the autoencoder
+  // only reads 60 s of heart rate in a row, so the latest block may have been scored without it.
+  const activeModel = (kind: string) => models.find((m) => m.kind === kind)?.version ?? null;
+  const behaviorModel = dog.status?.behaviorModel ?? activeModel("behavior");
+  const physioModel = dog.status?.physioModel ?? (b?.hrMean != null ? activeModel("physiological") : null);
   const inPeriod = trend.start == null ? [] : alerts.filter((a) => { const t = alertStartMs(a); return t >= trend.start! && t <= trend.end!; });
   const sources = dog.source
     ? [["Movimiento", dog.source.imu], ["Frecuencia cardiaca", dog.source.hr], ["Temperatura", dog.source.temp]]
@@ -55,7 +69,7 @@ export function VetView() {
   return (
     <main className="page vet-view" id="main">
       <div className="no-print row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-        <Link to={`/perros/${dog.id}`} className="small"><Icon name="chevron-left" size={14} /> Volver a {dog.name}</Link>
+        <Link to={`/perros/${dog.id}`} className="small back-link"><Icon name="chevron-left" size={14} /> Volver a {dog.name}</Link>
         <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
           <Seg label="Periodo" options={PERIODS} value={days} onChange={setDays} />
           <button type="button" className="btn btn-primary" onClick={() => window.print()}><Icon name="database" />Descargar PDF</button>
@@ -117,7 +131,7 @@ export function VetView() {
                 <table className="table table-compact">
                   <thead><tr><th>Fecha y hora</th><th>Duración</th><th>Variable</th><th className="num">Valor</th><th>Rango de referencia</th><th>Estado</th></tr></thead>
                   <tbody>
-                    {inPeriod.flatMap((a) => a.reasons.map((r, i) => {
+                    {inPeriod.flatMap((a) => orderedReasons(a.reasons).map((r, i) => {
                       const { unit, decimals } = reasonUnit(r), start = alertStartMs(a), end = a.endedAt?.toMillis?.();
                       return (
                         <tr key={`${a.id}-${r.code}`}>
@@ -150,9 +164,9 @@ export function VetView() {
         <h2 className="section-title" id="v-method">Origen de los datos y método</h2>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
           {sources.length > 0 && <li>Fuentes: {sources.join("; ")}.</li>}
-          <li>Conducta: {dog.status?.behaviorModel ? `modelo ${dog.status.behaviorModel}` : "regla estadística provisional"}.</li>
-          <li>Frecuencia cardiaca: {dog.status?.physioModel
-            ? `modelo ${dog.status.physioModel} (forma del último minuto) combinado con la regla del promedio respecto a la línea base del perro`
+          <li>Conducta: {behaviorModel ? `modelo ${behaviorModel}` : "regla estadística provisional"}.</li>
+          <li>Frecuencia cardiaca: {physioModel
+            ? `modelo ${physioModel} (forma de cada minuto, cuando hay 60 s seguidos de datos) combinado con la regla del promedio respecto a la línea base del perro`
             : "regla provisional del promedio respecto a la línea base del perro"}. Temperatura: reglas provisionales.</li>
           <li>La línea base se calcula con los datos normales del propio perro. Los valores de las alertas se comparan con ella.</li>
         </ul>

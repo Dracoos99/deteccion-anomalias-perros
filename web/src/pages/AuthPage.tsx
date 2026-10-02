@@ -5,7 +5,7 @@ import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmail
 import { FirebaseError } from "firebase/app";
 import { auth, usingEmulators } from "../firebase";
 import { landingFor, useAuth } from "../auth/AuthContext";
-import { Callout, EmulatorBanner, Icon, Notice } from "../components/ui";
+import { Callout, EmulatorBanner, Icon, Notice, usePageTitle } from "../components/ui";
 import { completeSignUp } from "../auth/signup";
 
 type Mode = "login" | "registro" | "recuperar";
@@ -31,6 +31,7 @@ function authErrorText(e: unknown, mode: Mode): string {
 
 export function AuthPage({ mode }: { mode: Mode }) {
   const { user, role, loading, refreshRole } = useAuth();
+  usePageTitle(mode === "login" ? "Iniciar sesión" : mode === "registro" ? "Crear cuenta" : "Recuperar contraseña");
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;

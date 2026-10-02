@@ -23,7 +23,7 @@ export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer:
     <section className="panel stack-sm live-panel" aria-labelledby="live-title">
       <div>
         <h2 className="section-title" id="live-title" style={{ margin: 0 }}><span className="live-dot" aria-hidden="true" />En vivo</h2>
-        <p className="xs muted" style={{ margin: 0 }}>Últimos 10 minutos de datos de {dog.name}, actualizados con cada bloque nuevo (cada 2 s en tiempo real).</p>
+        <p className="xs muted" style={{ margin: 0 }}>Últimos 10 minutos de datos de {dog.name}, actualizados con cada bloque que llega{live.latest.blockSeconds === 2 ? " (cada 2 s)" : ""}.</p>
       </div>
       <dl className="live-now">
         <div><dt>Ahora</dt><dd>{live.latest.behavior ? behaviorNow(live.latest.behavior, dog.sex) : "—"}</dd></div>

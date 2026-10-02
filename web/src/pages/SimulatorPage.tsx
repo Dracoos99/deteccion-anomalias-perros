@@ -7,7 +7,7 @@ import { ANOMALY_CATALOG, ANOMALY_TYPES, blocksFor, validateInjection } from "@s
 import type { AnomalyType } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { db, usingEmulators } from "../firebase";
-import { Ago, Callout, EmptyState, Icon, LevelTag, PageHead, Seg, fmtNum } from "../components/ui";
+import { Ago, Callout, EmptyState, Icon, LevelTag, PageHead, Seg, fmtNum, usePageTitle } from "../components/ui";
 import { useActiveModels, useDogs, useFusionConfig, useRuns, type Dog, type Run } from "../data/hooks";
 
 const SPEEDS = [1, 2, 5, 10];
@@ -279,6 +279,8 @@ function FusionConfigPanel() {
     ["Umbral de movimiento (regla provisional)", `${fmtNum(c.activity.thresholdG, 3)} g · promedio de ${c.activity.timeConstantS / 60} min`],
     ["FC promediada", `${c.hrAverageS} s`],
     ["Cierre de un episodio de alerta", `${c.episodeGapS} s sin disparo`],
+    ["Duración mínima de una alerta", c.alertMinDurationS ? `${c.alertMinDurationS} s de disparo seguido` : "sin mínimo"],
+    ["Regla de actividad baja", c.activityCriticalSigma != null ? `media − ${c.activityCriticalSigma} σ del perro` : "sin regla"],
     ["Prefiltro", `FC ${c.prefilter.hrMin}–${c.prefilter.hrMax} lpm · temperatura ${c.prefilter.tempMin}–${c.prefilter.tempMax} °C`],
   ];
   return (
@@ -292,6 +294,7 @@ function FusionConfigPanel() {
 }
 
 export function SimulatorPage() {
+  usePageTitle("Simulador");
   const { user } = useAuth();
   const { data: runs, loading, error } = useRuns();
   const { data: allDogs } = useDogs({ kind: "all" });
@@ -301,7 +304,7 @@ export function SimulatorPage() {
   return (
     <main className="page" id="main">
       <PageHead kicker="Herramientas de investigación" title="Simulador"
-        sub="Reproduce sujetos de los datasets públicos al ritmo real (o hasta 10 veces más rápido), escribe un bloque de 10 s por documento en readings e inyecta anomalías con su verdad de referencia." />
+        sub="Reproduce sujetos de los datasets públicos al ritmo real (o hasta 10 veces más rápido), escribe un bloque de 2 a 10 s por documento en readings e inyecta anomalías con su verdad de referencia." />
       <div className="stack">
         <div className="callout"><Icon name="info" size={18} style={{ marginTop: 2 }} /><div>La conducta la clasifica el <strong>modelo CNN-LSTM</strong> y la frecuencia cardiaca, el <strong>autoencoder LSTM</strong> junto con la regla del promedio; la temperatura sigue con <strong>reglas provisionales</strong>. La latencia se mide en cada bloque.</div></div>
         {error && <Callout kind="error">No pudimos cargar las ejecuciones.</Callout>}

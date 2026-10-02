@@ -50,12 +50,12 @@ await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
 await page.goto(BASE + "/admin", { waitUntil: "load" });
 await page.waitForSelector("section[aria-labelledby='new-title'] input[type=checkbox]", { timeout: 15000 });
 
-// New run: only Toby, ×10, 10 minutes.
+// New run: only Toby, ×10, 30 simulated minutes.
 for (const cb of await page.$$("section[aria-labelledby='new-title'] input[type=checkbox]:checked")) await cb.click();
 const [toby] = await page.$$("xpath/.//section[@aria-labelledby='new-title']//label[.//strong[text()='Toby']]//input");
 await toby.click();
 await clickButton("×10", "new-title");
-await clickButton("10 min", "new-title");
+await clickButton("30 min", "new-title");
 await clickButton("Crear ejecución", "new-title");
 check("run created from the panel is claimed by the simulator process", await waitText("proceso ", 20000));
 check("blocks are being written", await page.waitForFunction(() => {
@@ -77,6 +77,18 @@ check("pause is reflected", await waitText("En pausa", 10000));
 await clickButton("Reanudar");
 check("resume is reflected", await waitText("Reproduciendo", 10000));
 await new Promise((r) => setTimeout(r, 8000));
+// The fever must hold for config/fusion.alertMinDurationS (300 s of data) before the alert opens: wait for it in the
+// emulator (REST, with the emulator's owner token) before stopping the run.
+const alertOpened = await (async () => {
+  const url = `http://localhost:8080/v1/projects/demo-perros-tesis/databases/(default)/documents:runQuery`;
+  const body = JSON.stringify({ structuredQuery: { from: [{ collectionId: "alerts" }], where: { fieldFilter: { field: { fieldPath: "dogId" }, op: "EQUAL", value: { stringValue: "toby" } } }, limit: 1 } });
+  for (const t0 = Date.now(); Date.now() - t0 < 240_000; await new Promise((r) => setTimeout(r, 3000))) {
+    const res = await fetch(url, { method: "POST", headers: { Authorization: "Bearer owner", "Content-Type": "application/json" }, body }).then((r) => r.json()).catch(() => []);
+    if (res.some?.((x) => x.document)) return true;
+  }
+  return false;
+})();
+check("the injected fever opens an alert once it has lasted 5 minutes of data", alertOpened);
 const latencyText = await text();
 check("latency is measured and labelled as emulator", /Promedio\s+\d+[,.]\d+ s/.test(latencyText) && latencyText.includes("Medida en los emuladores locales"));
 await page.screenshot({ path: path.join(OUT, "08b-simulador-panel-1440.png"), fullPage: true });
@@ -99,7 +111,7 @@ if (banner) {
   await page.waitForSelector("#why", { timeout: 10000 }).catch(() => {});
   const alertText = await text();
   check("alert detail names it in plain language, with when and what to do",
-    alertText.includes("Su temperatura estuvo alta") && alertText.includes("Empezó el") && alertText.includes("Qué puedes hacer") && alertText.includes("termómetro"));
+    alertText.includes("Su temperatura estuvo alta") && alertText.includes("Empezó ") && alertText.includes("Qué puedes hacer") && alertText.includes("termómetro"));
   await page.screenshot({ path: path.join(OUT, "04-detalle-alerta-1440.png"), fullPage: true });
   await clickButton("Marcar como revisada");
   check("the owner marks it as reviewed", await waitText("Revisada", 10000));

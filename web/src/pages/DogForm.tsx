@@ -6,7 +6,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, PageHead, Seg } from "../components/ui";
+import { Callout, EmptyState, Icon, PageHead, Seg, usePageTitle } from "../components/ui";
 import { db, functions } from "../firebase";
 import { useDog, type Dog } from "../data/hooks";
 
@@ -47,6 +47,7 @@ export function DogForm() {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const { data: dog, loading } = useDog(dogId);
+  usePageTitle(editing ? (dog ? `Editar a ${dog.name}` : "Editar perro") : "Registrar a tu perro");
   const [f, setF] = useState({ name: "", breed: "", weight: "", birthDate: "", sex: "none" as SexChoice });
   const [loaded, setLoaded] = useState(false);
   const [touched, setTouched] = useState(false);

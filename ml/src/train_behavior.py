@@ -91,6 +91,31 @@ class MacroF1EarlyStopping(keras.callbacks.Callback):
             self.model.set_weights(self.best_weights)
 
 
+def fit_model(x_tr, y_tr, x_va, y_va, *, seed: int, epochs: int, patience: int, batch: int = 128, label_smoothing: float = 0.0,
+              cosine: bool = False) -> tuple[keras.Model, MacroF1EarlyStopping]:
+    """Trains one CNN-LSTM with class weights and augmentation, early-stopped on the validation macro F1."""
+    weights = compute_class_weight("balanced", classes=np.arange(len(C.CLASSES)), y=y_tr)
+    n_cls = len(C.CLASSES)
+    # Label smoothing needs one-hot targets; without it the loss and data are exactly those of v1.
+    onehot = label_smoothing > 0
+    target = (lambda y: keras.utils.to_categorical(y, n_cls).astype(np.float32)) if onehot else (lambda y: y.astype(np.int32))
+    ds = (tf.data.Dataset.from_tensor_slices((x_tr, target(y_tr)))
+          .shuffle(len(y_tr), seed=seed, reshuffle_each_iteration=True)
+          .map(augment, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
+          .batch(batch).prefetch(tf.data.AUTOTUNE))
+    model = build_model(x_tr.shape[1])
+    steps = int(np.ceil(len(y_tr) / batch))
+    lr = keras.optimizers.schedules.CosineDecay(1e-3, decay_steps=steps * epochs, alpha=0.02) if cosine else 1e-3
+    loss = (keras.losses.CategoricalCrossentropy(label_smoothing=label_smoothing) if onehot
+            else "sparse_categorical_crossentropy")
+    model.compile(optimizer=keras.optimizers.Adam(lr), loss=loss, metrics=["accuracy"])
+    stopper = MacroF1EarlyStopping(x_va, y_va, patience)
+    callbacks = [stopper] if cosine else [stopper, keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, verbose=0)]
+    model.fit(ds, validation_data=(x_va, target(y_va)), epochs=epochs, verbose=0,
+              class_weight={i: float(w) for i, w in enumerate(weights)}, callbacks=callbacks)
+    return model, stopper
+
+
 def classification_report(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     p, r, f, s = precision_recall_fscore_support(y_true, y_pred, labels=range(len(C.CLASSES)), zero_division=0)
     active = np.isin(np.arange(len(C.CLASSES)), [C.CLASSES.index(c) for c in ACTIVE_CLASSES])
@@ -165,25 +190,8 @@ def main() -> None:
         x_tr, y_tr, args.epochs = x_tr[idx], y_tr[idx], 2
     print(f"train {len(y_tr)} · val {len(y_va)} · test {len(y_te)} · test unlabeled {len(u_te)}", flush=True)
 
-    weights = compute_class_weight("balanced", classes=np.arange(len(C.CLASSES)), y=y_tr)
-    n_cls = len(C.CLASSES)
-    # Label smoothing needs one-hot targets; without it the loss and data are exactly those of v1.
-    onehot = args.label_smoothing > 0
-    target = (lambda y: keras.utils.to_categorical(y, n_cls).astype(np.float32)) if onehot else (lambda y: y.astype(np.int32))
-    ds = (tf.data.Dataset.from_tensor_slices((x_tr, target(y_tr)))
-          .shuffle(len(y_tr), seed=args.seed, reshuffle_each_iteration=True)
-          .map(augment, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
-          .batch(args.batch).prefetch(tf.data.AUTOTUNE))
-    model = build_model(x_tr.shape[1])
-    steps = int(np.ceil(len(y_tr) / args.batch))
-    lr = keras.optimizers.schedules.CosineDecay(1e-3, decay_steps=steps * args.epochs, alpha=0.02) if args.cosine else 1e-3
-    loss = (keras.losses.CategoricalCrossentropy(label_smoothing=args.label_smoothing) if onehot
-            else "sparse_categorical_crossentropy")
-    model.compile(optimizer=keras.optimizers.Adam(lr), loss=loss, metrics=["accuracy"])
-    stopper = MacroF1EarlyStopping(x_va, y_va, args.patience)
-    callbacks = [stopper] if args.cosine else [stopper, keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, verbose=0)]
-    model.fit(ds, validation_data=(x_va, target(y_va)), epochs=args.epochs, verbose=0,
-              class_weight={i: float(w) for i, w in enumerate(weights)}, callbacks=callbacks)
+    model, stopper = fit_model(x_tr, y_tr, x_va, y_va, seed=args.seed, epochs=args.epochs, patience=args.patience, batch=args.batch,
+                               label_smoothing=args.label_smoothing, cosine=args.cosine)
 
     p_va = model.predict(x_va, batch_size=512, verbose=0)
     p_te = model.predict(x_te, batch_size=512, verbose=0)

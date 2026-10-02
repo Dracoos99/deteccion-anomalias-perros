@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, writeBatch, type Timestamp } from "firebase/firestore";
 import { DEFAULT_FUSION_CONFIG, healthScore, levelOf, type FusionConfig } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, HealthGauge, Icon, LevelTag, PageHead, fmtNum } from "../components/ui";
+import { Callout, HealthGauge, Icon, LevelTag, PageHead, fmtNum, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useActiveModels, useFusionConfig, type Fusion } from "../data/hooks";
 import { dateTimeText, durationText } from "../lib/plain";
@@ -142,6 +142,7 @@ function ModelsSummary() {
 }
 
 export function ConfigPage() {
+  usePageTitle("Modelos y configuración");
   const { user } = useAuth();
   const { data: cfg, loading } = useFusionConfig();
   const [meta, setMeta] = useState<{ updatedAt?: Timestamp; updatedBy?: string } | null>(null);

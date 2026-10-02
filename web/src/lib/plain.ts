@@ -78,6 +78,40 @@ export function describeDog(status: DogStatus<unknown> | null | undefined, b: Ba
   return { phrase, activity, heart, temp };
 }
 
+/** "Luna", "Luna y Toby", "Bruno, Luna y Toby". */
+export function namesText(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+}
+
+type DogLevel = { name: string; level: DogStatus<unknown>["level"] | null; learning?: boolean };
+const LEVEL_ORDER = { red: 0, amber: 1, green: 2 } as const;
+
+/** Inicio order: the dogs that need a look first (Revisar, Atención), then the rest, then those without data; by name. */
+export function byAttention<T extends DogLevel>(dogs: T[]): T[] {
+  const rank = (d: DogLevel) => (d.level ? LEVEL_ORDER[d.level] : 3);
+  return [...dogs].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "es"));
+}
+
+/** One sentence above the Inicio cards: how the owner's dogs are, the ones that need a look first. Null without data.
+ * A dog still learning its normal pattern is never said to be "within its normal pattern". */
+export function homeSummary(dogs: DogLevel[]): string | null {
+  const withData = byAttention(dogs.filter((d) => d.level));
+  if (!withData.length) return null;
+  const of = (l: string) => withData.filter((d) => d.level === l && !(l === "green" && d.learning)).map((d) => d.name);
+  const red = of("red"), amber = of("amber"), green = of("green");
+  const learning = withData.filter((d) => d.level === "green" && d.learning).map((d) => d.name);
+  const parts: string[] = [];
+  if (red.length) parts.push(`${namesText(red)} ${red.length > 1 ? "se alejaron" : "se alejó"} de su patrón normal; revisa cómo ${red.length > 1 ? "están" : "está"}.`);
+  if (amber.length) parts.push(`${namesText(amber)} ${amber.length > 1 ? "tienen" : "tiene"} un cambio leve.`);
+  if (!red.length && !amber.length) {
+    if (green.length === 1) parts.push(`${green[0]} está dentro de su patrón normal.`);
+    else if (green.length > 1) parts.push(`Todo en orden: tus ${green.length} perros están dentro de su patrón normal.`);
+  } else if (green.length > 3) parts.push(`Los otros ${green.length} están como de costumbre.`);
+  else if (green.length) parts.push(`${namesText(green)} ${green.length > 1 ? "están" : "está"} como de costumbre.`);
+  if (learning.length) parts.push(`Estamos aprendiendo el patrón normal de ${namesText(learning)}.`);
+  return parts.join(" ");
+}
+
 const NOW_TEXT: Record<Behavior, [string, string]> = {
   sit: ["Sentado", "Sentada"], stand: ["Parado", "Parada"], lie: ["Echado", "Echada"],
   trot: ["Trotando", "Trotando"], walk: ["Caminando", "Caminando"], play: ["Jugando", "Jugando"], sniff: ["Olfateando", "Olfateando"],
@@ -129,6 +163,27 @@ export function durationText(ms: number): string {
 }
 
 export const dateTimeText = (ms: number) => new Date(ms).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+
+const calendarDay = (ms: number) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+/** Whole calendar days from `ms` to `now` (0 = the same day), in local time. */
+const daysAgo = (ms: number, now: number) => Math.round((calendarDay(now) - calendarDay(ms)) / 86_400_000);
+
+/** "hoy a las 9:05 a. m.", "ayer a la 1:30 p. m." or the full date: when something happened, in words. */
+export function whenText(ms: number, now = Date.now()): string {
+  const d = new Date(ms), ago = daysAgo(ms, now);
+  if (ago !== 0 && ago !== 1) return dateTimeText(ms);
+  const time = d.toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" });
+  return `${ago === 0 ? "hoy" : "ayer"} ${d.getHours() % 12 === 1 ? "a la" : "a las"} ${time}`;
+}
+
+/** Heading of a day in a list: "Hoy", "Ayer" or "jueves, 1 de octubre de 2026". */
+export function dayHeading(ms: number, now = Date.now()): string {
+  const ago = daysAgo(ms, now);
+  if (ago === 0) return "Hoy";
+  if (ago === 1) return "Ayer";
+  const t = new Date(ms).toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 export const timeText = (ms: number) => new Date(ms).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
 export const dateText = (ms: number) => new Date(ms).toLocaleDateString("es-PE", { dateStyle: "medium" });
 

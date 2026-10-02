@@ -61,6 +61,12 @@ export function fmtNum(x: number | null | undefined, d = 0): string {
   return x == null || Number.isNaN(x) ? "—" : x.toLocaleString("es-PE", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+const APP_TITLE = "Detección de anomalías en perros";
+/** Title of the browser tab (and of the PDF saved from the print dialog): "<page> · Detección de anomalías en perros". */
+export function usePageTitle(title: string | null | undefined) {
+  useEffect(() => { document.title = title ? `${title} · ${APP_TITLE}` : APP_TITLE; }, [title]);
+}
+
 /** The current time, refreshed every `intervalMs`, so "hace 12 s" keeps counting between snapshots. */
 export function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());

@@ -1,13 +1,13 @@
 /* Screen 3 · Detalle del perro: state, trends of the last hour, day or week with the dog's normal band,
    what is normal for this dog, and its alerts. Charts are anchored at the dog's latest data. */
-import { useState, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { summarize } from "@shared/trends";
 import { useAuth } from "../auth/AuthContext";
 import { BarList, TrendChart, type ChartPoint } from "../components/charts";
-import { Ago, Callout, EmptyState, HealthGauge, Icon, LevelTag, LiveBadge, Notice, PageHead, Seg, fmtNum } from "../components/ui";
+import { Ago, Callout, EmptyState, HealthGauge, Icon, LevelTag, LiveBadge, Notice, PageHead, Seg, fmtNum, usePageTitle } from "../components/ui";
 import { LivePanel } from "../components/LivePanel";
-import { useDog, useDogAlerts, useFusionConfig, type Dog, type Fusion } from "../data/hooks";
+import { useActiveModels, useDog, useDogAlerts, useFusionConfig, type Dog, type Fusion, type ModelVersion } from "../data/hooks";
 import { RANGES, useDogTrend, type DogTrend, type RangeKey } from "../data/useDogTrend";
 import { BEHAVIOR_LABEL, activityBand, ageText, dateTimeText, describeDog, hrBand } from "../lib/plain";
 import { AlertItem } from "./AlertsPage";
@@ -56,6 +56,18 @@ function NormalForDog({ dog, cfg }: { dog: Dog; cfg: Fusion }) {
   );
 }
 
+/** How the score is computed, in one line. From the active models (modelVersions), not from the latest block: the
+ * heart-rate autoencoder only reads 60 s in a row, so a single block may have been scored without it. */
+function methodNote(dog: Dog, models: ModelVersion[]): string | null {
+  if (!dog.status) return null;
+  const has = (kind: string) => models.some((m) => m.kind === kind);
+  const behavior = !!dog.status.behaviorModel || has("behavior");
+  const heart = dog.baseline?.hrMean != null && (!!dog.status.physioModel || has("physiological"));
+  if (behavior && heart) return "Conducta y corazón según los modelos; temperatura con reglas provisionales.";
+  if (behavior) return "Conducta según el modelo; corazón y temperatura con reglas estadísticas.";
+  return "Puntaje provisional: reglas estadísticas mientras se entrenan los modelos.";
+}
+
 function ChartPanel({ children }: { children: ReactNode }) {
   return <section className="panel">{children}</section>;
 }
@@ -65,6 +77,7 @@ export function DogDetail() {
   const { user, isAdmin } = useAuth();
   const viewer = { uid: user!.uid, isAdmin };
   const { data: dog, loading, error } = useDog(dogId);
+  usePageTitle(dog?.name ?? "Perro");
   const { data: cfg } = useFusionConfig();
   const [range, setRange] = useState<RangeKey>("24h");
   const [tab, setTab] = useState<Tab>("resumen");
@@ -72,6 +85,7 @@ export function DogDetail() {
   const trend = useDogTrend(dog, viewer, r.ms, r.bucketMs, r.tier);
   const gapMs = 3 * r.bucketMs;   // no line across missing data
   const { data: alerts } = useDogAlerts(dog?.id, viewer, 50);
+  const { data: models } = useActiveModels();
 
   if (loading) return <div className="boot" aria-busy="true">Cargando…</div>;
   if (error || !dog) {
@@ -83,6 +97,19 @@ export function DogDetail() {
     );
   }
   const s = dog.status, d = describeDog(s, dog.baseline, cfg);
+  const openAlerts = alerts.filter((a) => a.status === "open").length;
+  // A dog without any data yet: one clear next step instead of empty tabs and charts.
+  const noData = !s && !alerts.length;
+  // Tabs pattern (WAI-ARIA): arrows, Home and End move between tabs; Tab goes into the panel.
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = TABS.findIndex((t) => t.key === tab);
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key];
+    if (next == null) return;
+    e.preventDefault();
+    const k = TABS[(next + TABS.length) % TABS.length].key;
+    setTab(k);
+    document.getElementById(`tabbtn-${k}`)?.focus();
+  };
   const canEdit = isAdmin || dog.ownerId === user!.uid;
   const sub = trend.end ? `Datos de ${r.text}, hasta el ${dateTimeText(trend.end)}` : undefined;
   const aBand = activityBand(dog.baseline, cfg), hBand = hrBand(dog.baseline, cfg);
@@ -102,24 +129,39 @@ export function DogDetail() {
           <div className="stack-sm" style={{ minWidth: 0 }}>
             <LevelTag level={s?.level ?? null} />
             <p className="dog-phrase" style={{ margin: 0 }}>{d.phrase}</p>
-            <div className="xs muted row" style={{ gap: 8 }}>{s ? <span>Actualizado <Ago t={s.updatedAt?.toDate?.()} /></span> : "Sin datos todavía"}
-              <LiveBadge t={s?.updatedAt?.toDate?.()} /></div>
+            {s ? (
+              <div className="xs muted row" style={{ gap: 8 }}><span>Actualizado <Ago t={s.updatedAt?.toDate?.()} /></span>
+                <LiveBadge t={s.updatedAt?.toDate?.()} /></div>
+            ) : (
+              <>
+                <p className="small muted" style={{ margin: 0 }}>Sus gráficos y su patrón normal aparecerán cuando lleguen sus primeras lecturas.</p>
+                {canEdit && <div><Link className="btn btn-primary" to={`/perfil/datos?perro=${dog.id}`}><Icon name="upload" />Cargar sus datos</Link></div>}
+              </>
+            )}
+            {methodNote(dog, models) && <p className="xs muted" style={{ margin: 0 }}>{methodNote(dog, models)}</p>}
           </div>
           {s && <HealthGauge score={s.healthScore} level={s.level} levels={cfg.levels} size={120} />}
         </section>
 
+        {noData ? (
+          <section className="panel stack-sm">
+            <h2 className="section-title">Qué es normal para {dog.name}</h2>
+            <NormalForDog dog={dog} cfg={cfg} />
+          </section>
+        ) : <>
         <LivePanel dog={dog} cfg={cfg} viewer={viewer} />
 
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div className="tabs" role="tablist" aria-label="Secciones del detalle" style={{ marginBottom: 0 }}>
+          <div className="tabs" role="tablist" aria-label="Secciones del detalle" style={{ marginBottom: 0 }} onKeyDown={onTabKey}>
             {TABS.map((t) => (
-              <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} aria-controls={`tab-${t.key}`} onClick={() => setTab(t.key)}>{t.label}</button>
+              <button key={t.key} id={`tabbtn-${t.key}`} type="button" role="tab" aria-selected={tab === t.key} aria-controls={`tab-${t.key}`}
+                tabIndex={tab === t.key ? 0 : -1} onClick={() => setTab(t.key)}>{t.label}{t.key === "alertas" && openAlerts > 0 && <span className="tab-count">{openAlerts}<span className="sr-only"> sin revisar</span></span>}</button>
             ))}
           </div>
           {tab !== "alertas" && <Seg label="Periodo" options={(Object.keys(RANGES) as RangeKey[]).map((k) => ({ value: k, label: RANGES[k].label }))} value={range} onChange={setRange} />}
         </div>
 
-        <div id={`tab-${tab}`} role="tabpanel" className="stack">
+        <div id={`tab-${tab}`} role="tabpanel" aria-labelledby={`tabbtn-${tab}`} className="stack">
           {trend.error && <Callout kind="error">No pudimos cargar las tendencias. Revisa tu conexión e inténtalo de nuevo.</Callout>}
           {tab !== "alertas" && empty && (
             <EmptyState icon="clock" title="Sin datos en este periodo" text={`Cuando lleguen datos de ${dog.name}, aquí verás cómo evolucionan.`}
@@ -193,6 +235,7 @@ export function DogDetail() {
               : <EmptyState icon="check-circle" title="Sin alertas" text={`${dog.name} no tiene alertas registradas.`} />
           )}
         </div>
+        </>}
         <Notice />
       </div>
     </main>

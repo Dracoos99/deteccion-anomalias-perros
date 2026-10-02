@@ -8,17 +8,23 @@ import { MINUTE_TIER, collectSlots, collectTierSlots, dayKey, tierDocStart, toPo
 import type { AlertReason } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { RangeBar, TrendChart, type ChartPoint } from "../components/charts";
-import { Callout, EmptyState, Icon, LevelTag, Notice, PageHead, fmtNum } from "../components/ui";
+import { Callout, EmptyState, Icon, LevelTag, Notice, PageHead, fmtNum, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useAlert, useFusionConfig, useTierDocs, useTrendDocs, type Alert, type Viewer } from "../data/hooks";
-import { COMPONENT_LABEL, alertTitle, dateTimeText, durationText, primaryReason, reasonUnit, whatToDo } from "../lib/plain";
+import { COMPONENT_LABEL, alertTitle, durationText, primaryReason, reasonUnit, whatToDo, whenText } from "../lib/plain";
 import { alertStartMs } from "./AlertsPage";
 
 const MARGIN_MS = 30 * 60_000;
 
+/** "hoy a las 9:05 a. m." or "el 2 oct. 2026, 9:05 a. m.", to follow a verb ("Empezó …", "Revisada …"). */
+const whenPhrase = (ms: number) => { const w = whenText(ms); return /^(hoy|ayer)/.test(w) ? w : `el ${w}`; };
+
 function ReasonRow({ r }: { r: AlertReason }) {
-  const { unit, decimals } = reasonUnit(r);
+  const { unit, decimals: d0 } = reasonUnit(r);
   const [lo, hi] = r.normalRange;
+  // An out-of-range value that rounds to its bound ("55 lpm, normal 55–68") gets one more decimal.
+  const out = r.value < lo || r.value > hi;
+  const decimals = out && (fmtNum(r.value, d0) === fmtNum(lo, d0) || fmtNum(r.value, d0) === fmtNum(hi, d0)) ? d0 + 1 : d0;
   const span = Math.max(hi - lo, Math.abs(r.value - (r.value > hi ? hi : lo)), unit === "°C" ? 1 : 10);
   const scale: [number, number] = [Math.min(lo, r.value) - span * 0.4, Math.max(hi, r.value) + span * 0.4];
   const icon = r.component === "temperature" ? "thermometer" : r.component === "heart_rate" ? "heart" : "paw";
@@ -67,6 +73,7 @@ export function AlertDetail() {
   const { user, isAdmin } = useAuth();
   const viewer = { uid: user!.uid, isAdmin };
   const { data: alert, loading, error } = useAlert(alertId);
+  usePageTitle(alert ? `${alert.dogName}: ${alertTitle(alert.reasons).toLowerCase()}` : "Alerta");
   const { data: cfg } = useFusionConfig();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -81,6 +88,8 @@ export function AlertDetail() {
     );
   }
   const reason = primaryReason(alert.reasons);
+  // The reason that names the alert goes first.
+  const reasons = reason ? [reason, ...alert.reasons.filter((r) => r !== reason)] : alert.reasons;
   const start = alertStartMs(alert), end = alert.endedAt?.toMillis?.();
   const open = alert.status === "open";
   const markReviewed = async () => {
@@ -105,15 +114,15 @@ export function AlertDetail() {
             <span className={open ? "tag tag-open" : "tag tag-done"}>{open ? "Sin revisar" : "Revisada"}</span>
           </div>
           <p style={{ margin: 0 }}>
-            Empezó el <strong>{dateTimeText(start)}</strong>{end
+            Empezó <strong>{whenPhrase(start)}</strong>{end
               ? <> y duró <strong>{durationText(end - start)}</strong>.</>
-              : <>. Todavía no termina (o aún no llegan datos nuevos).</>}
+              : <> y todavía continúa (o aún no llegan datos nuevos).</>}
           </p>
         </section>
 
         <section className="panel stack-sm" aria-labelledby="why">
           <h2 className="section-title" id="why">Qué lo originó</h2>
-          <ul className="reason-list">{alert.reasons.map((r) => <ReasonRow key={r.code} r={r} />)}</ul>
+          <ul className="reason-list">{reasons.map((r) => <ReasonRow key={r.code} r={r} />)}</ul>
         </section>
 
         {reason && <EpisodeChart alert={alert} reason={reason} viewer={viewer} />}
@@ -127,7 +136,7 @@ export function AlertDetail() {
         <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
           {open
             ? <button type="button" className="btn btn-primary" onClick={markReviewed} disabled={busy}><Icon name="check-circle" />{busy ? "Guardando…" : "Marcar como revisada"}</button>
-            : <span className="small muted"><Icon name="check-circle" size={14} /> Revisada{alert.acknowledgedAt?.toMillis?.() ? ` el ${dateTimeText(alert.acknowledgedAt.toMillis())}` : ""}.</span>}
+            : <span className="small muted"><Icon name="check-circle" size={14} /> Revisada{alert.acknowledgedAt?.toMillis?.() ? ` ${whenPhrase(alert.acknowledgedAt.toMillis())}` : ""}</span>}
           <Link className="btn btn-secondary" to={`/perros/${alert.dogId}/veterinario`}><Icon name="stethoscope" />Vista para el veterinario</Link>
         </div>
         <Notice />

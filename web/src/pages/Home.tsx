@@ -5,8 +5,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DogCard } from "../components/DogCard";
-import { Callout, EmptyState, Icon, Notice, PageHead } from "../components/ui";
+import { Callout, EmptyState, Icon, Notice, PageHead, usePageTitle } from "../components/ui";
 import { useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog } from "../data/hooks";
+import { byAttention, homeSummary } from "../lib/plain";
 
 const HIDE_KEY = (uid: string) => `onboarding-hidden:${uid}`;
 
@@ -60,6 +61,7 @@ function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null
 
 export function Home() {
   const { user, isAdmin } = useAuth();
+  usePageTitle("Tus perros");
   const viewer = { uid: user!.uid, isAdmin };
   const { data: dogs, loading, error } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });
   const { data: cfg } = useFusionConfig();
@@ -74,20 +76,23 @@ export function Home() {
     return m;
   }, [open]);
   const sorted = [...dogs].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  // Cards: the dogs that need a look first.
+  const cards = byAttention(sorted.map((d) => ({ dog: d, name: d.name, level: d.status?.level ?? null }))).map((x) => x.dog);
+  const summary = homeSummary(sorted.map((d) => ({ name: d.name, level: d.status?.level ?? null, learning: !d.baseline })));
   const anyData = sorted.some((d) => d.status);
   // The guide shows until a dog has data; with dogs registered it can be hidden (without dogs it is the empty state).
   const showGuide = !isAdmin && !loading && !anyData && (!sorted.length || !hidden);
   const hide = () => { try { localStorage.setItem(HIDE_KEY(user!.uid), "1"); } catch { /* not stored */ } setHidden(true); };
   return (
     <main className="page" id="main">
-      <PageHead title="Tus perros" sub="Así están tus perros respecto a su patrón normal." />
+      <PageHead title="Tus perros" sub={summary ?? "Aquí verás cómo están tus perros respecto a su patrón normal."} />
       <div className="stack">
         <Notice />
         {error && <Callout kind="error">No pudimos cargar tus perros. Revisa tu conexión e inténtalo de nuevo.</Callout>}
         {showGuide && <Onboarding dogs={sorted} onHide={sorted.length ? hide : null} />}
         {isAdmin && !loading && !sorted.length && <EmptyState title="Todavía no hay perros" text="Los perros de la demostración se crean con el seed o el bootstrap." />}
         {loading ? <div className="boot" style={{ minHeight: 200 }} aria-busy="true">Cargando tus perros…</div>
-          : sorted.length > 0 && <div className="grid-cards">{sorted.map((d) => <DogCard key={d.id} dog={d} cfg={cfg} openAlert={newestOpen.get(d.id)} />)}</div>}
+          : sorted.length > 0 && <div className="grid-cards">{cards.map((d) => <DogCard key={d.id} dog={d} cfg={cfg} openAlert={newestOpen.get(d.id)} />)}</div>}
       </div>
     </main>
   );

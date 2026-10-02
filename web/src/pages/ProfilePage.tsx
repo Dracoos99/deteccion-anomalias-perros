@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, LevelTag, PageHead } from "../components/ui";
+import { Callout, EmptyState, Icon, LevelTag, PageHead, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useDogs, useUserProfile } from "../data/hooks";
 import { disablePush, enablePush, permission, pushOnHere, pushSupport, type PushSupport } from "../lib/push";
@@ -69,6 +69,7 @@ function NotificationsPanel({ uid }: { uid: string }) {
 
 export function ProfilePage() {
   const { user, isAdmin, logout } = useAuth();
+  usePageTitle("Perfil");
   const navigate = useNavigate();
   const { data: dogs, loading } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });
   const sorted = [...dogs].sort((a, b) => a.name.localeCompare(b.name, "es"));
@@ -97,7 +98,7 @@ export function ProfilePage() {
                   <li key={d.id}>
                     <Link to={`/perros/${d.id}`} className="dog-list-name"><Icon name="paw" size={15} /><strong>{d.name}</strong></Link>
                     <span className="small muted">{d.breed ?? ""}</span>
-                    {(isAdmin || d.ownerId === user!.uid) && <Link className="small" to={`/perros/${d.id}/editar`}>Editar</Link>}
+                    {(isAdmin || d.ownerId === user!.uid) && <Link className="small dog-list-edit" to={`/perros/${d.id}/editar`} aria-label={`Editar el perfil de ${d.name}`}>Editar</Link>}
                   </li>
                 ))}
               </ul>

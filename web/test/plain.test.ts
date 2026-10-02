@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_FUSION_CONFIG, type AlertReason, type DogStatus } from "../../shared/types";
 import {
-  activityFriendly, alertTitle, behaviorNow, describeDog, durationText, heartFriendly, hrBand, primaryReason, tempFriendly, whatToDo,
+  activityFriendly, alertTitle, behaviorNow, byAttention, dayHeading, describeDog, durationText, heartFriendly, homeSummary, hrBand, namesText,
+  primaryReason, tempFriendly, whatToDo, whenText,
 } from "../src/lib/plain";
 
 const cfg = DEFAULT_FUSION_CONFIG;
@@ -73,5 +74,44 @@ describe("alerts in plain language", () => {
     expect(durationText(20_000)).toBe("menos de 1 minuto");
     expect(durationText(15 * 60_000)).toBe("15 min");
     expect(durationText(135 * 60_000)).toBe("2 h 15 min");
+  });
+});
+
+describe("Inicio summary and order", () => {
+  const dogs = [
+    { name: "Toby", level: "green" as const }, { name: "Rocky", level: "red" as const },
+    { name: "Luna", level: "amber" as const }, { name: "Mora", level: null },
+  ];
+  it("puts the dogs that need a look first, then the rest, then those without data", () => {
+    expect(byAttention(dogs).map((d) => d.name)).toEqual(["Rocky", "Luna", "Toby", "Mora"]);
+  });
+  it("says first which dogs moved away from their normal pattern, without gendered words", () => {
+    expect(homeSummary(dogs)).toBe("Rocky se alejó de su patrón normal; revisa cómo está. Luna tiene un cambio leve. Toby está como de costumbre.");
+    expect(homeSummary([{ name: "Toby", level: "green" }])).toBe("Toby está dentro de su patrón normal.");
+    expect(homeSummary([{ name: "Toby", level: "green" }, { name: "Luna", level: "green" }])).toBe("Todo en orden: tus 2 perros están dentro de su patrón normal.");
+    expect(homeSummary([{ name: "Mora", level: null }])).toBeNull();
+    const many = ["Bruno", "Coco", "Kira", "Max"].map((name) => ({ name, level: "green" as const }));
+    expect(homeSummary([...many, { name: "Nala", level: "red" }, { name: "Simba", level: "red" }]))
+      .toBe("Nala y Simba se alejaron de su patrón normal; revisa cómo están. Los otros 4 están como de costumbre.");
+    expect(namesText(["Bruno", "Coco", "Kira"])).toBe("Bruno, Coco y Kira");
+    // A dog without a baseline is learning, never "within its normal pattern".
+    expect(homeSummary([{ name: "Pelusa", level: "green", learning: true }])).toBe("Estamos aprendiendo el patrón normal de Pelusa.");
+    expect(homeSummary([{ name: "Toby", level: "green" }, { name: "Pelusa", level: "green", learning: true }]))
+      .toBe("Toby está dentro de su patrón normal. Estamos aprendiendo el patrón normal de Pelusa.");
+  });
+});
+
+describe("times in words", () => {
+  const now = new Date(2026, 9, 2, 15, 0).getTime();
+  const sp = (x: string) => x.replace(/\s/g, " ");   // ICU puts no-break spaces before "a. m."
+  it("says today or yesterday with the time, and the date otherwise", () => {
+    expect(sp(whenText(new Date(2026, 9, 2, 9, 5).getTime(), now))).toBe("hoy a las 9:05 a. m.");
+    expect(sp(whenText(new Date(2026, 9, 1, 13, 30).getTime(), now))).toBe("ayer a la 1:30 p. m.");
+    expect(whenText(new Date(2026, 8, 28, 13, 30).getTime(), now)).toMatch(/^28 set\. 2026/);
+  });
+  it("heads each day of the alert list", () => {
+    expect(dayHeading(new Date(2026, 9, 2, 1).getTime(), now)).toBe("Hoy");
+    expect(dayHeading(new Date(2026, 9, 1, 23).getTime(), now)).toBe("Ayer");
+    expect(dayHeading(new Date(2026, 8, 29, 8).getTime(), now)).toBe("Martes, 29 de setiembre de 2026");
   });
 });

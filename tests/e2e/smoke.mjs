@@ -40,9 +40,19 @@ const text = () => page.evaluate(() => document.body.innerText);
 const noRoleWords = async () => { const t = await text(); return ROLE_WORDS.filter((w) => t.includes(w)); };
 const shot = async (name) => { await sleep(500); await page.screenshot({ path: path.join(OUT, name + ".png"), fullPage: true }); };
 const logout = async () => {
-  const [btn] = await page.$$("xpath/.//button[contains(., 'Cerrar sesión')]");
-  await btn.click(); await waitPath("/acceso");
+  for (const btn of await page.$$("xpath/.//button[contains(., 'Cerrar sesión')]")) {
+    if (await btn.isVisible()) { await btn.click(); break; }
+  }
+  await waitPath("/acceso");
 };
+/** Navigate inside the app, as a person following links does: no reload, so the emulator's HTTP/1.1 connections
+ * (6 per host) are not used up by new Firestore channels on every page. */
+const spaGo = async (p) => {
+  await page.evaluate((x) => { history.pushState({}, "", x); dispatchEvent(new PopStateEvent("popstate")); }, p);
+  await sleep(1200);
+};
+/** No horizontal scroll at the current width (a phone must never scroll sideways). */
+const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
 const login = async (email, password = "demo-1234") => {
   await page.goto(BASE + "/acceso", { waitUntil: "load" });
   await page.waitForSelector("#a-email");
@@ -68,12 +78,28 @@ await page.waitForSelector(".dog-card", { timeout: 10000 }).catch(() => {});
 const ownerDogs = await page.$$eval(".dog-name", (els) => els.map((e) => e.textContent));
 check("owner sees her 3 dogs only", JSON.stringify(ownerDogs) === JSON.stringify(["Luna", "Rocky", "Toby"]), JSON.stringify(ownerDogs));
 check("fixed notice with the v3 wording", (await text()).includes(NOTICE));
-check("navigation is Inicio · Alertas · Perfil", JSON.stringify(await navLabels(".nav .nav-link")) === JSON.stringify(["Inicio", "Alertas", "Perfil"]));
+check("wide screens show the side navigation Inicio · Alertas · Perfil",
+  await page.$eval(".sidebar", (el) => getComputedStyle(el).display !== "none")
+  && JSON.stringify(await navLabels(".sidebar .side-link .nav-label")) === JSON.stringify(["Inicio", "Alertas", "Perfil"]));
+check("the side navigation names the account and offers to sign out", (await page.$eval(".sidebar", (el) => el.innerText)).includes("Lucía Paredes")
+  && (await page.$eval(".sidebar", (el) => el.innerText)).includes("Cerrar sesión"));
 check("no role is shown on Inicio", !(await noRoleWords()).length, (await noRoleWords()).join(", "));
 await shot("02-inicio-1440");
 await page.setViewport({ width: 390, height: 844 });
 check("mobile shows the bottom tab bar with the three sections", await page.$eval(".tabbar", (t) => getComputedStyle(t).display !== "none")
-  && JSON.stringify(await navLabels(".tabbar .tabbar-link")) === JSON.stringify(["Inicio", "Alertas", "Perfil"]));
+  && JSON.stringify(await navLabels(".tabbar .tabbar-link .nav-label")) === JSON.stringify(["Inicio", "Alertas", "Perfil"])
+  && await page.$eval(".sidebar", (el) => getComputedStyle(el).display === "none"));
+const wideOnPhone = [];
+for (const p of ["/", "/perros/toby", "/alertas", "/perfil", "/perfil/datos", "/perros/toby/veterinario"]) {
+  await spaGo(p);
+  if (!(await noSideScroll())) wideOnPhone.push(p);
+}
+check("no page scrolls sideways on a 390 px phone", !wideOnPhone.length, wideOnPhone.join(", "));
+check("the browser tab is named after the page (and the saved PDF too)", (await page.title()).startsWith("Toby · Vista para el veterinario · "));
+await spaGo("/perros/toby");
+await page.waitForFunction(() => document.body.innerText.includes("Cargar sus datos"), { timeout: 15000 }).catch(() => {});
+check("a dog without data shows one next step instead of empty tabs", !(await page.$("[role=tablist]")) && (await text()).includes("Cargar sus datos"),
+  `${path_()} · tabs: ${!!(await page.$("[role=tablist]"))} · ${(await text()).replace(/\s+/g, " ").slice(0, 300)}`);
 await shot("02-inicio-390");
 await page.setViewport({ width: 1440, height: 900 });
 
@@ -187,6 +213,11 @@ try {
   await page.goto(BASE + dogPath, { waitUntil: "load" });
   const learning = await page.waitForFunction(() => document.body.innerText.includes("Aprendiendo qué es normal para Mora Luna"), { timeout: 15000 }).then(() => true, () => false);
   check("the dog now has data and is learning its normal pattern", learning && (await text()).includes("Estamos aprendiendo su patrón normal"));
+  await page.waitForSelector("#tabbtn-resumen", { timeout: 10000 }).catch(() => {});
+  await page.focus("#tabbtn-resumen"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight");
+  check("the detail tabs move with the arrow keys", await page.evaluate(() => document.activeElement?.id === "tabbtn-corazon"
+    && document.getElementById("tabbtn-corazon")?.getAttribute("aria-selected") === "true"));
+  check("the browser tab is named after the dog", (await page.title()).startsWith("Mora Luna · "));
   await shot("03b-detalle-aprendiendo-1440");
   await page.goto(BASE + "/perfil", { waitUntil: "load" });
   await page.waitForFunction(() => document.body.innerText.includes("Qué quieres recibir"), { timeout: 10000 }).catch(() => {});

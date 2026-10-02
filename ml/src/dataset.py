@@ -42,12 +42,14 @@ def load_windows(split: str | None = None, window_s: float = C.WINDOW_S, status:
     return X, ordered["label"].to_numpy(np.int8), ordered["dog_id"].to_numpy()
 
 
-def load_sequences(split: str, window_s: float = C.WINDOW_S, out_dir=C.VEHKAOJA_OUT) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
-    """Every window of a split (any status) in time order per recording, z-scored per dog, with its metadata: the
-    stream a deployed model sees, transitions and unlabelled stretches included. y is the class index of clean windows
-    and -1 for the others; meta has dog_id, file, start and status, aligned with X."""
+def load_sequences(split: str | None, window_s: float = C.WINDOW_S, out_dir=C.VEHKAOJA_OUT, dogs: list[int] | None = None
+                   ) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
+    """Every window of a split (or of explicit dogs, any status) in time order per recording, z-scored per dog, with
+    its metadata: the stream a deployed model sees, transitions and unlabelled stretches included. y is the class index
+    of clean windows and -1 for the others; meta has dog_id, file, start and status, aligned with X."""
     idx = pd.read_parquet(out_dir / f"windows_{window_s:.1f}s.parquet")
-    dogs = json.loads((out_dir / "splits.json").read_text(encoding="utf-8"))[split]
+    if dogs is None:
+        dogs = json.loads((out_dir / "splits.json").read_text(encoding="utf-8"))[split]
     idx = idx[idx["dog_id"].isin(dogs)].sort_values(["dog_id", "file", "start"], kind="stable").reset_index(drop=True)
     win, _ = C.window_samples(window_s)
     stats = pd.read_parquet(out_dir / "norm_stats.parquet").pivot(index="dog_id", columns="channel")

@@ -56,23 +56,15 @@ export function DogCard({ dog, cfg, openAlert }: { dog: Dog; cfg: Fusion; openAl
             </div>
           </div>
           <BaselineProgress dog={dog} cfg={cfg} />
-          {s.engineVersion?.startsWith("provisional") && (
-            <p className="xs muted" style={{ margin: 0 }}>{s.behaviorModel && s.physioModel
-              ? "Conducta y corazón según los modelos; temperatura con reglas provisionales."
-              : s.behaviorModel
-                ? "Conducta según el modelo; corazón y temperatura con reglas provisionales."
-                : "Puntaje provisional: reglas estadísticas mientras se entrenan los modelos."}</p>
-          )}
         </>
       ) : (
-        <div className="well small">Todavía no hay datos de {dog.name}. Aparecerán cuando lleguen sus primeras lecturas; su patrón normal se calcula con sus primeros datos.
+        <div className="well small">Sus datos aparecerán cuando lleguen sus primeras lecturas; con ellas aprendemos su patrón normal.
           {canLoad && <div style={{ marginTop: 8 }}><Link className="btn btn-secondary btn-sm" to={`/perfil/datos?perro=${dog.id}`}><Icon name="upload" size={14} />Cargar sus datos</Link></div>}
         </div>
       )}
       <div className="dog-card-foot">
-        <span className="xs muted"><Icon name="clock" size={13} /> {s ? <>Actualizado <Ago t={s.updatedAt?.toDate?.()} /></> : "Sin datos"}
-          <LiveBadge t={s?.updatedAt?.toDate?.()} /></span>
-        <Link className="small" to={`/perros/${dog.id}`}>Ver detalle <Icon name="chevron-right" size={14} /></Link>
+        <span className="xs muted">{s ? <><Icon name="clock" size={13} /> Actualizado <Ago t={s.updatedAt?.toDate?.()} /><LiveBadge t={s.updatedAt?.toDate?.()} /></> : "Esperando sus primeros datos"}</span>
+        <Link className="small card-more" to={`/perros/${dog.id}`} aria-label={`Ver detalle de ${dog.name}`}>Ver detalle <Icon name="chevron-right" size={14} /></Link>
       </div>
     </article>
   );
