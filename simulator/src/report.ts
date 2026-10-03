@@ -3,7 +3,7 @@
  * for the provisional rules: which injections opened an alert and how many alerts opened without any injection.
  */
 import type { Firestore, Timestamp } from "firebase-admin/firestore";
-import { BLOCK_SECONDS, WINDOWS_PER_BLOCK, WINDOW_SECONDS } from "./config";
+import { BLOCK_SECONDS, USING_EMULATORS, WINDOWS_PER_BLOCK, WINDOW_SECONDS } from "./config";
 import { summarize } from "./stats";
 import type { SimulatorRunDoc } from "../../shared/types";
 
@@ -100,7 +100,7 @@ export function formatReport(r: RunReport): string {
   const lines = [
     `Ejecución ${r.runId} (${r.state}, ×${r.speed}): ${r.dogs.length} perros, ${r.simulatedMinutes} min simulados`,
     `Bloques: ${r.readings} escritos (${r.windowsWritten * WINDOW_SECONDS} s de datos${r.windowsExpected != null ? ` de ${r.windowsExpected * WINDOW_SECONDS} s esperados` : ""}), ${r.results} con resultado, ${r.lostBlocks} perdidos`,
-    `Latencia (escritura → resultado, emulador): media ${r.latency.avgMs ?? "—"} ms · p50 ${r.latency.p50Ms ?? "—"} · p95 ${r.latency.p95Ms ?? "—"} · máx ${r.latency.maxMs ?? "—"} ms`,
+    `Latencia (escritura → resultado, ${USING_EMULATORS ? "emulador" : "nube"}): media ${r.latency.avgMs ?? "—"} ms · p50 ${r.latency.p50Ms ?? "—"} · p95 ${r.latency.p95Ms ?? "—"} · máx ${r.latency.maxMs ?? "—"} ms`,
   ];
   for (const d of r.dogs) {
     lines.push(`  ${d.dogId.padEnd(8)} ${String(d.readings).padStart(5)} bloques · niveles ${JSON.stringify(d.levels)} · alertas ${d.alertsOpened.length}` +

@@ -253,6 +253,9 @@ export class SimulatorRun {
   }
 
   private async writeBlock(dogId: string, d: SimDog): Promise<void> {
+    // With a fixed duration, a dog that reached it stops while the others catch up: since each dog waits for its own
+    // results (below), dogs advance at different paces and would otherwise write past the limit.
+    if (!d.parts && this.durationS != null && d.next * BLOCK_SECONDS >= this.durationS) return;
     // The Function processes each block in a transaction on the dog's memory, and Firestore triggers keep no
     // order. If blocks of a dog overlap (a fast run, cold instances), later ones finish first and the earlier ones are
     // scored as out of order, without updating the memory: the heart-rate minute and the activity average break.
