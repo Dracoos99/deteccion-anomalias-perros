@@ -1,7 +1,7 @@
 /* Carga de CSV: choose the dog, drop the file, check it,
-   preview rows and problems, confirm, and follow how the blocks are written and scored. Layout of the v2 prototype
-. */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+   preview rows and problems, confirm, and follow how the blocks are written and scored. Layout of the v3 mockups
+: the dog, the file and its review in one panel, the preview, then the main action. */
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Callout, EmptyState, Icon, PageHead, fmtNum, usePageTitle } from "../components/ui";
@@ -19,8 +19,11 @@ const COLUMNS: [string, string][] = [
   ["temp_c", "Temperatura en °C (opcional, puede ir vacía)"],
 ];
 const STEPS = ["Archivo", "Revisión", "Vista previa", "Carga"];
+const NUMERIC = new Set(["acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z", "hr_bpm", "temp_c"]);
 const plural = (n: number, one: string, many: string) => `${fmtNum(n)} ${n === 1 ? one : many}`;
 const fmtBytes = (b: number) => (b < 1024 ? `${b} B` : b < 1048576 ? `${fmtNum(b / 1024)} KB` : `${fmtNum(b / 1048576, 1)} MB`);
+/** Warnings that the checks above already say in their own words. */
+const REPEATS_A_CHECK = ["con la fecha o el movimiento mal escritos", "imposibles o mal escritos"];
 
 function download(name: string, text: string) {
   const a = document.createElement("a");
@@ -33,7 +36,7 @@ function download(name: string, text: string) {
 function Check({ state, children }: { state: "ok" | "warn" | "error"; children: ReactNode }) {
   const icon = state === "ok" ? "check-circle" : state === "warn" ? "alert-triangle" : "alert-octagon";
   const color = `var(--color-status-${state === "ok" ? "green" : state === "warn" ? "amber" : "red"})`;
-  return <li><Icon name={icon} size={18} style={{ color }} /><span>{children}</span></li>;
+  return <li><Icon name={icon} size={14} style={{ color }} /><span>{children}</span></li>;
 }
 
 /** Status of an upload in plain Spanish; a stale one (the tab was closed) reads as interrupted. */
@@ -47,20 +50,21 @@ function uploadState(u: CsvUpload, now = Date.now()): { text: string; tone: "ok"
 function RecentUploads({ uploads, dogs }: { uploads: CsvUpload[]; dogs: Map<string, Dog> }) {
   if (!uploads.length) return null;
   return (
-    <section className="panel" aria-labelledby="recent-title">
+    <section className="panel stack-sm" aria-labelledby="recent-title">
       <h2 className="panel-title" id="recent-title">Cargas recientes</h2>
       <div className="table-wrap" role="region" aria-label="Cargas recientes" tabIndex={0}>
-        <table className="table table-compact">
+        <table className="table">
           <thead><tr><th scope="col">Archivo</th><th scope="col">Perro</th><th scope="col">Datos</th><th scope="col">Estado</th></tr></thead>
           <tbody>{uploads.map((u) => {
             const st = uploadState(u);
             const first = u.firstBlockAt?.toMillis?.();
             return (
               <tr key={u.id}>
-                <td className="small">{u.fileName}</td>
-                <td className="small">{dogs.get(u.dogId)?.name ?? "—"}</td>
-                <td className="small">{first ? dateTimeText(first) : "—"} · {durationText(u.blocksExpected * 10_000)}</td>
-                <td className={`small ${st.tone === "warn" ? "out-of-range" : st.tone === "muted" ? "muted" : ""}`}>{st.text}</td>
+                <td>{u.fileName}</td>
+                <td>{dogs.get(u.dogId)?.name ?? "—"}</td>
+                <td>{first ? dateTimeText(first) : "—"} · {durationText(u.blocksExpected * 10_000)}</td>
+                <td><span className={`tag ${st.tone === "ok" ? "tag-green" : st.tone === "warn" ? "tag-amber" : "tag-open"}`}>
+                  <Icon name={st.tone === "ok" ? "check-circle" : st.tone === "warn" ? "alert-triangle" : "clock"} size={12} />{st.text}</span></td>
               </tr>
             );
           })}</tbody>
@@ -136,88 +140,92 @@ export function CsvUploadPage() {
   const learnTime = durationText((cfg.baseline?.minBlocks ?? 360) * 10_000);
   const writtenPct = progress ? Math.round((100 * progress.written) / progress.total) : 0;
   const processedPct = progress ? Math.round((100 * progress.processed) / progress.total) : 0;
+  const warnings = check ? check.warnings.filter((w) => !REPEATS_A_CHECK.some((r) => w.includes(r))) : [];
 
   return (
     <main className="page" id="main">
       <nav className="crumbs" aria-label="Ruta"><Link to="/perfil">Perfil</Link><span aria-hidden="true">›</span><span>Cargar datos</span></nav>
-      <PageHead title="Cargar datos desde un archivo" sub="Sube las lecturas del sensor de tu perro (movimiento y, si las tienes, frecuencia cardiaca y temperatura). Las revisamos antes de guardarlas." />
+      <PageHead title="Cargar datos desde un archivo" sub="Sube las lecturas del sensor de tu perro. Las revisamos antes de guardarlas." />
       <ol className="stepper" aria-label="Pasos">
         {STEPS.map((s, i) => (
           <li key={s} aria-current={step === i + 1 ? "step" : undefined} data-done={step > i + 1}>
-            <span className="step-num">{step > i + 1 ? <Icon name="check" size={12} /> : i + 1}</span>{s}
+            <span className="step-num" aria-hidden={step > i + 1 ? true : undefined}>{step > i + 1 ? <Icon name="check" size={12} /> : i + 1}</span>{s}
+            {step > i + 1 && <span className="sr-only"> (listo)</span>}
           </li>
         ))}
       </ol>
       <div className="split">
         <div className="stack">
-          {dogsLoading ? <p className="small">Cargando…</p> : !dogs.length ? (
+          {dogsLoading ? (
+            <div className="stack-sm" aria-busy="true"><p className="small muted">Cargando…</p><div className="skeleton" style={{ height: 40, maxWidth: 360 }} /></div>
+          ) : !dogs.length ? (
             <EmptyState title="Primero registra a tu perro" text="Los datos del archivo se guardan en el perfil de uno de tus perros."
               action={<Link className="btn btn-primary" to="/perros/nuevo"><Icon name="plus" />Registrar a mi perro</Link>} />
           ) : (
             <>
-              <div className="field" style={{ maxWidth: 360 }}>
-                <label htmlFor="csv-dog">¿De qué perro son los datos?</label>
-                <select id="csv-dog" className="select" value={dogId} onChange={(e) => { setDogId(e.target.value); setNotAfter(lastDataOf(dogMap.get(e.target.value))); }} disabled={busy || done}>
-                  {dogs.map((d) => <option key={d.id} value={d.id}>{d.name}{d.breed ? ` · ${d.breed}` : ""}</option>)}
-                </select>
-              </div>
-
-              {!file && (
-                <div className="dropzone" data-over={over} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-                  onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]); }}>
-                  <Icon name="upload" size={32} />
-                  <div style={{ fontWeight: 600, fontSize: 17 }}>Arrastra tu archivo CSV aquí</div>
-                  <div className="small muted">o</div>
-                  <div className="row" style={{ justifyContent: "center", flexWrap: "wrap", gap: 8 }}>
-                    <label className="btn btn-primary" htmlFor="csv-file"><Icon name="file" />Elegir archivo</label>
-                    <button className="btn btn-secondary" type="button" onClick={useSample}>Probar con un archivo de ejemplo</button>
-                  </div>
-                  <input ref={inputRef} id="csv-file" type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
-                  <div className="xs muted">Hasta {CSV_MAX_BYTES / 1048576} MB · 100 muestras por segundo</div>
+              <section className="panel stack-sm" aria-labelledby="val-title">
+                <h2 className="sr-only" id="val-title">{file ? `Revisión de ${file.name}` : "Archivo"}</h2>
+                <div className="field" style={{ maxWidth: 360 }}>
+                  <label htmlFor="csv-dog">¿De qué perro son los datos?</label>
+                  <select id="csv-dog" className="select" value={dogId} onChange={(e) => { setDogId(e.target.value); setNotAfter(lastDataOf(dogMap.get(e.target.value))); }} disabled={busy || done}>
+                    {dogs.map((d) => <option key={d.id} value={d.id}>{d.name}{d.breed ? ` · ${d.breed}` : ""}</option>)}
+                  </select>
                 </div>
-              )}
 
-              {error && <Callout kind="error">{error}</Callout>}
-
-              {file && check && (
-                <section className="panel stack-sm" aria-labelledby="val-title">
-                  <div className="row-between">
-                    <h2 className="panel-title" id="val-title" style={{ margin: 0 }}>Revisión de {file.name}</h2>
-                    {!busy && !done && <button className="btn btn-ghost btn-sm" type="button" onClick={reset}><Icon name="x" size={14} />Cambiar archivo</button>}
+                {!file && (
+                  <div className="dropzone" data-over={over} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+                    onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]); }}>
+                    <Icon name="upload" size={28} style={{ color: "var(--color-text-muted)" }} />
+                    <div className="drop-title">Arrastra tu archivo CSV aquí</div>
+                    <div className="small muted">o</div>
+                    <div className="row drop-actions">
+                      <label className="btn btn-primary" htmlFor="csv-file"><Icon name="file" />Elegir archivo</label>
+                      <button className="btn btn-secondary" type="button" onClick={useSample}>Probar con un archivo de ejemplo</button>
+                    </div>
+                    <input ref={inputRef} id="csv-file" type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
+                    <div className="xs muted">Hasta {CSV_MAX_BYTES / 1048576} MB · 100 muestras por segundo</div>
                   </div>
-                  <ul className="checklist">
-                    <Check state={check.missing.length ? "error" : "ok"}>{check.missing.length ? `Faltan columnas: ${check.missing.join(", ")}.` : "Las 10 columnas esperadas están presentes."}</Check>
-                    {!check.missing.length && <Check state={check.rowsDropped ? (check.valid ? "warn" : "error") : "ok"}>
-                      {check.rowsDropped ? `${plural(check.rowsDropped, "fila", "filas")} con la fecha o el movimiento mal escritos: no se cargan.` : "Fechas y movimiento bien escritos en todas las filas."}</Check>}
-                    {!check.missing.length && <Check state={check.valuesDropped ? "warn" : "ok"}>
-                      {check.valuesDropped ? `${plural(check.valuesDropped, "valor", "valores")} de frecuencia cardiaca o temperatura imposibles o mal escritos: se dejan fuera (el resto de la fila sí se carga).` : "Ningún valor fuera de lo posible."}</Check>}
-                    {check.rateHz != null && <Check state={Math.abs(check.rateHz - 100) <= 5 ? "ok" : "error"}>Frecuencia de muestreo: {check.rateHz} Hz{Math.abs(check.rateHz - 100) <= 5 ? "." : "; se esperan 100 Hz."}</Check>}
-                    <Check state={file.size <= CSV_MAX_BYTES ? "ok" : "error"}>Tamaño: {fmtBytes(file.size)} de {CSV_MAX_BYTES / 1048576} MB.</Check>
-                  </ul>
-                  {check.blocking.length > 0 && (
-                    <div className="callout callout-error" role="alert"><Icon name="alert-octagon" size={18} style={{ marginTop: 2 }} />
-                      <div><strong>No se puede cargar este archivo.</strong> {check.blocking.join(" ")}</div></div>
-                  )}
-                  {!check.blocking.length && (
-                    <div className="callout callout-ok"><Icon name="check-circle" size={18} style={{ marginTop: 2, color: "var(--color-status-green)" }} />
-                      <div>{plural(check.valid, "fila válida", "filas válidas")} · se crearán <strong>{plural(check.blocks.length, "bloque", "bloques")} de 10 s</strong> ({durationText(check.blocks.length * 10_000)} de datos, desde el {dateTimeText(check.blocks[0].startMs)}) para {dog?.name ?? "—"}.</div></div>
-                  )}
-                  {check.warnings.length > 0 && !check.blocking.length && (
-                    <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{check.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
-                  )}
-                </section>
-              )}
+                )}
+
+                {error && <Callout kind="error">{error}</Callout>}
+
+                {file && check && (
+                  <>
+                    <div className="row-between file-row">
+                      <span className="small file-name"><Icon name="file" size={14} /> <strong>{file.name}</strong> · {fmtBytes(file.size)}</span>
+                      {!busy && !done && <button className="btn btn-ghost btn-sm" type="button" onClick={reset}><Icon name="x" size={12} />Cambiar archivo</button>}
+                    </div>
+                    <ul className="checklist">
+                      <Check state={check.missing.length ? "error" : "ok"}>{check.missing.length ? `Faltan columnas: ${check.missing.join(", ")}.` : "Las 10 columnas esperadas están presentes."}</Check>
+                      {!check.missing.length && <Check state={check.rowsDropped ? (check.valid ? "warn" : "error") : "ok"}>
+                        {check.rowsDropped ? `${plural(check.rowsDropped, "fila", "filas")} con la fecha o el movimiento mal escritos: no se cargan.` : "Fechas y movimiento bien escritos en todas las filas."}</Check>}
+                      {!check.missing.length && <Check state={check.valuesDropped ? "warn" : "ok"}>
+                        {check.valuesDropped ? `${plural(check.valuesDropped, "valor", "valores")} de frecuencia cardiaca o temperatura imposibles o mal escritos: se dejan fuera (el resto de la fila sí se carga).` : "Ningún valor fuera de lo posible."}</Check>}
+                      {check.rateHz != null && <Check state={Math.abs(check.rateHz - 100) <= 5 ? "ok" : "error"}>Frecuencia de muestreo: {check.rateHz} Hz{Math.abs(check.rateHz - 100) <= 5 ? "." : "; se esperan 100 Hz."}</Check>}
+                      {file.size > CSV_MAX_BYTES && <Check state="error">Tamaño: {fmtBytes(file.size)} de {CSV_MAX_BYTES / 1048576} MB.</Check>}
+                      {!check.blocking.length && warnings.map((w) => <Check key={w} state="warn">{w}</Check>)}
+                    </ul>
+                    {check.blocking.length > 0 ? (
+                      <div className="callout callout-error" role="alert"><Icon name="alert-octagon" size={16} style={{ marginTop: 1, color: "var(--color-status-red)" }} />
+                        <div><strong>No se puede cargar este archivo.</strong> {check.blocking.join(" ")}</div></div>
+                    ) : (
+                      <p className="small">{plural(check.valid, "fila válida", "filas válidas")} · se crearán <strong>{plural(check.blocks.length, "bloque", "bloques")} de 10 s</strong> ({durationText(check.blocks.length * 10_000)} de datos, desde el {dateTimeText(check.blocks[0].startMs)}) para {dog?.name ?? "—"}.</p>
+                    )}
+                  </>
+                )}
+              </section>
 
               {file && check && check.preview.length > 0 && (
-                <section className="panel" aria-labelledby="prev-title">
+                <section className="panel stack-sm" aria-labelledby="prev-title">
                   <h2 className="panel-title" id="prev-title">Vista previa</h2>
                   <div className="table-wrap" role="region" aria-label="Vista previa del archivo" tabIndex={0}>
-                    <table className="table table-compact">
-                      <thead><tr><th scope="col">Fila</th>{check.header.map((h) => <th scope="col" key={h}>{h}</th>)}</tr></thead>
+                    <table className="table table-preview">
+                      <thead><tr><th scope="col" className="num">Fila</th>{check.header.map((h) => <th scope="col" key={h} className={NUMERIC.has(h) ? "num" : undefined}>{h}</th>)}</tr></thead>
                       <tbody>{check.preview.map((p) => (
-                        <tr key={p.row}><td className="muted">{p.row}</td>{p.cols.map((c, j) => {
+                        <tr key={p.row}><td className="num">{p.row}</td>{p.cols.map((c, j) => {
                           const e = p.cellErr[check.header[j]];
-                          return <td key={j} className={e ? (p.cellErr[check.header[j]] && !e.includes("se deja fuera") ? "cell-error" : "cell-warn") : ""} title={e || undefined}>
+                          const kind = e ? (!e.includes("se deja fuera") ? "cell-error" : "cell-warn") : "";
+                          return <td key={j} className={[NUMERIC.has(check.header[j]) ? "num" : "", kind].filter(Boolean).join(" ") || undefined} title={e || undefined}>
                             {e && <Icon name="alert-triangle" size={12} style={{ marginRight: 3 }} />}{c || <span className="muted">vacío</span>}</td>;
                         })}</tr>
                       ))}</tbody>
@@ -225,8 +233,8 @@ export function CsvUploadPage() {
                   </div>
                   {check.issues.length > 0 && (
                     <>
-                      <h3 className="small" style={{ margin: "14px 0 6px" }}>Problemas encontrados ({check.issues.length >= 200 ? "200 o más" : check.issues.length})</h3>
-                      <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
+                      <h3 className="field-label">Problemas encontrados ({check.issues.length >= 200 ? "200 o más" : check.issues.length})</h3>
+                      <ul className="plain-list small">
                         {check.issues.slice(0, 8).map((e, i) => <li key={i}>Fila {e.row}, columna <span className="mono">{e.column}</span>: {e.message}</li>)}
                         {check.issues.length > 8 && <li>y {check.issues.length - 8} más.</li>}
                       </ul>
@@ -236,13 +244,13 @@ export function CsvUploadPage() {
               )}
 
               {file && check && !check.blocking.length && (
-                <section className="panel stack-sm" aria-live="polite" aria-labelledby="up-title">
+                <section className="stack-sm upload-step" aria-live="polite" aria-labelledby="up-title">
                   <h2 className="sr-only" id="up-title">Carga</h2>
                   {done && progress ? (
-                    <div className="callout callout-ok"><Icon name="check-circle" size={18} style={{ marginTop: 2, color: "var(--color-status-green)" }} />
+                    <div className="callout callout-ok"><Icon name="check-circle" size={16} style={{ marginTop: 1, color: "var(--color-status-green)" }} />
                       <div><strong>Listo: {plural(progress.processed, "bloque analizado", "bloques analizados")} de {progress.total}.</strong> Ya puedes ver los resultados de {dog?.name}.
                         {!dog?.baseline && ` Su patrón normal se aprende con ${learnTime} de sus primeros datos: hasta entonces, solo se vigilan los valores fuera de los rangos de referencia.`}
-                        <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                        <div className="row" style={{ marginTop: 8 }}>
                           <Link className="btn btn-primary btn-sm" to={`/perros/${dog?.id}`}>Ver a {dog?.name}</Link>
                           <button className="btn btn-secondary btn-sm" type="button" onClick={reset}>Cargar otro archivo</button>
                         </div></div></div>
@@ -252,13 +260,13 @@ export function CsvUploadPage() {
                       <div className="progress" role="progressbar" aria-valuenow={writtenPct} aria-valuemin={0} aria-valuemax={100} aria-label="Bloques enviados"><div className="progress-fill" style={{ width: `${writtenPct}%` }} /></div>
                       <div className="row-between small"><span>Analizados por el sistema</span><span className="tabular">{progress.processed} de {progress.total}</span></div>
                       <div className="progress" role="progressbar" aria-valuenow={processedPct} aria-valuemin={0} aria-valuemax={100} aria-label="Bloques analizados"><div className="progress-fill" style={{ width: `${processedPct}%` }} /></div>
-                      <p className="xs muted" style={{ margin: 0 }}>Se envían en orden, uno tras otro, para que el sistema los analice como si llegaran en vivo. No cierres esta pestaña hasta que termine.</p>
+                      <p className="xs muted">Se envían en orden, uno tras otro, para que el sistema los analice como si llegaran en vivo. No cierres esta pestaña hasta que termine.</p>
                     </>
                   ) : (
-                    <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
-                      <button className="btn btn-primary btn-lg" type="button" onClick={upload} disabled={busy || !dog}><Icon name="upload" />Confirmar y cargar {plural(check.blocks.length, "bloque", "bloques")}</button>
-                      {check.warnings.length > 0 && <span className="small muted">Lo que no se carga está en la lista de arriba.</span>}
-                    </div>
+                    <>
+                      <button className="btn btn-primary upload-confirm" type="button" onClick={upload} disabled={busy || !dog}><Icon name="upload" />Confirmar y cargar {plural(check.blocks.length, "bloque", "bloques")}</button>
+                      <p className="xs muted">Se envían en orden, uno tras otro, para que el sistema los analice como si llegaran en vivo.{warnings.length > 0 ? " Lo que no se carga está en la revisión de arriba." : ""}</p>
+                    </>
                   )}
                 </section>
               )}
@@ -270,14 +278,14 @@ export function CsvUploadPage() {
         <aside className="stack" aria-label="Formato del archivo">
           <section className="panel stack-sm">
             <h2 className="panel-title">Formato esperado</h2>
-            <p className="small" style={{ margin: 0 }}>Una fila por muestra, separada por comas, con esta cabecera:</p>
-            <div className="codeblock" role="region" aria-label="Cabecera del archivo CSV" tabIndex={0}>{CSV_HEADER.join(",")}</div>
-            <table className="table table-compact small"><tbody>{COLUMNS.map(([c, d]) => <tr key={c}><td className="mono nowrap">{c}</td><td>{d}</td></tr>)}</tbody></table>
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => download("plantilla_lecturas.csv", templateCsv())}><Icon name="download" size={14} />Descargar plantilla</button>
+            <p className="small">Una fila por muestra, separada por comas, con esta cabecera:</p>
+            <div className="codeblock codeblock-wrap">{CSV_HEADER.map((h, i) => <Fragment key={h}>{h}{i < CSV_HEADER.length - 1 && <>,<wbr /></>}</Fragment>)}</div>
+            <table className="table"><tbody>{COLUMNS.map(([c, d]) => <tr key={c}><td className="mono nowrap">{c}</td><td>{d}</td></tr>)}</tbody></table>
+            <div><button className="btn btn-secondary btn-sm" type="button" onClick={() => download("plantilla_lecturas.csv", templateCsv())}><Icon name="download" size={14} />Descargar plantilla</button></div>
           </section>
           <section className="panel small stack-sm">
             <h2 className="panel-title">Qué revisamos</h2>
-            <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+            <ul className="plain-list">
               <li>Columnas, formato de fecha y números.</li>
               <li>Valores imposibles: frecuencia cardiaca fuera de {cfg.prefilter.hrMin}–{cfg.prefilter.hrMax} lpm o temperatura fuera de {cfg.prefilter.tempMin}–{cfg.prefilter.tempMax} °C.</li>
               <li>Frecuencia de muestreo de 100 Hz y cortes en los datos.</li>
@@ -287,7 +295,7 @@ export function CsvUploadPage() {
           </section>
           <section className="panel small stack-sm">
             <h2 className="panel-title">Su patrón normal</h2>
-            <p style={{ margin: 0 }}>Si tu perro todavía no tiene un patrón normal, el sistema lo aprende con {learnTime} de sus primeros datos y afina su actividad con otros {learnTime} de datos. Carga datos de un periodo en que tu perro estuvo bien.</p>
+            <p>Si tu perro todavía no tiene un patrón normal, el sistema lo aprende con {learnTime} de sus primeros datos y afina su actividad con otros {learnTime} de datos. Carga datos de un periodo en que tu perro estuvo bien.</p>
           </section>
         </aside>
       </div>

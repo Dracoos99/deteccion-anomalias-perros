@@ -1,6 +1,7 @@
 /* Charts in the Broadsheet style: SVG, no chart library. One series per chart, the dog's normal band shaded,
-   dashed reference lines, marks on unusual moments, crosshair with pointer and keyboard (← → Esc), and a text
-   summary for screen readers. */
+   dashed reference lines, amber dots on unusual moments, crosshair with pointer and keyboard (← → Esc), and a text
+   summary for screen readers. Look of the v3 mockups: serif title, legend under the plot, zone labels in
+   their level colour inside the plot. */
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { fmtNum } from "./ui";
 
@@ -35,20 +36,33 @@ const fmtDM = new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short" 
 const xLabel = (t: number, r: RangeKey) => (r === "7d" ? fmtWD.format(t) : fmtHM.format(t));
 
 export interface ChartPoint { t: number; v: number; mark?: boolean }
-export interface Zone { from: number; to: number; fill: string; label: string }
+/** A shaded band of values (the Health Score levels); `tone` gives its label the colour of the level. */
+export interface Zone { from: number; to: number; fill: string; label: string; tone?: "green" | "amber" | "red" }
 
-export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height = 190,
-  legendBand, legendRefs, legendMarks, gapMs }: {
+/** The Health Score levels as shaded zones, with the cuts of config/fusion. */
+export function healthZones(levels: { green: number; amber: number }): Zone[] {
+  return [
+    { from: 0, to: levels.amber, fill: "var(--color-status-red-bg)", label: "Revisar", tone: "red" },
+    { from: levels.amber, to: levels.green, fill: "var(--color-status-amber-bg)", label: "Atención", tone: "amber" },
+    { from: levels.green, to: 100, fill: "var(--color-status-green-bg)", label: "Normal", tone: "green" },
+  ];
+}
+
+export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height,
+  legendBand, legendRefs, legendMarks, gapMs, showLast = false }: {
   title: string; sub?: string; points: ChartPoint[]; unit: string; decimals?: number; rangeKey: RangeKey;
   band?: [number, number] | null; refs?: { value: number; label: string }[]; zones?: Zone[]; domain?: [number, number];
   height?: number; legendBand?: string; legendRefs?: string; legendMarks?: string;
   /** The line breaks where two points are further apart than this (no data in between). */
   gapMs?: number;
+  /** Dot on the latest point: "now" in the live panel. */
+  showLast?: boolean;
 }) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
-  const m = { l: 40, r: 44, t: 12, b: 26 };
-  const W = width, H = height, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  // Zone labels and labelled reference lines get a gutter on the right; otherwise the plot runs to the edge.
+  const m = { l: 36, r: zones?.length ? 56 : refs.length ? 44 : 10, t: 10, b: 24 };
+  const W = width, H = height ?? (W < 480 ? 150 : 190), iw = W - m.l - m.r, ih = H - m.t - m.b;
   const vals = points.map((p) => p.v);
   let lo = Math.min(...vals, ...(band ?? []), ...refs.map((r) => r.value));
   let hi = Math.max(...vals, ...(band ?? []), ...refs.map((r) => r.value));
@@ -57,7 +71,9 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
   const t0 = points.length ? points[0].t : 0, t1 = points.length ? points[points.length - 1].t : 1;
   const X = (t: number) => m.l + ((t - t0) / (t1 - t0 || 1)) * iw;
   const Y = (v: number) => m.t + (1 - (v - lo) / (hi - lo || 1)) * ih;
-  const ticks = niceTicks(lo, hi, 4).filter((v) => v >= lo && v <= hi);
+  // With zones, the axis marks only their edges (the level cuts), with no grid over the colours.
+  const ticks = zones?.length ? [...new Set([lo, hi, ...zones.flatMap((z) => [z.from, z.to])])].filter((v) => v >= lo && v <= hi).sort((a, b) => a - b)
+    : niceTicks(lo, hi, 4).filter((v) => v >= lo && v <= hi);
   const fractions = W < 480 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];  // fewer labels on narrow screens
   const xticks = points.length > 1 ? fractions.map((f) => t0 + f * (t1 - t0)) : points.map((p) => p.t);
   const path = points.map((p, i) => (i && !(gapMs && p.t - points[i - 1].t > gapMs) ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
@@ -81,33 +97,32 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
     ? `${title}: último valor ${fmtV(last.v)} ${unit}, mínimo ${fmtV(Math.min(...vals))}, máximo ${fmtV(Math.max(...vals))}` +
       (marks.length ? `, ${marks.length} momentos fuera de lo normal.` : ".")
     : `${title}: sin datos en este periodo.`;
+  const legend = points.length > 0 && (legendBand || legendRefs || (legendMarks && marks.length > 0));
   return (
     <figure className="chart" style={{ margin: 0 }}>
       <figcaption>
         <div className="chart-title">{title}</div>
         {sub && <div className="chart-sub">{sub}</div>}
-        {(legendBand || legendRefs || (legendMarks && marks.length > 0)) && (
-          <div className="chart-legend">
-            <span className="legend-key"><span className="key-line" />{title}</span>
-            {legendBand && <span className="legend-key"><span className="key-band" />{legendBand}</span>}
-            {legendRefs && <span className="legend-key"><span className="key-dash" />{legendRefs}</span>}
-            {legendMarks && marks.length > 0 && <span className="legend-key"><span className="key-mark" />{legendMarks}</span>}
-          </div>
-        )}
       </figcaption>
-      <div ref={ref} style={{ position: "relative", marginTop: 6 }}>
+      <div ref={ref} style={{ position: "relative" }}>
         {!points.length ? <div className="chart-empty small muted" style={{ height: H }}>Sin datos en este periodo.</div> : (
           <svg width={W} height={H} role="img" aria-label={summary} tabIndex={0}
             onPointerMove={onMove} onPointerLeave={() => setHover(null)} onKeyDown={onKey} onBlur={() => setHover(null)}>
-            {zones?.map((z, i) => (
-              <g key={i}>
-                <rect x={m.l} width={iw} y={Y(Math.min(hi, z.to))} height={Math.max(0, Y(Math.max(lo, z.from)) - Y(Math.min(hi, z.to)))} fill={z.fill} opacity="0.55" />
-                <text x={W - m.r + 6} y={(Y(Math.min(hi, z.to)) + Y(Math.max(lo, z.from))) / 2 + 3} className="chart-axis">{z.label}</text>
-              </g>
-            ))}
+            {zones?.map((z, i) => {
+              const top = Y(Math.min(hi, z.to)), bottom = Y(Math.max(lo, z.from));
+              // The colour runs under the label gutter; the label sits right of the latest point, so the line never covers it.
+              return (
+                <g key={i}>
+                  <rect x={m.l} width={W - m.l} y={top} height={Math.max(0, bottom - top)} fill={z.fill} />
+                  {bottom - top >= 12 && (
+                    <text x={W - 4} y={(top + bottom) / 2 + 3.5} textAnchor="end" className={`chart-zone${z.tone ? ` ${z.tone}` : ""}`}>{z.label}</text>
+                  )}
+                </g>
+              );
+            })}
             {ticks.map((v) => (
               <g key={v}>
-                <line x1={m.l} x2={W - m.r} y1={Y(v)} y2={Y(v)} stroke="var(--chart-grid)" strokeWidth="1" />
+                {!zones?.length && <line x1={m.l} x2={W - m.r} y1={Y(v)} y2={Y(v)} stroke="var(--chart-grid)" strokeWidth="1" />}
                 <text x={m.l - 6} y={Y(v) + 3.5} textAnchor="end" className="chart-axis">{fmtNum(v, decimals && Math.abs(hi - lo) < 5 ? 1 : 0)}</text>
               </g>
             ))}
@@ -118,13 +133,13 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
                 {!zones && <text x={W - m.r + 6} y={Y(r.value) + 3.5} className="chart-axis">{r.label}</text>}
               </g>
             ))}
-            <line x1={m.l} x2={W - m.r} y1={H - m.b} y2={H - m.b} stroke="var(--color-divider)" />
+            {!zones?.length && <line x1={m.l} x2={W - m.r} y1={H - m.b} y2={H - m.b} stroke="var(--color-divider)" />}
             {xticks.map((t, i) => (
-              <text key={i} x={X(t)} y={H - 8} textAnchor={i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"} className="chart-axis">{xLabel(t, rangeKey)}</text>
+              <text key={i} x={X(t)} y={H - 7} textAnchor={i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"} className="chart-axis">{xLabel(t, rangeKey)}</text>
             ))}
-            {points.length > 1 && <path d={path} fill="none" stroke="var(--chart-line)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
-            {marks.map((p) => <circle key={p.t} cx={X(p.t)} cy={Y(p.v)} r="4" fill="var(--color-sheet)" stroke="var(--color-status-red)" strokeWidth="2" />)}
-            {last && <circle cx={X(last.t)} cy={Y(last.v)} r="4.5" fill="var(--chart-line)" stroke="var(--color-sheet)" strokeWidth="2" />}
+            {points.length > 1 && <path d={path} fill="none" stroke="var(--chart-line)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />}
+            {showLast && last && <circle cx={X(last.t)} cy={Y(last.v)} r="3.5" fill="var(--chart-line)" stroke="var(--color-sheet)" strokeWidth="1.5" />}
+            {marks.map((p) => <circle key={p.t} cx={X(p.t)} cy={Y(p.v)} r="3.5" fill="var(--chart-mark)" stroke="var(--color-sheet)" strokeWidth="1.5" />)}
             {hp && (
               <g>
                 <line x1={X(hp.t)} x2={X(hp.t)} y1={m.t} y2={H - m.b} stroke="var(--color-text)" strokeWidth="1" />
@@ -139,22 +154,25 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
           </div>
         )}
       </div>
+      {legend && (
+        <div className="chart-legend">
+          {legendBand && <span className="legend-key"><span className="key-band" />{legendBand}</span>}
+          {legendRefs && <span className="legend-key"><span className="key-dash" />{legendRefs}</span>}
+          {legendMarks && marks.length > 0 && <span className="legend-key"><span className="key-mark" />{legendMarks}</span>}
+        </div>
+      )}
     </figure>
   );
 }
 
-/** A value against its normal range. */
-export function RangeBar({ value, range, scale, unit, decimals = 0 }: { value: number; range: [number, number]; scale: [number, number]; unit: string; decimals?: number }) {
+/** A value against its normal range: the normal band in green, the value as a marker in the colour of the alert. */
+export function RangeBar({ value, range, scale, color }: { value: number; range: [number, number]; scale: [number, number]; color?: string }) {
   const [a, b] = scale;
   const pos = (v: number) => Math.max(0, Math.min(100, ((v - a) / (b - a)) * 100));
   return (
-    <div>
-      <div className="rangebar" aria-hidden="true">
-        <div className="rangebar-track" />
-        <div className="rangebar-normal" style={{ left: pos(range[0]) + "%", width: pos(range[1]) - pos(range[0]) + "%" }} />
-        <div className="rangebar-marker" style={{ left: pos(value) + "%" }} />
-      </div>
-      <div className="rangebar-labels"><span>{fmtNum(a, decimals)} {unit}</span><span>{fmtNum(b, decimals)} {unit}</span></div>
+    <div className="rangebar" aria-hidden="true" style={color ? { ["--marker-color" as string]: color } : undefined}>
+      <div className="rangebar-normal" style={{ left: pos(range[0]) + "%", width: pos(range[1]) - pos(range[0]) + "%" }} />
+      <div className="rangebar-marker" style={{ left: pos(value) + "%" }} />
     </div>
   );
 }

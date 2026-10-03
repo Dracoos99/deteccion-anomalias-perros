@@ -8,7 +8,7 @@ import { summarize, type TimedSlot } from "@shared/trends";
 import type { AlertReason } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { BarList } from "../components/charts";
-import { EmptyState, Icon, Seg, fmtNum, usePageTitle } from "../components/ui";
+import { EmptyState, Icon, PageLoading, Seg, fmtNum, usePageTitle } from "../components/ui";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
 import { useDogTrend } from "../data/useDogTrend";
 import { BEHAVIOR_LABEL, COMPONENT_LABEL, ageText, dateText, dateTimeText, durationText, primaryReason, reasonUnit } from "../lib/plain";
@@ -44,7 +44,7 @@ export function VetView() {
   const { data: alerts } = useDogAlerts(dog?.id, viewer, 200);
   const { data: models } = useActiveModels();
 
-  if (loading) return <div className="boot" aria-busy="true">Cargando…</div>;
+  if (loading) return <PageLoading />;
   if (!dog) {
     return (
       <main className="page" id="main">
@@ -68,18 +68,20 @@ export function VetView() {
 
   return (
     <main className="page vet-view" id="main">
-      <div className="no-print row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+      <div className="no-print vet-bar">
         <Link to={`/perros/${dog.id}`} className="small back-link"><Icon name="chevron-left" size={14} /> Volver a {dog.name}</Link>
-        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-          <Seg label="Periodo" options={PERIODS} value={days} onChange={setDays} />
-          <button type="button" className="btn btn-primary" onClick={() => window.print()}><Icon name="database" />Descargar PDF</button>
+        <div className="vet-actions">
+          <div className="row">
+            <Seg label="Periodo" options={PERIODS} value={days} onChange={setDays} />
+            <button type="button" className="btn btn-primary" aria-describedby="pdf-hint" onClick={() => window.print()}><Icon name="download" />Descargar PDF</button>
+          </div>
+          <p className="xs muted" id="pdf-hint">Se abre el diálogo de impresión: elige «Guardar como PDF».</p>
         </div>
       </div>
-      <p className="no-print xs muted" style={{ marginTop: -8 }}>Se abre el diálogo de impresión: elige «Guardar como PDF».</p>
 
       <header className="vet-head">
         <div className="kicker">Vista para el veterinario · solo lectura</div>
-        <h1 className="page-title" style={{ marginTop: 4 }}>{dog.name}</h1>
+        <h1 className="page-title">{dog.name}</h1>
         <dl className="vet-facts">
           <div><dt>Raza</dt><dd>{dog.breed || "—"}</dd></div>
           <div><dt>Edad</dt><dd>{ageText(dog.birthDate) ?? "—"}</dd></div>
@@ -124,6 +126,7 @@ export function VetView() {
               Tiempo en cada estado: normal {fmtNum(100 * sum.levels.green)} %, atención {fmtNum(100 * sum.levels.amber)} %, revisar {fmtNum(100 * sum.levels.red)} %.</p>
           </section>
 
+          <div className="vet-two">
           <section className="vet-section" aria-labelledby="v-events">
             <h2 className="section-title" id="v-events">Eventos anómalos ({inPeriod.length})</h2>
             {!inPeriod.length ? <p className="small muted">Sin eventos en el periodo.</p> : (
@@ -157,6 +160,7 @@ export function VetView() {
               <p className="xs muted">Clasificadas por el modelo CNN-LSTM en ventanas de 2 s.</p>
             </section>
           )}
+          </div>
         </>
       )}
 

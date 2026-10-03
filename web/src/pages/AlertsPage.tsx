@@ -3,28 +3,32 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, LevelTag, PageHead, Seg, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, LevelTag, PageHead, Seg, Skeleton, levelVars, usePageTitle } from "../components/ui";
 import { useAlerts, type Alert } from "../data/hooks";
 import { alertTitle, dayHeading, durationText, whenText } from "../lib/plain";
 
 /** Data time of the episode; alerts from before it only have the write time. */
 export const alertStartMs = (a: Alert) => a.startedAt?.toMillis?.() ?? a.createdAt?.toMillis?.() ?? 0;
 
+/** One alert (screen 7): the dog and whether it was reviewed, the title in plain language, when and for how long, its
+ * level (colour, icon and text) and the left border in the level colour. */
 export function AlertItem({ alert, showDog = true }: { alert: Alert; showDog?: boolean }) {
   const open = alert.status === "open";
   const start = alertStartMs(alert), end = alert.endedAt?.toMillis?.();
+  const when = [start ? whenText(start) : null, end ? `duró ${durationText(end - start)}` : null].filter(Boolean).join(" · ");
   return (
     <li>
-      <Link className="panel alert-item" to={`/alertas/${alert.id}`} data-open={open}>
-        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <LevelTag level={alert.severity} />
-          <span className="small muted tabular">{start ? whenText(start) : ""}{end ? ` · duró ${durationText(end - start)}` : ""}</span>
+      <Link className="panel alert-item" to={`/alertas/${alert.id}`} data-open={open} style={levelVars(alert.severity)}>
+        <div className="alert-item-top">
+          {showDog ? <span className="kicker">{alert.dogName}</span> : <span />}
+          <span className={open ? "tag tag-open" : "tag tag-done"}>{open ? "Sin revisar" : "Revisada"}</span>
         </div>
-        <div className="alert-item-title">{showDog && <span className="alert-item-dog">{alert.dogName}: </span>}{alertTitle(alert.reasons).toLowerCase()}</div>
-        <div className="row xs" style={{ justifyContent: "space-between" }}>
-          <span className={open ? "alert-state alert-state-open" : "alert-state"}>{open ? <><span className="dot" aria-hidden="true" />Sin revisar</> : <><Icon name="check" size={12} />Revisada</>}</span>
-          <span className="muted">Ver detalle <Icon name="chevron-right" size={13} /></span>
+        <span className="alert-item-title">{alertTitle(alert.reasons)}</span>
+        <div className="alert-item-meta">
+          <span className="xs muted tabular">{when}</span>
+          <LevelTag level={alert.severity} iconSize={12} />
         </div>
+        <span className="alert-item-more">Ver detalle <Icon name="chevron-right" size={13} /></span>
       </Link>
     </li>
   );
@@ -55,11 +59,16 @@ export function AlertsPage() {
   const openCount = ofDog.filter((a) => a.status === "open").length;
   const shown = filter === "open" ? ofDog.filter((a) => a.status === "open") : ofDog;
   return (
-    <main className="page" id="main">
+    <main className="page" id="main" style={{ maxWidth: 860 }}>
       <PageHead title="Alertas" sub="Avisos de cambios respecto al patrón normal de tus perros." />
       <div className="stack">
         {error && <Callout kind="error">No pudimos cargar tus alertas. Revisa tu conexión e inténtalo de nuevo.</Callout>}
-        {loading ? <div className="boot" style={{ minHeight: 200 }} aria-busy="true">Cargando tus alertas…</div>
+        {loading ? (
+          <div className="stack" aria-busy="true">
+            <p className="small muted">Cargando tus alertas…</p>
+            <Skeleton lines={[30, 70, 45]} />
+          </div>
+        )
           : !alerts.length ? (
             <EmptyState icon="check-circle" title="Sin alertas" text="Cuando algo se aleje del patrón normal de tus perros, lo verás aquí." />
           ) : (
@@ -70,7 +79,7 @@ export function AlertsPage() {
                 {dogs.length > 1 && (
                   <label className="row" style={{ gap: 6 }}>
                     <span className="small">Perro</span>
-                    <select className="select" style={{ width: "auto", minHeight: 38 }} value={dog} onChange={(e) => setDog(e.target.value)}>
+                    <select className="select" style={{ width: "auto" }} value={dog} onChange={(e) => setDog(e.target.value)}>
                       <option value="">Todos</option>
                       {dogs.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                     </select>

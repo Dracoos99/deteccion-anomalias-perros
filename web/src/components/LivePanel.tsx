@@ -4,7 +4,7 @@
 import { useLiveResults, type Dog, type Fusion, type Viewer } from "../data/hooks";
 import { isLive, liveSeries, type LiveBlock } from "../lib/live";
 import { behaviorNow, hrBand } from "../lib/plain";
-import { TrendChart } from "./charts";
+import { TrendChart, healthZones } from "./charts";
 import { Icon, fmtNum, useNow } from "./ui";
 
 export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer: Viewer }) {
@@ -22,32 +22,28 @@ export function LivePanel({ dog, cfg, viewer }: { dog: Dog; cfg: Fusion; viewer:
   return (
     <section className="panel stack-sm live-panel" aria-labelledby="live-title">
       <div>
-        <h2 className="section-title" id="live-title" style={{ margin: 0 }}><span className="live-dot" aria-hidden="true" />En vivo</h2>
-        <p className="xs muted" style={{ margin: 0 }}>Últimos 10 minutos de datos de {dog.name}, actualizados con cada bloque que llega{live.latest.blockSeconds === 2 ? " (cada 2 s)" : ""}.</p>
+        <h2 className="section-title" id="live-title"><span className="live-dot" aria-hidden="true" />En vivo</h2>
+        <p className="xs muted">Últimos 10 minutos de datos de {dog.name}, actualizados con cada bloque que llega{live.latest.blockSeconds === 2 ? " (cada 2 s)" : ""}.</p>
       </div>
       <dl className="live-now">
         <div><dt>Ahora</dt><dd>{live.latest.behavior ? behaviorNow(live.latest.behavior, dog.sex) : "—"}</dd></div>
         <div><dt>Corazón</dt><dd>{live.lastHr != null ? `${fmtNum(live.lastHr)} lpm` : "Sin datos"}</dd></div>
-        <div><dt>Movimiento</dt><dd>{live.lastActivity != null ? `${fmtNum(live.lastActivity)} % del último minuto` : "—"}</dd></div>
+        <div><dt>Movimiento</dt><dd>{live.lastActivity != null ? <>{fmtNum(live.lastActivity)} %<span className="live-now-note">del último minuto</span></> : "—"}</dd></div>
         <div><dt>Health Score</dt><dd>{fmtNum(live.latest.healthScore)}</dd></div>
       </dl>
       {live.hr.length > 0 && (
-        <TrendChart title="Frecuencia cardiaca, segundo a segundo" rangeKey="10m" unit="lpm" points={live.hr} band={band} height={150} gapMs={3_000}
+        <TrendChart title="Frecuencia cardiaca, segundo a segundo" rangeKey="10m" unit="lpm" points={live.hr} band={band} height={150} gapMs={3_000} showLast
           legendBand={band ? `Lo normal para ${dog.name}` : undefined} />
       )}
-      <TrendChart title="Tiempo en movimiento en el último minuto" rangeKey="10m" unit="%" domain={[0, 100]} points={live.activity} height={120} gapMs={30_000} />
+      <TrendChart title="Tiempo en movimiento en el último minuto" rangeKey="10m" unit="%" domain={[0, 100]} points={live.activity} height={120} gapMs={30_000} showLast />
       <TrendChart title="Health Score de cada bloque" rangeKey="10m" unit="puntos" domain={[0, 100]} points={live.health} height={120} gapMs={30_000}
-        zones={[
-          { from: 0, to: cfg.levels.amber, fill: "var(--color-status-red-bg)", label: "Revisar" },
-          { from: cfg.levels.amber, to: cfg.levels.green, fill: "var(--color-status-amber-bg)", label: "Atención" },
-          { from: cfg.levels.green, to: 100, fill: "var(--color-status-green-bg)", label: "Normal" },
-        ]} />
+        zones={healthZones(cfg.levels)} showLast />
       <details className="disclosure">
         <summary><Icon name="chevron-right" size={14} />¿Qué muestran estos gráficos?</summary>
         <div className="stack-sm" style={{ marginTop: 8 }}>
-          <p className="xs muted" style={{ margin: 0 }}>Los cortes en la frecuencia cardiaca son segundos en que el sensor no la midió. El estado, la tarjeta de Inicio y las alertas usan el promedio del último minuto para no reaccionar a un pico aislado; por eso pueden diferir un poco de estos valores.</p>
+          <p className="xs muted">Los cortes en la frecuencia cardiaca son segundos en que el sensor no la midió. El estado, la tarjeta de Inicio y las alertas usan el promedio del último minuto para no reaccionar a un pico aislado; por eso pueden diferir un poco de estos valores.</p>
           {simulated && (
-            <p className="xs muted" style={{ margin: 0 }}>Datos simulados: el movimiento y la frecuencia cardiaca vienen de perros distintos de los datasets públicos (ninguno trae las dos señales del mismo perro), así que la frecuencia puede subir mientras el perro simulado está quieto.</p>
+            <p className="xs muted">Datos simulados: el movimiento y la frecuencia cardiaca vienen de perros distintos de los datasets públicos (ninguno trae las dos señales del mismo perro), así que la frecuencia puede subir mientras el perro simulado está quieto.</p>
           )}
         </div>
       </details>

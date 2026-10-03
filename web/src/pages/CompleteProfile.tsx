@@ -1,9 +1,11 @@
-/* Completes a sign-up whose profile could not be saved (e.g. the Functions emulator was off). */
+/* Completes a sign-up whose profile could not be saved (e.g. the Functions emulator was off). Second half of screen 1:
+   the same presentation on ink and the form on paper. */
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { completeSignUp } from "../auth/signup";
-import { Callout, EmulatorBanner, Icon, PageHead, usePageTitle } from "../components/ui";
+import { Callout, EmulatorBanner, Icon, usePageTitle } from "../components/ui";
+import { AuthBrand } from "./AuthPage";
 
 export function CompleteProfile() {
   const { user, role, loading, refreshRole, logout } = useAuth();
@@ -33,10 +35,17 @@ export function CompleteProfile() {
   };
 
   return (
-    <>
+    <div className="auth-screen">
       <EmulatorBanner />
-      <main className="page" id="main" style={{ maxWidth: 560 }}>
-        <PageHead kicker="Crear cuenta" title="Completa tu registro" sub={`Sesión iniciada como ${user.email}. Falta un paso para empezar.`} />
+      <main className="auth" id="main">
+        <AuthBrand />
+        <section className="auth-form" aria-labelledby="r-title">
+          <div className="auth-card">
+        <div className="auth-card-title">
+          <div className="kicker">Crear cuenta</div>
+          <h2 className="section-title" id="r-title">Completa tu registro</h2>
+          <p className="small muted">Sesión iniciada como {user.email}. Falta un paso para empezar.</p>
+        </div>
         <form className="stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
           {error && <Callout kind="error">{error}</Callout>}
           <div className="field"><label htmlFor="r-name">Nombre y apellido</label>
@@ -44,9 +53,11 @@ export function CompleteProfile() {
           <label className="check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span>Autorizo el tratamiento de mis datos personales conforme a la Ley N.° 29733, de Protección de Datos Personales.</span></label>
           <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>{busy ? "Un momento…" : "Continuar"}</button>
-          <button className="btn btn-ghost" type="button" onClick={() => logout()}><Icon name="log-out" />Cerrar sesión</button>
+          <button className="btn btn-ghost" type="button" style={{ alignSelf: "flex-start" }} onClick={() => logout()}><Icon name="log-out" />Cerrar sesión</button>
         </form>
+          </div>
+        </section>
       </main>
-    </>
+    </div>
   );
 }

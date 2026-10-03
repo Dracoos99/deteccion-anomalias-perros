@@ -6,7 +6,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, PageHead, Seg, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, PageHead, PageLoading, Seg, usePageTitle } from "../components/ui";
 import { db, functions } from "../firebase";
 import { useDog, type Dog } from "../data/hooks";
 
@@ -22,16 +22,16 @@ function ResetBaseline({ dog }: { dog: Dog }) {
     catch { setState("error"); }
   };
   return (
-    <section className="panel stack-sm" aria-labelledby="d-baseline" style={{ marginTop: 24 }}>
+    <section className="panel stack-sm" aria-labelledby="d-baseline">
       <h2 className="section-title" id="d-baseline">Patrón normal</h2>
-      <p className="small" style={{ margin: 0 }}>
+      <p className="small muted">
         {learning ? `El sistema está aprendiendo qué es normal para ${dog.name} con sus primeros datos.`
           : `El sistema aprendió qué es normal para ${dog.name} con sus primeros datos.`}
         {" "}Si en esos días no estuvo bien (por ejemplo, estaba enfermo o recién operado), puedes pedir que lo aprenda de nuevo con sus próximos datos.
       </p>
       {state === "done" ? <Callout kind="ok">Listo: su patrón normal se aprenderá de nuevo con los próximos datos.</Callout>
         : state === "error" ? <Callout kind="error">No pudimos hacerlo. Inténtalo de nuevo.</Callout> : null}
-      {state !== "done" && <div><button className="btn btn-secondary" type="button" onClick={onReset} disabled={state === "busy"}>
+      {state !== "done" && <div><button className="btn btn-secondary btn-sm" type="button" onClick={onReset} disabled={state === "busy"}>
         {state === "busy" ? "Un momento…" : "Volver a aprender su patrón normal"}</button></div>}
     </section>
   );
@@ -61,7 +61,7 @@ export function DogForm() {
     }
   }, [editing, dog, loaded]);
 
-  if (editing && loading) return <div className="boot" aria-busy="true">Cargando…</div>;
+  if (editing && loading) return <PageLoading maxWidth={640} />;
   if (editing && (!dog || (dog.ownerId !== user!.uid && !isAdmin))) {
     return <main className="page" id="main"><EmptyState icon="info" title="No encontramos este perro" action={<Link className="btn btn-secondary" to="/perfil">Ir a Perfil</Link>} /></main>;
   }
@@ -101,7 +101,8 @@ export function DogForm() {
     <main className="page" id="main" style={{ maxWidth: 640 }}>
       <nav className="crumbs" aria-label="Ruta"><Link to="/perfil">Perfil</Link><span aria-hidden="true">›</span><span>{editing ? dog!.name : "Nuevo perro"}</span></nav>
       <PageHead title={editing ? `Editar a ${dog!.name}` : "Registrar a tu perro"} sub={editing ? undefined : "Con estos datos lo reconocerás en la app y en la Vista para el veterinario."} />
-      <form className="stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
+      <div className="stack">
+      <form className="panel stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
         {error && <Callout kind="error">{error}</Callout>}
         <div className="field"><label htmlFor="d-name">Nombre</label>
           <input id="d-name" className="input" maxLength={60} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} {...inv("name")} />{err("name")}</div>
@@ -113,12 +114,13 @@ export function DogForm() {
           <input id="d-birth" className="input" type="date" max={today()} value={f.birthDate} onChange={(e) => setF({ ...f, birthDate: e.target.value })} {...inv("birthDate")} />{err("birthDate")}</div>
         <div className="field"><span className="field-label" id="d-sex">Sexo</span>
           <Seg label="Sexo" options={SEXES} value={f.sex} onChange={(sex) => setF({ ...f, sex })} /></div>
-        <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+        <div className="row" style={{ marginTop: 4 }}>
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Guardando…" : editing ? "Guardar cambios" : "Registrar"}</button>
           <Link className="btn btn-ghost" to={editing ? `/perros/${dogId}` : "/perfil"}>Cancelar</Link>
         </div>
       </form>
       {editing && dog && <ResetBaseline dog={dog} />}
+      </div>
     </main>
   );
 }

@@ -3,7 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { RequireAccount, RequireAdmin } from "./auth/guards";
 import { Shell } from "./components/Shell";
-import { EmptyState } from "./components/ui";
+import { EmptyState, PageLoading } from "./components/ui";
 import { AlertDetail } from "./pages/AlertDetail";
 import { AlertsPage } from "./pages/AlertsPage";
 import { AuthPage } from "./pages/AuthPage";
@@ -18,7 +18,7 @@ import { VetView } from "./pages/VetView";
 // Research tools load as a separate chunk, only when an admin opens /admin.
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((m) => ({ default: m.SimulatorPage })));
 const ConfigPage = lazy(() => import("./pages/ConfigPage").then((m) => ({ default: m.ConfigPage })));
-const adminPage = (page: ReactNode) => <RequireAdmin><Suspense fallback={<div className="boot">Cargando…</div>}>{page}</Suspense></RequireAdmin>;
+const adminPage = (page: ReactNode) => <RequireAdmin><Suspense fallback={<PageLoading />}>{page}</Suspense></RequireAdmin>;
 
 function NotFound() {
   return (

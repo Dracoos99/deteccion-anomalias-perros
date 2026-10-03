@@ -16,6 +16,12 @@ const DURATION_LABELS: Record<number, string> = { 30: "30 s", 120: "2 min", 600:
 const RUN_LIMITS = [{ value: 0, label: "Sin límite" }, { value: 600, label: "10 min" }, { value: 1800, label: "30 min" }, { value: 3600, label: "1 h" }];
 const STATE_TEXT: Record<string, string> = { running: "Reproduciendo", paused: "En pausa", stopped: "Detenida" };
 
+/** State of a run as a tag: colour, icon and text (playing in green, paused in amber, stopped neutral). */
+function RunStateTag({ state }: { state: string }) {
+  const [cls, icon] = state === "running" ? ["tag-green", "play"] : state === "paused" ? ["tag-amber", "pause"] : ["tag-outline", "square"];
+  return <span className={`tag ${cls}`}><Icon name={icon} size={12} />{STATE_TEXT[state] ?? state}</span>;
+}
+
 /** Magnitude as the person reads it: percentage of movement removed, change of heart rate, degrees. */
 export function magnitudeText(type: AnomalyType, m: number): string {
   const unit = ANOMALY_CATALOG.types[type].unit;
@@ -51,7 +57,7 @@ function NewRun({ dogs, uid }: { dogs: Dog[]; uid: string }) {
   return (
     <section className="panel stack-sm" aria-labelledby="new-title">
       <h2 className="panel-title" id="new-title">Nueva ejecución</h2>
-      <p className="small muted" style={{ margin: 0 }}>Cada perro combina un sujeto de Vehkaoja 2022 (movimiento), uno de Invoxia (FC) y una temperatura sintética, porque ningún dataset público trae las tres señales del mismo perro.</p>
+      <p className="small muted">Cada perro combina un sujeto de Vehkaoja 2022 (movimiento), uno de Invoxia (FC) y una temperatura sintética, porque ningún dataset público trae las tres señales del mismo perro.</p>
       <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="field-label">Perros ({selected.length} de {MAX_DOGS} máx.)</legend>
         <div className="stack-sm" style={{ gap: 4 }}>
@@ -71,8 +77,8 @@ function NewRun({ dogs, uid }: { dogs: Dog[]; uid: string }) {
       </div>
       {error && <Callout kind="error">{error}</Callout>}
       <button className="btn btn-primary" type="button" disabled={busy || !selected.length} onClick={create}><Icon name="play" />Crear ejecución</button>
-      <p className="xs muted" style={{ margin: 0 }}>A ×1 y ×2 cada perro envía bloques de 2 s (la app se actualiza cada 2 s en tiempo real); desde ×5, bloques de 10 s.</p>
-      <p className="xs muted" style={{ margin: 0 }}>En el proyecto real, la ejecución arranca sola en la nube (Cloud Run). Con los emuladores, la toma el proceso local del simulador (<span className="mono">npm run sim -- serve</span>).</p>
+      <p className="xs muted">A ×1 y ×2 cada perro envía bloques de 2 s (la app se actualiza cada 2 s en tiempo real); desde ×5, bloques de 10 s.</p>
+      <p className="xs muted">En el proyecto real, la ejecución arranca sola en la nube (Cloud Run). Con los emuladores, la toma el proceso local del simulador (<span className="mono">npm run sim -- serve</span>).</p>
     </section>
   );
 }
@@ -123,7 +129,7 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
       {error && <Callout kind="error">{error}</Callout>}
       {sent && <Callout kind="ok">{sent}</Callout>}
       <button className="btn btn-primary" type="button" onClick={inject} disabled={run.state === "stopped"}><Icon name="flask" />Inyectar anomalía</button>
-      <p className="xs muted" style={{ margin: 0 }}>Cada bloque afectado guarda <span className="mono">injectedAnomaly</span> como verdad de referencia para la evaluación. La Cloud Function nunca la usa.</p>
+      <p className="xs muted">Cada bloque afectado guarda <span className="mono">injectedAnomaly</span> como verdad de referencia para la evaluación. La Cloud Function nunca la usa.</p>
     </section>
   );
 }
@@ -137,28 +143,29 @@ function RunDetail({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
   const waiting = run.state !== "stopped" && !run.worker;
   const sec = (ms: number | null | undefined) => (ms == null ? "—" : `${fmtNum(ms / 1000, 2)} s`);
   return (
-    <div className="stack">
-      <section className="panel" aria-label="Controles de la ejecución">
+    <div className="split">
+      <div className="stack">
+      <section className="panel stack-sm" aria-label="Controles de la ejecución">
         <div className="sim-bar">
-          {run.state === "running"
-            ? <button className="btn btn-secondary btn-lg" type="button" onClick={() => setState("paused")}><Icon name="pause" />Pausar</button>
-            : <button className="btn btn-primary btn-lg" type="button" disabled={run.state === "stopped"} onClick={() => setState("running")}><Icon name="play" />Reanudar</button>}
-          <div className="row" style={{ gap: 8 }}>
-            <span className="live-dot" data-paused={run.state !== "running"} aria-hidden="true" />
-            <div><div className="sim-clock">{STATE_TEXT[run.state]}</div>
-              <div className="xs muted"><span className="mono">simulatorRuns/{run.id}</span> · {run.worker ? `proceso ${run.worker.id}` : "sin proceso"}</div></div>
+          <div className="sim-status">
+            <RunStateTag state={run.state} />
+            <span className="small muted">{run.worker ? <>proceso <span className="mono">{run.worker.id}</span></> : "sin proceso"} · <span className="mono">simulatorRuns/{run.id}</span></span>
           </div>
-          <div className="stack-sm" style={{ gap: 4 }}><span className="xs muted">Velocidad</span>
-            <Seg label="Velocidad de reproducción" value={run.speed} onChange={(v) => updateDoc(ref, { speed: v })} options={SPEEDS.map((x) => ({ value: x, label: `×${x}` }))} /></div>
-          <button className="btn btn-ghost" type="button" disabled={run.state === "stopped"} onClick={() => setState("stopped")}><Icon name="square" />Detener</button>
+          <div className="sim-controls">
+            {run.state === "running"
+              ? <button className="btn btn-secondary" type="button" onClick={() => setState("paused")}><Icon name="pause" />Pausar</button>
+              : <button className="btn btn-primary" type="button" disabled={run.state === "stopped"} onClick={() => setState("running")}><Icon name="play" />Reanudar</button>}
+            <Seg label="Velocidad de reproducción" value={run.speed} onChange={(v) => updateDoc(ref, { speed: v })} options={SPEEDS.map((x) => ({ value: x, label: `×${x}` }))} />
+            <button className="btn btn-ghost" type="button" disabled={run.state === "stopped"} onClick={() => setState("stopped")}><Icon name="square" />Detener</button>
+          </div>
         </div>
         {waiting && (run.cloudJob && !run.cloudJob.error
-          ? <div className="callout" style={{ marginTop: 12 }}><Icon name="clock" size={18} style={{ marginTop: 2 }} /><div>Iniciando el simulador en la nube. La primera vez puede tardar alrededor de un minuto.</div></div>
-          : <div style={{ marginTop: 12 }}><Callout kind="error">{run.cloudJob?.error
+          ? <div className="callout"><Icon name="clock" size={16} style={{ marginTop: 1 }} /><div>Iniciando el simulador en la nube. La primera vez puede tardar alrededor de un minuto.</div></div>
+          : <Callout kind="error">{run.cloudJob?.error
             ? <>No se pudo iniciar el simulador en la nube ({run.cloudJob.error}). Puedes ejecutarlo desde un equipo con <span className="mono">npm run sim -- serve</span>.</>
-            : <>Esperando al proceso del simulador. Ejecuta <span className="mono">npm run sim -- serve</span> en una terminal.</>}</Callout></div>)}
-        {run.error && <div style={{ marginTop: 12 }}><Callout kind="error">{run.error}</Callout></div>}
-        <div className="stats" style={{ marginTop: 18 }}>
+            : <>Esperando al proceso del simulador. Ejecuta <span className="mono">npm run sim -- serve</span> en una terminal.</>}</Callout>)}
+        {run.error && <Callout kind="error">{run.error}</Callout>}
+        <div className="stats">
           <div className="stat"><div className="stat-label">Perros</div><div className="stat-value">{run.dogIds.length}</div></div>
           <div className="stat"><div className="stat-label">Bloques escritos</div><div className="stat-value tabular">{fmtNum(s.blocksWritten)}</div>
             <div className="stat-note">{fmtNum((perDog * 10) / 60, 1)} min simulados por perro{run.durationS ? ` de ${run.durationS / 60}` : ""}</div></div>
@@ -167,11 +174,10 @@ function RunDetail({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
         </div>
       </section>
 
-      <div className="split">
-        <section className="panel" aria-labelledby="dogs-title">
+        <section className="panel stack-sm" aria-labelledby="dogs-title">
           <h2 className="panel-title" id="dogs-title">Perros de la ejecución</h2>
           <div className="table-wrap" role="region" aria-label="Perros de la ejecución" tabIndex={0}>
-            <table className="table table-compact">
+            <table className="table">
               <thead><tr><th scope="col">Perro</th><th scope="col">Estado</th><th scope="col" className="num">HS</th><th scope="col">Anomalía activa</th></tr></thead>
               <tbody>{run.dogIds.map((id) => {
                 const d = dogs.get(id), st = d?.status;
@@ -181,31 +187,16 @@ function RunDetail({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
                     <td><strong>{d?.name ?? id}</strong><div className="xs muted">{d?.breed}</div></td>
                     <td><LevelTag level={st?.level} /></td>
                     <td className="num tabular" style={{ fontWeight: 600 }}>{st?.healthScore ?? "—"}</td>
-                    <td className="small">{inj.length ? inj.map((j) => `${ANOMALY_CATALOG.types[j.type].label} (${magnitudeText(j.type, j.magnitude)})`).join(" + ") : <span className="muted">—</span>}</td>
+                    <td>{inj.length ? inj.map((j) => `${ANOMALY_CATALOG.types[j.type].label} (${magnitudeText(j.type, j.magnitude)})`).join(" + ") : <span className="muted">—</span>}</td>
                   </tr>
                 );
               })}</tbody>
             </table>
           </div>
         </section>
-        <section className="panel stack-sm" aria-labelledby="lat-title">
-          <h2 className="panel-title" id="lat-title">Latencia medida</h2>
-          <p className="xs muted" style={{ margin: 0 }}>Desde la escritura de cada bloque en <span className="mono">readings</span> hasta su resultado (<span className="mono">results.latencyMs</span>), últimos 500 bloques.
-            {usingEmulators ? <strong> Medida en los emuladores locales:</strong> : null}{usingEmulators ? " no representa la latencia en la nube." : null}</p>
-          <div className="stats" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div className="stat"><div className="stat-label">Promedio</div><div className="stat-value tabular">{sec(s.avgLatencyMs)}</div></div>
-            <div className="stat"><div className="stat-label">Percentil 95</div><div className="stat-value tabular">{sec(s.p95LatencyMs)}</div></div>
-            <div className="stat"><div className="stat-label">Máxima</div><div className="stat-value tabular">{sec(s.maxLatencyMs)}</div></div>
-          </div>
-          <div className="row small" style={{ borderTop: "1px solid var(--color-divider)", paddingTop: 10 }}><Icon name="zap" size={15} />Meta del sistema: menos de 5 s (RNF-01).</div>
-        </section>
-      </div>
-
-      <div className="split">
-        <InjectForm key={run.id} run={run} dogs={dogs} />
-        <section className="panel" aria-labelledby="log-title">
+        <section className="panel stack-sm" aria-labelledby="log-title">
           <h2 className="panel-title" id="log-title">Inyecciones de esta ejecución ({run.injectionsLog?.length ?? 0})</h2>
-          {!run.injectionsLog?.length ? <p className="small muted" style={{ margin: 0 }}>Todavía no hay inyecciones.</p> : (
+          {!run.injectionsLog?.length ? <p className="small muted">Todavía no hay inyecciones.</p> : (
             <div className="log" role="log" aria-label="Inyecciones de la ejecución" tabIndex={0}>
               {[...run.injectionsLog].reverse().map((j) => (
                 <div className="log-line" key={j.id}>
@@ -216,6 +207,21 @@ function RunDetail({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
               ))}
             </div>
           )}
+        </section>
+      </div>
+
+      <div className="stack">
+        <InjectForm key={run.id} run={run} dogs={dogs} />
+        <section className="panel stack-sm" aria-labelledby="lat-title">
+          <h2 className="panel-title" id="lat-title">Latencia medida</h2>
+          <div className="stats stats-3">
+            <div className="stat"><div className="stat-label">Promedio</div><div className="stat-value tabular">{sec(s.avgLatencyMs)}</div></div>
+            <div className="stat"><div className="stat-label">Percentil 95</div><div className="stat-value tabular">{sec(s.p95LatencyMs)}</div></div>
+            <div className="stat"><div className="stat-label">Máxima</div><div className="stat-value tabular">{sec(s.maxLatencyMs)}</div></div>
+          </div>
+          <p className="xs muted">Desde la escritura de cada bloque en <span className="mono">readings</span> hasta su resultado (<span className="mono">results.latencyMs</span>), últimos 500 bloques.
+            {usingEmulators ? <strong> Medida en los emuladores locales:</strong> : null}{usingEmulators ? " no representa la latencia en la nube." : null}</p>
+          <div className="row small latency-goal"><Icon name="zap" size={15} />Meta del sistema: menos de 5 s (RNF-01).</div>
         </section>
       </div>
     </div>
@@ -230,36 +236,36 @@ function ModelsPanel() {
   const p = physio?.metrics ?? {};
   const pct = (v: number | undefined) => (v == null ? "—" : `${fmtNum(100 * v, 1)} %`);
   return (
-    <section className="panel" aria-labelledby="model-title">
+    <section className="panel stack-sm" aria-labelledby="model-title">
       <h2 className="panel-title" id="model-title">Modelos activos</h2>
       {loading ? <p className="small">Cargando…</p> : (
         <>
-          <h3 className="small" style={{ margin: "0 0 6px" }}>Conducta</h3>
+          <h3 className="form-group-title">Conducta</h3>
           {!behavior ? (
             <p className="small muted">No hay un modelo registrado en <span className="mono">modelVersions</span>: la conducta usa la regla provisional de movimiento.</p>
           ) : (
             <dl className="dl">
               <div className="dl-row"><dt>Versión</dt><dd className="mono">{behavior.version}</dd></div>
-              <div className="dl-row"><dt>F1 macro (perros de prueba · validación)</dt><dd>{fmtNum(m.test_macro_f1, 3)} · {fmtNum(m.val_macro_f1, 3)} <span className="xs muted">meta ≥ 0,75</span></dd></div>
+              <div className="dl-row"><dt>F1 macro (perros de prueba · validación)</dt><dd>{fmtNum(m.test_macro_f1, 3)} · {fmtNum(m.val_macro_f1, 3)} <span className="xs muted">meta ≥ 0.75</span></dd></div>
               <div className="dl-row"><dt>Actividad frente a reposo</dt><dd>{fmtNum(100 * (m.test_active_balanced_accuracy ?? 0), 1)} % de exactitud balanceada</dd></div>
               <div className="dl-row"><dt>Datos de entrenamiento</dt><dd className="small">{behavior.trainingData.join("; ")}</dd></div>
               <div className="dl-row"><dt>Entrenado</dt><dd>{behavior.trainedAt?.toDate?.().toLocaleDateString("es-PE") ?? "—"}</dd></div>
             </dl>
           )}
-          <h3 className="small" style={{ margin: "12px 0 6px" }}>Frecuencia cardiaca</h3>
+          <h3 className="form-group-title">Frecuencia cardiaca</h3>
           {!physio ? (
-            <p className="small muted" style={{ margin: 0 }}>No hay un modelo fisiológico registrado: la frecuencia cardiaca usa la regla provisional del promedio respecto a la línea base.</p>
+            <p className="small muted">No hay un modelo fisiológico registrado: la frecuencia cardiaca usa la regla provisional del promedio respecto a la línea base.</p>
           ) : (
             <dl className="dl">
               <div className="dl-row"><dt>Versión</dt><dd className="mono">{physio.version} <span className="xs muted">autoencoder combinado con la regla del promedio</span></dd></div>
-              <div className="dl-row"><dt>Combinado (perros de prueba)</dt><dd>F1 {fmtNum(p.combined_test_f1, 3)} · {pct(p.combined_test_normal_flagged)} de secuencias normales marcadas <span className="xs muted">meta ≥ 0,75</span></dd></div>
+              <div className="dl-row"><dt>Combinado (perros de prueba)</dt><dd>F1 {fmtNum(p.combined_test_f1, 3)} · {pct(p.combined_test_normal_flagged)} de secuencias normales marcadas <span className="xs muted">meta ≥ 0.75</span></dd></div>
               <div className="dl-row"><dt>Solo el autoencoder (AUROC)</dt><dd>taquicardia {fmtNum(p.tachycardia_auroc, 3)} · bradicardia {fmtNum(p.bradycardia_auroc, 3)}</dd></div>
               <div className="dl-row"><dt>Marcadas durante actividad (estudio de 4 perros)</dt><dd>autoencoder {pct(p.activity_flagged_autoencoder)} · regla {pct(p.activity_flagged_rule)}</dd></div>
               <div className="dl-row"><dt>Datos de entrenamiento</dt><dd className="small">{physio.trainingData.join("; ")}</dd></div>
               <div className="dl-row"><dt>Entrenado</dt><dd>{physio.trainedAt?.toDate?.().toLocaleDateString("es-PE") ?? "—"}</dd></div>
             </dl>
           )}
-          <p className="xs muted" style={{ marginBottom: 0 }}>La temperatura sigue con reglas provisionales (no hay series caninas públicas).</p>
+          <p className="xs muted">La temperatura sigue con reglas provisionales (no hay series caninas públicas).</p>
         </>
       )}
     </section>
@@ -284,7 +290,7 @@ function FusionConfigPanel() {
     ["Prefiltro", `FC ${c.prefilter.hrMin}–${c.prefilter.hrMax} lpm · temperatura ${c.prefilter.tempMin}–${c.prefilter.tempMax} °C`],
   ];
   return (
-    <section className="panel" aria-labelledby="cfg-title">
+    <section className="panel stack-sm" aria-labelledby="cfg-title">
       <h2 className="panel-title" id="cfg-title">Configuración de fusión vigente</h2>
       <p className="small muted">Se lee de <span className="mono">config/fusion</span>. <Link to="/admin/configuracion">Editar en Modelos y configuración</Link>.</p>
       {error && <Callout kind="error">No pudimos leer la configuración.</Callout>}
@@ -306,19 +312,22 @@ export function SimulatorPage() {
       <PageHead kicker="Herramientas de investigación" title="Simulador"
         sub="Reproduce sujetos de los datasets públicos al ritmo real (o hasta 10 veces más rápido), escribe un bloque de 2 a 10 s por documento en readings e inyecta anomalías con su verdad de referencia." />
       <div className="stack">
-        <div className="callout"><Icon name="info" size={18} style={{ marginTop: 2 }} /><div>La conducta la clasifica el <strong>modelo CNN-LSTM</strong> y la frecuencia cardiaca, el <strong>autoencoder LSTM</strong> junto con la regla del promedio; la temperatura sigue con <strong>reglas provisionales</strong>. La latencia se mide en cada bloque.</div></div>
+        <div className="callout"><Icon name="info" size={16} style={{ marginTop: 1 }} /><div>La conducta la clasifica el <strong>modelo CNN-LSTM</strong> y la frecuencia cardiaca, el <strong>autoencoder LSTM</strong> junto con la regla del promedio; la temperatura sigue con <strong>reglas provisionales</strong>. La latencia se mide en cada bloque.</div></div>
         {error && <Callout kind="error">No pudimos cargar las ejecuciones.</Callout>}
+        {loading ? <p className="small">Cargando ejecuciones…</p>
+          : selected ? <RunDetail run={selected} dogs={dogs} />
+          : <EmptyState icon="flask" title="Todavía no hay ejecuciones" text="Crea una ejecución abajo o desde la terminal con npm run sim -- start." />}
         {!loading && runs.length > 0 && (
-          <section className="panel" aria-labelledby="runs-title">
+          <section className="panel stack-sm" aria-labelledby="runs-title">
             <h2 className="panel-title" id="runs-title">Ejecuciones recientes</h2>
             <div className="table-wrap" role="region" aria-label="Ejecuciones recientes" tabIndex={0}>
-              <table className="table table-compact">
+              <table className="table">
                 <thead><tr><th scope="col">Ejecución</th><th scope="col">Estado</th><th scope="col">Perros</th><th scope="col" className="num">Bloques</th><th scope="col" className="num">Latencia media</th><th scope="col"><span className="sr-only">Abrir</span></th></tr></thead>
                 <tbody>{runs.map((r) => (
-                  <tr key={r.id} aria-current={r.id === selected?.id ? "true" : undefined} style={r.id === selected?.id ? { background: "var(--color-surface)" } : undefined}>
-                    <td className="mono small">{r.id}</td>
+                  <tr key={r.id} aria-current={r.id === selected?.id ? "true" : undefined} className={r.id === selected?.id ? "row-current" : undefined}>
+                    <td className="mono">{r.id}</td>
                     <td>{STATE_TEXT[r.state]}{r.state !== "stopped" && !r.worker ? " · en espera" : ""}</td>
-                    <td className="small">{r.dogIds.map((id) => dogs.get(id)?.name ?? id).join(", ")}</td>
+                    <td>{r.dogIds.map((id) => dogs.get(id)?.name ?? id).join(", ")}</td>
                     <td className="num tabular">{fmtNum(r.stats?.blocksWritten ?? 0)}</td>
                     <td className="num tabular">{r.stats?.avgLatencyMs == null ? "—" : `${fmtNum(r.stats.avgLatencyMs / 1000, 2)} s`}</td>
                     <td><button className="btn btn-ghost btn-sm" type="button" onClick={() => setSelectedId(r.id)}>Ver</button></td>
@@ -328,9 +337,6 @@ export function SimulatorPage() {
             </div>
           </section>
         )}
-        {loading ? <p className="small">Cargando ejecuciones…</p>
-          : selected ? <RunDetail run={selected} dogs={dogs} />
-          : <EmptyState icon="flask" title="Todavía no hay ejecuciones" text="Crea una ejecución abajo o desde la terminal con npm run sim -- start." />}
         <div className="split">
           {user && <NewRun dogs={allDogs} uid={user.uid} />}
           <div className="stack">

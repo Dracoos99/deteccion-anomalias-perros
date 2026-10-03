@@ -2,7 +2,7 @@
   "name": "web",
   "private": true,
   "type": "module",
-  "description": "App web (React + Vite + TS) de la plataforma: propietarios, veterinarios y administración.",
+  "description": "App web (React + Vite + TS) de la plataforma: la app del propietario y las herramientas de investigación.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

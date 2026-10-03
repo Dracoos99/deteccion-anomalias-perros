@@ -1,32 +1,42 @@
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useOpenAlerts } from "../data/hooks";
+import { sectionOf } from "../lib/nav";
 import { EmulatorBanner, Icon, NOTICE_TEXT, OfflineBanner } from "./ui";
 
 /** Owner navigation: the same three sections for every account; no role is ever shown.
  * The research tools (/admin) are reached from Perfil, only by admin accounts. */
 const NAV = [
-  { to: "/", label: "Inicio", icon: "home", end: true },
-  { to: "/alertas", label: "Alertas", icon: "bell", end: false },
-  { to: "/perfil", label: "Perfil", icon: "user", end: false },
+  { to: "/", label: "Inicio", icon: "home" },
+  { to: "/alertas", label: "Alertas", icon: "bell" },
+  { to: "/perfil", label: "Perfil", icon: "user" },
 ];
 
-/** Unreviewed alerts on the "Alertas" icon. Screen readers get the meaning after the label (see NavItems). */
-function NavBadge({ count }: { count: number }) {
+/** Unreviewed alerts on "Alertas": on the icon in the tab bar, after the label in the side column and the masthead
+ * row. Screen readers get the meaning after the label (see NavItems). */
+function NavBadge({ count, end = false }: { count: number; end?: boolean }) {
   if (!count) return null;
-  return <span className="nav-badge" aria-hidden="true">{count > 99 ? "99+" : count}</span>;
+  return <span className={end ? "nav-badge nav-badge-end" : "nav-badge"} aria-hidden="true">{count > 99 ? "99+" : count}</span>;
 }
 
-function NavItems({ linkClass, iconSize, openCount }: { linkClass: string; iconSize: number; openCount: number }) {
+function NavItems({ linkClass, iconSize, openCount, badgeAtEnd = false }: { linkClass: string; iconSize: number; openCount: number; badgeAtEnd?: boolean }) {
+  const { pathname } = useLocation();
+  const section = sectionOf(pathname);
   return (
     <>
-      {NAV.map((n) => (
-        <NavLink key={n.to} to={n.to} end={n.end} className={linkClass}>
-          <span className="nav-icon"><Icon name={n.icon} size={iconSize} />{n.to === "/alertas" && <NavBadge count={openCount} />}</span>
-          <span className="nav-label">{n.label}</span>
-          {n.to === "/alertas" && openCount > 0 && <span className="sr-only">, {openCount} sin revisar</span>}
-        </NavLink>
-      ))}
+      {NAV.map((n) => {
+        const count = n.to === "/alertas" ? openCount : 0;
+        // "page" for the section's own page, "true" for a page inside it.
+        const current = pathname === n.to ? "page" : section === n.to ? "true" : undefined;
+        return (
+          <Link key={n.to} to={n.to} className={linkClass} aria-current={current}>
+            <span className="nav-icon"><Icon name={n.icon} size={iconSize} />{!badgeAtEnd && <NavBadge count={count} />}</span>
+            <span className="nav-label">{n.label}</span>
+            {badgeAtEnd && <NavBadge count={count} end />}
+            {count > 0 && <span className="sr-only">, {count} sin revisar</span>}
+          </Link>
+        );
+      })}
     </>
   );
 }
@@ -48,14 +58,13 @@ export function Shell() {
             <Link className="brand-title" to="/">Detección de anomalías en perros</Link>
           </div>
           <nav className="sidebar-nav" aria-label="Principal">
-            <NavItems linkClass="side-link" iconSize={18} openCount={open.length} />
+            <NavItems linkClass="side-link" iconSize={16} openCount={open.length} badgeAtEnd />
           </nav>
           <div className="sidebar-foot">
             <div className="sidebar-user" title={user?.email ?? undefined}>
               <span className="sidebar-user-name">{name}</span>
-              {user?.displayName && user.email && <span className="sidebar-user-mail">{user.email}</span>}
             </div>
-            <button type="button" className="btn btn-ghost btn-sm logout-btn" onClick={onLogout}><Icon name="log-out" />Cerrar sesión</button>
+            <button type="button" className="btn btn-ghost btn-sm logout-btn" onClick={onLogout}><Icon name="log-out" size={14} />Cerrar sesión</button>
           </div>
         </aside>
         <div className="shell-main">
@@ -69,11 +78,11 @@ export function Shell() {
               </div>
               <div className="masthead-actions">
                 <div className="user-chip"><span className="user-chip-name">{name}</span></div>
-                <button type="button" className="btn btn-ghost logout-btn" onClick={onLogout}><Icon name="log-out" />Cerrar sesión</button>
+                <button type="button" className="btn btn-ghost btn-sm logout-btn" onClick={onLogout}><Icon name="log-out" size={14} />Cerrar sesión</button>
               </div>
             </div>
             <nav className="nav" aria-label="Principal"><div className="nav-inner">
-              <NavItems linkClass="nav-link" iconSize={16} openCount={open.length} />
+              <NavItems linkClass="nav-link" iconSize={16} openCount={open.length} badgeAtEnd />
             </div></nav>
           </header>
           <Outlet />

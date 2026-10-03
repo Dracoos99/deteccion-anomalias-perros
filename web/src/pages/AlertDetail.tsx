@@ -8,7 +8,7 @@ import { MINUTE_TIER, collectSlots, collectTierSlots, dayKey, tierDocStart, toPo
 import type { AlertReason } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { RangeBar, TrendChart, type ChartPoint } from "../components/charts";
-import { Callout, EmptyState, Icon, LevelTag, Notice, PageHead, fmtNum, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, LEVELS, LevelTag, Notice, PageHead, PageLoading, fmtNum, levelVars, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useAlert, useFusionConfig, useTierDocs, useTrendDocs, type Alert, type Viewer } from "../data/hooks";
 import { COMPONENT_LABEL, alertTitle, durationText, primaryReason, reasonUnit, whatToDo, whenText } from "../lib/plain";
@@ -19,7 +19,9 @@ const MARGIN_MS = 30 * 60_000;
 /** "hoy a las 9:05 a. m." or "el 2 oct. 2026, 9:05 a. m.", to follow a verb ("Empezó …", "Revisada …"). */
 const whenPhrase = (ms: number) => { const w = whenText(ms); return /^(hoy|ayer)/.test(w) ? w : `el ${w}`; };
 
-function ReasonRow({ r }: { r: AlertReason }) {
+/** One cause of the alert: the variable with an icon in the colour of the alert level, its value (serif), the dog's
+ * normal range, the value against that range and the explanation. */
+function ReasonRow({ r, color }: { r: AlertReason; color: string }) {
   const { unit, decimals: d0 } = reasonUnit(r);
   const [lo, hi] = r.normalRange;
   // An out-of-range value that rounds to its bound ("55 lpm, normal 55–68") gets one more decimal.
@@ -35,7 +37,7 @@ function ReasonRow({ r }: { r: AlertReason }) {
         <div className="reason-name">{COMPONENT_LABEL[r.component]}</div>
         <div className="reason-value tabular">{fmtNum(r.value, decimals)} {unit}</div>
         <div className="reason-range">Normal: {fmtNum(lo, decimals)}–{fmtNum(hi, decimals)} {unit}</div>
-        <RangeBar value={r.value} range={[lo, hi]} scale={[Math.max(0, scale[0]), scale[1]]} unit={unit} decimals={decimals} />
+        <RangeBar value={r.value} range={[lo, hi]} scale={[Math.max(0, scale[0]), scale[1]]} color={color} />
         <p className="small" style={{ margin: "4px 0 0" }}>{r.message}</p>
       </div>
     </li>
@@ -63,7 +65,7 @@ function EpisodeChart({ alert, reason, viewer }: { alert: Alert; reason: AlertRe
   return (
     <section className="panel">
       <TrendChart title={title} sub={`Antes, durante y después del aviso (promedios de ${fine ? "1 minuto" : "5 minutos"})`} rangeKey="1h" unit={unit}
-        decimals={decimals} points={points} band={band} legendBand="Rango normal" legendMarks="Fuera de lo normal" height={170} gapMs={fine ? 180_000 : 900_000} />
+        decimals={decimals} points={points} band={band} legendBand="Rango normal" legendMarks="Fuera de lo normal" height={170} gapMs={fine ? 180_000 : 900_000} showLast={!alert.endedAt} />
     </section>
   );
 }
@@ -78,7 +80,7 @@ export function AlertDetail() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  if (loading) return <div className="boot" aria-busy="true">Cargando…</div>;
+  if (loading) return <PageLoading text="Cargando la alerta…" maxWidth={860} />;
   if (error || !alert) {
     return (
       <main className="page" id="main">
@@ -109,11 +111,11 @@ export function AlertDetail() {
       <PageHead kicker={alert.dogName} title={alertTitle(alert.reasons)} />
       <div className="stack">
         <section className="panel stack-sm" aria-label="Cuándo pasó">
-          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <div className="row">
             <LevelTag level={alert.severity} />
             <span className={open ? "tag tag-open" : "tag tag-done"}>{open ? "Sin revisar" : "Revisada"}</span>
           </div>
-          <p style={{ margin: 0 }}>
+          <p className="small">
             Empezó <strong>{whenPhrase(start)}</strong>{end
               ? <> y duró <strong>{durationText(end - start)}</strong>.</>
               : <> y todavía continúa (o aún no llegan datos nuevos).</>}
@@ -122,7 +124,7 @@ export function AlertDetail() {
 
         <section className="panel stack-sm" aria-labelledby="why">
           <h2 className="section-title" id="why">Qué lo originó</h2>
-          <ul className="reason-list">{reasons.map((r) => <ReasonRow key={r.code} r={r} />)}</ul>
+          <ul className="reason-list" style={levelVars(alert.severity)}>{reasons.map((r) => <ReasonRow key={r.code} r={r} color={LEVELS[alert.severity].color} />)}</ul>
         </section>
 
         {reason && <EpisodeChart alert={alert} reason={reason} viewer={viewer} />}
@@ -133,10 +135,11 @@ export function AlertDetail() {
         </section>
 
         {msg && <Callout kind="error">{msg}</Callout>}
-        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-          {open
-            ? <button type="button" className="btn btn-primary" onClick={markReviewed} disabled={busy}><Icon name="check-circle" />{busy ? "Guardando…" : "Marcar como revisada"}</button>
-            : <span className="small muted"><Icon name="check-circle" size={14} /> Revisada{alert.acknowledgedAt?.toMillis?.() ? ` ${whenPhrase(alert.acknowledgedAt.toMillis())}` : ""}</span>}
+        {!open && (
+          <p className="small muted reviewed-line"><Icon name="check-circle" size={14} />Revisada{alert.acknowledgedAt?.toMillis?.() ? ` ${whenPhrase(alert.acknowledgedAt.toMillis())}` : ""}.</p>
+        )}
+        <div className="row">
+          {open && <button type="button" className="btn btn-primary" onClick={markReviewed} disabled={busy}><Icon name="check-circle" />{busy ? "Guardando…" : "Marcar como revisada"}</button>}
           <Link className="btn btn-secondary" to={`/perros/${alert.dogId}/veterinario`}><Icon name="stethoscope" />Vista para el veterinario</Link>
         </div>
         <Notice />

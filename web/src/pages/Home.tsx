@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DogCard } from "../components/DogCard";
-import { Callout, EmptyState, Icon, Notice, PageHead, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, Notice, PageHead, Skeleton, usePageTitle } from "../components/ui";
 import { useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog } from "../data/hooks";
 import { byAttention, homeSummary } from "../lib/plain";
 
@@ -22,23 +22,23 @@ function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null
     { title: "Crea tu cuenta", text: "Listo.", done: true, action: null },
     {
       title: "Registra a tu perro", text: "Su nombre y, si quieres, raza, peso y fecha de nacimiento.", done: hasDog,
-      action: <Link className="btn btn-primary" to="/perros/nuevo"><Icon name="plus" />Registrar a mi perro</Link>,
+      action: <Link className="btn btn-primary btn-sm" to="/perros/nuevo"><Icon name="plus" size={14} />Registrar a mi perro</Link>,
     },
     {
       title: "Conecta sus datos",
       text: "Sube un archivo CSV con las lecturas de su sensor. Si solo quieres probar, en la página de carga hay un archivo de ejemplo.",
       done: false,
-      action: <Link className="btn btn-primary" to={`/perfil/datos${waiting ? `?perro=${waiting.id}` : ""}`}><Icon name="upload" />Cargar datos</Link>,
+      action: <Link className="btn btn-primary btn-sm" to={`/perfil/datos${waiting ? `?perro=${waiting.id}` : ""}`}><Icon name="upload" size={14} />Cargar datos</Link>,
     },
   ];
   const current = steps.findIndex((s) => !s.done);
   return (
-    <section className="panel stack-sm" aria-labelledby="onb-title">
+    <section className="panel stack-sm onboarding-panel" aria-labelledby="onb-title">
       <div className="row-between">
-        <h2 className="section-title" id="onb-title" style={{ margin: 0 }}>{hasDog ? "Un paso más para empezar" : "Todavía no registras perros"}</h2>
+        <h2 className="section-title" id="onb-title">{hasDog ? "Un paso más para empezar" : "Todavía no registras perros"}</h2>
         {onHide && <button className="btn btn-ghost btn-sm" type="button" onClick={onHide}><Icon name="x" size={14} />Ocultar guía</button>}
       </div>
-      <p className="small muted" style={{ margin: 0 }}>
+      <p className="small muted">
         {hasDog ? "Cuando lleguen los primeros datos, aquí verás cómo está respecto a su patrón normal."
           : "Registra a tu perro para empezar. Cuando lleguen sus primeros datos, aquí verás cómo está."}
       </p>
@@ -46,7 +46,7 @@ function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null
         {steps.map((s, i) => (
           <li key={s.title} data-done={s.done} aria-current={i === current ? "step" : undefined}>
             <span className="step-num">{s.done ? <Icon name="check" size={12} /> : i + 1}</span>
-            <div className="stack-sm" style={{ minWidth: 0 }}>
+            <div className="onboarding-text">
               <strong>{s.title}</strong>
               <span className="small muted">{s.text}</span>
               {i === current && s.action && <div>{s.action}</div>}
@@ -54,7 +54,7 @@ function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null
           </li>
         ))}
       </ol>
-      <p className="xs muted" style={{ margin: 0 }}>El sistema aprende el patrón normal de tu perro con sus primeros datos.</p>
+      <p className="xs muted">El sistema aprende el patrón normal de tu perro con sus primeros datos.</p>
     </section>
   );
 }
@@ -96,14 +96,18 @@ export function Home() {
   const hide = () => { try { localStorage.setItem(HIDE_KEY(user!.uid), "1"); } catch { /* not stored */ } setHidden(true); };
   return (
     <main className="page" id="main">
-      <PageHead title="Tus perros" sub={summary ?? "Aquí verás cómo están tus perros respecto a su patrón normal."} />
+      <PageHead title="Tus perros" sub={loading ? undefined : summary ?? "Aquí verás cómo están tus perros respecto a su patrón normal."} />
       <div className="stack">
         <Notice />
         {error && <Callout kind="error">No pudimos cargar tus perros. Revisa tu conexión e inténtalo de nuevo.</Callout>}
         {showGuide && <Onboarding dogs={sorted} onHide={sorted.length ? hide : null} />}
         {isAdmin && !loading && !sorted.length && <EmptyState title="Todavía no hay perros" text="Los perros de la demostración se crean con el seed o el bootstrap." />}
-        {loading ? <div className="boot" style={{ minHeight: 200 }} aria-busy="true">Cargando tus perros…</div>
-          : sorted.length > 0 && <div className="grid-cards">{cards.map((d) => <DogCard key={d.id} dog={d} cfg={cfg} openAlert={newestOpen.get(d.id)} />)}</div>}
+        {loading ? (
+          <div className="stack" aria-busy="true">
+            <p className="small muted">Cargando tus perros…</p>
+            <div className="grid-cards"><Skeleton /><Skeleton lines={[35, 50, 100]} /></div>
+          </div>
+        ) : sorted.length > 0 && <div className="grid-cards">{cards.map((d) => <DogCard key={d.id} dog={d} cfg={cfg} openAlert={newestOpen.get(d.id)} />)}</div>}
       </div>
     </main>
   );

@@ -1,41 +1,45 @@
-/* Shared UI ported from the v2 prototype. Styles live in styles/app.css. */
+/* Shared UI ported from the v2 prototype, with the look of the v3 mockups
+. Styles live in styles/app.css. */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Behavior, FusionConfig, Level } from "@shared/types";
 import { usingEmulators } from "../firebase";
 
+/* Line icons on a 24 px grid, 2 px stroke: the set of the v3 mockups, plus a few more for the research tools. */
 const ICONS: Record<string, ReactNode> = {
-  "check-circle": <><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></>,
-  "alert-triangle": <><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></>,
-  "alert-octagon": <><path d="M12 16h.01" /><path d="M12 8v4" /><path d="M15.31 2a2 2 0 0 1 1.42.59l4.68 4.68A2 2 0 0 1 22 8.69v6.62a2 2 0 0 1-.59 1.42l-4.68 4.68a2 2 0 0 1-1.42.59H8.69a2 2 0 0 1-1.42-.59l-4.68-4.68A2 2 0 0 1 2 15.31V8.69a2 2 0 0 1 .59-1.42l4.68-4.68A2 2 0 0 1 8.69 2z" /></>,
-  info: <><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>,
-  paw: <><circle cx="11" cy="4" r="2" /><circle cx="18" cy="8" r="2" /><circle cx="20" cy="16" r="2" /><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.05Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z" /></>,
+  "check-circle": <><circle cx="12" cy="12" r="9" /><path d="m8.5 12 2.5 2.5 4.5-5" /></>,
+  "alert-triangle": <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></>,
+  "alert-octagon": <><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z" /><path d="M12 8v4" /><path d="M12 16h.01" /></>,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>,
+  paw: <><circle cx="6.5" cy="10" r="2" /><circle cx="10" cy="5.5" r="2" /><circle cx="14" cy="5.5" r="2" /><circle cx="17.5" cy="10" r="2" /><path d="M8 17c0-2.8 1.8-5 4-5s4 2.2 4 5c0 1.7-1.2 2.6-2.6 2.6-.7 0-1-.4-1.4-.4s-.7.4-1.4.4C9.2 19.6 8 18.7 8 17z" /></>,
   lock: <><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
-  clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
-  bell: <><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></>,
-  user: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
-  home: <><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .71-1.53l7-6a2 2 0 0 1 2.58 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></>,
-  stethoscope: <><path d="M11 2v2" /><path d="M5 2v2" /><path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1" /><path d="M8 15a6 6 0 0 0 12 0v-3" /><circle cx="20" cy="10" r="2" /></>,
-  flask: <><path d="M10 2v7.53a2 2 0 0 1-.21.9L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.07-10.13A2 2 0 0 1 14 9.53V2" /><path d="M8.5 2h7" /><path d="M7 16h10" /></>,
-  "log-out": <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>,
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /></>,
+  home: <><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" /></>,
+  stethoscope: <><path d="M5 3v5a5 5 0 0 0 10 0V3" /><path d="M10 13v2a5 5 0 0 0 10 0v-2" /><circle cx="20" cy="11" r="2" /></>,
+  flask: <><path d="M9 3h6" /><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3" /><path d="M7 15h10" /></>,
+  "log-out": <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>,
   database: <><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></>,
-  heart: <><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" /></>,
-  thermometer: <><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" /></>,
+  heart: <><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z" /></>,
+  thermometer: <><path d="M14 4v10.5a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z" /></>,
   search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>,
   "chevron-right": <><path d="m9 18 6-6-6-6" /></>,
   "chevron-left": <><path d="m15 18-6-6 6-6" /></>,
-  plus: <><path d="M5 12h14" /><path d="M12 5v14" /></>,
+  "chevron-down": <><path d="m6 9 6 6 6-6" /></>,
+  plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
   menu: <><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></>,
   x: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
-  play: <><polygon points="6 3 20 12 6 21 6 3" /></>,
-  pause: <><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></>,
-  square: <><rect width="16" height="16" x="4" y="4" rx="2" /></>,
+  play: <><path d="M7 4l13 8-13 8z" /></>,
+  pause: <><path d="M8 4v16" /><path d="M16 4v16" /></>,
+  square: <><rect x="5" y="5" width="14" height="14" rx="1" /></>,
   zap: <><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" /></>,
-  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></>,
-  download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>,
-  file: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></>,
+  upload: <><path d="M12 15V3" /><path d="m7 8 5-5 5 5" /><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" /></>,
+  download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
+  file: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></>,
   check: <><path d="M20 6 9 17l-5-5" /></>,
   "bell-off": <><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5" /><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><path d="m2 2 20 20" /></>,
-  sliders: <><line x1="21" x2="14" y1="4" y2="4" /><line x1="10" x2="3" y1="4" y2="4" /><line x1="21" x2="12" y1="12" y2="12" /><line x1="8" x2="3" y1="12" y2="12" /><line x1="21" x2="16" y1="20" y2="20" /><line x1="12" x2="3" y1="20" y2="20" /><line x1="14" x2="14" y1="2" y2="6" /><line x1="8" x2="8" y1="10" y2="14" /><line x1="16" x2="16" y1="18" y2="22" /></>,
+  sliders: <><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></>,
+  "wifi-off": <><path d="M2 2l20 20" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M5 12.9a10 10 0 0 1 5.2-2.8" /><path d="M19 12.9a10 10 0 0 0-2.2-1.6" /><path d="M12 20h.01" /></>,
 };
 
 export function Icon({ name, size = 16, title, style }: { name: string; size?: number; title?: string; style?: CSSProperties }) {
@@ -52,6 +56,12 @@ export const LEVELS: Record<Level, { text: string; icon: string; color: string; 
   amber: { text: "Atención", icon: "alert-triangle", color: "var(--color-status-amber)", bg: "var(--color-status-amber-bg)" },
   red: { text: "Revisar", icon: "alert-octagon", color: "var(--color-status-red)", bg: "var(--color-status-red-bg)" },
 };
+
+/** CSS variables with the colours of a level, for borders, icons and markers that follow it. */
+export function levelVars(level: Level | null | undefined): CSSProperties {
+  const L = level ? LEVELS[level] : null;
+  return { ["--level-color" as string]: L ? L.color : "var(--color-divider)", ["--level-bg" as string]: L ? L.bg : "var(--color-surface)" };
+}
 
 export const BEHAVIOR_NOW: Record<Behavior, string> = {
   sit: "Sentado", stand: "Parado", lie: "Echado", trot: "Trotando", walk: "Caminando", play: "Jugando", sniff: "Olfateando",
@@ -108,23 +118,26 @@ function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): str
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
 
-/** Health Score gauge 0–100. The cut marks come from config/fusion (levels), never hardcoded. */
+/** Health Score gauge 0–100: a 240° arc with the value in the serif. The cut marks come from config/fusion (levels),
+ * never hardcoded. `size` is the widest it gets; it shrinks with its container. */
 export function HealthGauge({ score, level, levels, size = 150 }: { score: number | null; level: Level | null; levels: FusionConfig["levels"]; size?: number }) {
   const L = level ? LEVELS[level] : null;
   const A0 = 150, SWEEP = 240, cx = 60, cy = 58, r = 46;
   const cuts = [levels.amber, levels.green];
   const valA = A0 + (SWEEP * Math.max(0, Math.min(100, score ?? 0))) / 100;
   const label = score == null || !L ? "Health Score sin datos" : `Health Score ${score} de 100: ${L.text}`;
+  // A three-digit score (100) gets a smaller figure so it stays inside the arc.
+  const k = score != null && score >= 100 ? 0.235 : 0.285;
   return (
     <div className="gauge" style={{ width: size, maxWidth: "100%", containerType: "inline-size" }} role="img" aria-label={label}>
-      <svg viewBox="0 0 120 100">
+      <svg viewBox="-6 -4 132 106">
         <path d={arcPath(cx, cy, r, A0, A0 + SWEEP)} fill="none" stroke={L ? L.bg : "var(--color-surface)"} strokeWidth="11" />
         {score != null && L && <path d={arcPath(cx, cy, r, A0, Math.max(A0 + 0.5, valA))} fill="none" stroke={L.color} strokeWidth="11" />}
-        {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x0, y0] = polar(cx, cy, r - 8, a), [x1, y1] = polar(cx, cy, r + 8, a); return <line key={v} x1={x0} y1={y0} x2={x1} y2={y1} stroke="var(--color-sheet)" strokeWidth="2" />; })}
-        {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x, y] = polar(cx, cy, r + 13, a); return <text key={`t${v}`} x={x} y={y + 3} textAnchor="middle" className="chart-axis" style={{ fontSize: 8 }}>{v}</text>; })}
+        {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x0, y0] = polar(cx, cy, r - 8, a), [x1, y1] = polar(cx, cy, r + 8, a); return <line key={v} className="gauge-cut" x1={x0} y1={y0} x2={x1} y2={y1} />; })}
+        {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x, y] = polar(cx, cy, r + 13, a); return <text key={`t${v}`} className="gauge-label" x={x} y={y + 3} textAnchor="middle">{v}</text>; })}
       </svg>
       <div className="gauge-center" aria-hidden="true">
-        <div className="gauge-value" style={{ fontSize: `min(${Math.round(size * 0.27)}px, 27cqw)` }}>{score ?? "—"}</div>
+        <div className="gauge-value" style={{ fontSize: `min(${Math.round(size * k)}px, ${(100 * k).toFixed(1)}cqw)` }}>{score ?? "—"}</div>
         <div className="gauge-unit">de 100</div>
       </div>
     </div>
@@ -143,7 +156,7 @@ export function OfflineBanner() {
   if (online) return null;
   return (
     <div className="offline" role="status"><div className="offline-inner">
-      <Icon name="alert-triangle" size={16} />
+      <Icon name="wifi-off" size={14} />
       <span>Sin conexión. Ves los últimos datos que recibimos; se actualizarán cuando vuelvas a conectarte.</span>
     </div></div>
   );
@@ -162,25 +175,26 @@ export function EmulatorBanner() {
 export function Callout({ kind, children }: { kind: "error" | "ok"; children: ReactNode }) {
   return (
     <div className={`callout callout-${kind}`} role={kind === "error" ? "alert" : "status"}>
-      <Icon name={kind === "error" ? "alert-triangle" : "check-circle"} size={18} style={{ marginTop: 2 }} /><div>{children}</div>
+      <Icon name={kind === "error" ? "alert-triangle" : "check-circle"} size={16}
+        style={{ marginTop: 1, color: kind === "error" ? "var(--color-status-red)" : "var(--color-status-green)" }} /><div>{children}</div>
     </div>
   );
 }
 
 /** Level of the Health Score: always color + icon + text, never color alone. */
-export function LevelTag({ level }: { level: Level | null | undefined }) {
-  if (!level) return <span className="tag tag-outline"><Icon name="clock" size={14} />Sin datos</span>;
-  return <span className={`tag tag-${level}`}><Icon name={LEVELS[level].icon} size={14} />{LEVELS[level].text}</span>;
+export function LevelTag({ level, iconSize = 14 }: { level: Level | null | undefined; iconSize?: number }) {
+  if (!level) return <span className="tag tag-outline"><Icon name="clock" size={iconSize} />Sin datos</span>;
+  return <span className={`tag tag-${level}`}><Icon name={LEVELS[level].icon} size={iconSize} />{LEVELS[level].text}</span>;
 }
 
-/** Fixed notice required wherever the Health Score appears. */
+/** Fixed notice required wherever the Health Score appears: a quiet line between two rules. */
 export const NOTICE_TEXT = "Detecta cambios respecto al patrón normal de tu perro. No diagnostica ni reemplaza la evaluación veterinaria.";
 
 export function Notice() {
   return (
     <div className="notice" role="note">
-      <Icon name="info" size={18} style={{ marginTop: 2 }} />
-      <div><strong>{NOTICE_TEXT}</strong></div>
+      <Icon name="info" size={14} />
+      <span>{NOTICE_TEXT}</span>
     </div>
   );
 }
@@ -198,14 +212,38 @@ export function PageHead({ kicker, title, sub, actions }: { kicker?: string; tit
   );
 }
 
+/** Empty state inside a panel: an icon (green when everything is fine), a short title, what to do next. */
 export function EmptyState({ icon = "paw", title, text, action }: { icon?: string; title: string; text?: string; action?: ReactNode }) {
   return (
-    <div className="empty">
-      <Icon name={icon} size={34} />
+    <div className="empty" data-tone={icon === "check-circle" ? "ok" : undefined}>
+      <Icon name={icon} size={28} />
       <div className="empty-title">{title}</div>
       {text && <p className="empty-text">{text}</p>}
       {action}
     </div>
+  );
+}
+
+/** Placeholder blocks while the first snapshot arrives. */
+export function Skeleton({ lines = [40, 60, 100] }: { lines?: number[] }) {
+  return (
+    <div className="panel stack-sm" aria-hidden="true">
+      {lines.map((w, i) => <div key={i} className="skeleton" style={{ height: i === lines.length - 1 ? 56 : i === 1 ? 22 : 14, width: `${w}%` }} />)}
+    </div>
+  );
+}
+
+/** A whole page while its first snapshot arrives: the frame (main, title) with placeholder panels, not a blank screen. */
+export function PageLoading({ title, text = "Cargando…", maxWidth }: { title?: string; text?: string; maxWidth?: number }) {
+  return (
+    <main className="page" id="main" aria-busy="true" style={maxWidth ? { maxWidth } : undefined}>
+      {title && <PageHead title={title} />}
+      <div className="stack">
+        <p className="small muted">{text}</p>
+        <Skeleton />
+        <Skeleton lines={[35, 50, 100]} />
+      </div>
+    </main>
   );
 }
 

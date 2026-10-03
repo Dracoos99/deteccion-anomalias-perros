@@ -29,6 +29,22 @@ function authErrorText(e: unknown, mode: Mode): string {
   return "El correo o la contraseña no son correctos. Revisa los datos e inténtalo de nuevo.";
 }
 
+/** The presentation of screen 1, on ink: what the app does, in three points. Also used by «Completa tu registro». */
+export function AuthBrand() {
+  return (
+    <section className="auth-brand" aria-label="Presentación">
+      <div className="kicker">Proyecto de tesis · UPC</div>
+      <h1 className="auth-title">Detección temprana de anomalías en perros</h1>
+      <p className="auth-lead">Sigue la actividad, la frecuencia cardiaca y la temperatura de tus perros, y recibe un aviso cuando algo se aleje de su patrón normal.</p>
+      <ul className="auth-points">
+        <li><Icon name="check-circle" size={16} /><span>Un estado claro para cada perro: <strong>Todo normal</strong>, <strong>Atención</strong> o <strong>Revisar</strong>.</span></li>
+        <li><Icon name="info" size={16} /><span>Cada alerta explica qué cambió y qué puedes hacer.</span></li>
+        <li><Icon name="stethoscope" size={16} /><span>Un resumen técnico para mostrarle a tu veterinario.</span></li>
+      </ul>
+    </section>
+  );
+}
+
 export function AuthPage({ mode }: { mode: Mode }) {
   const { user, role, loading, refreshRole } = useAuth();
   usePageTitle(mode === "login" ? "Iniciar sesión" : mode === "registro" ? "Crear cuenta" : "Recuperar contraseña");
@@ -94,27 +110,18 @@ export function AuthPage({ mode }: { mode: Mode }) {
   };
 
   return (
-    <>
+    <div className="auth-screen">
       <EmulatorBanner />
       <main className="auth" id="main">
-        <section className="auth-brand" aria-label="Presentación">
-          <div className="kicker">Proyecto de tesis · UPC</div>
-          <h1 className="auth-title">Detección temprana de anomalías en perros</h1>
-          <p className="auth-lead">Sigue la actividad, la frecuencia cardiaca y la temperatura de tus perros, y recibe un aviso cuando algo se aleje de su patrón normal.</p>
-          <ul className="auth-points">
-            <li><Icon name="check-circle" size={20} /><span>Un estado claro para cada perro: <strong>Todo normal</strong>, <strong>Atención</strong> o <strong>Revisar</strong>, siempre con color, texto e ícono.</span></li>
-            <li><Icon name="info" size={20} /><span>Cada alerta explica en palabras simples qué cambió y qué puedes hacer.</span></li>
-            <li><Icon name="stethoscope" size={20} /><span>Un resumen técnico para mostrarle a tu veterinario en la consulta.</span></li>
-          </ul>
-          <div style={{ maxWidth: 520 }}><Notice /></div>
-        </section>
+        <AuthBrand />
         <section className="auth-form" aria-label="Formulario de acceso">
           <div className="auth-card">
-            <div className="tabs" role="tablist" aria-label="Acceso">
-              <Link role="tab" aria-selected={mode === "login"} to="/acceso">Iniciar sesión</Link>
-              <Link role="tab" aria-selected={mode === "registro"} to="/acceso/registro">Crear cuenta</Link>
-            </div>
-            {mode === "recuperar" && <h2 className="section-title" style={{ marginBottom: 12 }}>Recuperar contraseña</h2>}
+            {mode === "recuperar" ? <h2 className="section-title auth-card-title">Recuperar contraseña</h2> : (
+              <div className="tabs" role="tablist" aria-label="Acceso">
+                <Link role="tab" aria-selected={mode === "login"} to="/acceso">Iniciar sesión</Link>
+                <Link role="tab" aria-selected={mode === "registro"} to="/acceso/registro">Crear cuenta</Link>
+              </div>
+            )}
             <form className="stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
               {msg && <Callout kind={msg.kind}>{msg.text}</Callout>}
               {mode === "registro" && (
@@ -136,11 +143,12 @@ export function AuthPage({ mode }: { mode: Mode }) {
               <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
                 {busy ? "Un momento…" : mode === "login" ? "Iniciar sesión" : mode === "registro" ? "Crear cuenta" : "Enviar enlace"}
               </button>
-              {mode === "login" && <Link to="/acceso/recuperar" className="small">¿Olvidaste tu contraseña?</Link>}
-              {mode === "recuperar" && <Link to="/acceso" className="small"><Icon name="chevron-left" size={14} /> Volver a iniciar sesión</Link>}
+              {mode === "login" && <Link to="/acceso/recuperar" className="small auth-link">¿Olvidaste tu contraseña?</Link>}
+              {mode === "recuperar" && <Link to="/acceso" className="small auth-link"><Icon name="chevron-left" size={14} /> Volver a iniciar sesión</Link>}
             </form>
+            <Notice />
             {usingEmulators && mode === "login" && (
-              <div className="well" style={{ marginTop: 24 }}>
+              <div className="well" style={{ marginTop: 20 }}>
                 <div className="kicker" style={{ marginBottom: 8 }}>Emuladores · cuentas de demostración</div>
                 <div className="row">
                   {DEMO_ACCOUNTS.map((a) => (
@@ -148,12 +156,12 @@ export function AuthPage({ mode }: { mode: Mode }) {
                       onClick={() => setF({ ...f, email: a.email, password: DEMO_PASSWORD })}>{a.label}</button>
                   ))}
                 </div>
-                <p className="small muted" style={{ marginTop: 8 }}>Completa el formulario con una cuenta creada por <code>npm run emulators:seed</code>.</p>
+                <p className="xs muted" style={{ margin: "8px 0 0" }}>Completa el formulario con una cuenta creada por <code>npm run emulators:seed</code>.</p>
               </div>
             )}
           </div>
         </section>
       </main>
-    </>
+    </div>
   );
 }

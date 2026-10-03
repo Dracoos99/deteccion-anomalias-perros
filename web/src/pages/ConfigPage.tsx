@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, writeBatch, type Timestamp } from "firebase/firestore";
 import { DEFAULT_FUSION_CONFIG, healthScore, levelOf, type FusionConfig } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, HealthGauge, Icon, LevelTag, PageHead, fmtNum, usePageTitle } from "../components/ui";
+import { Callout, HealthGauge, Icon, LevelTag, PageHead, PageLoading, fmtNum, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useActiveModels, useFusionConfig, type Fusion } from "../data/hooks";
 import { dateTimeText, durationText } from "../lib/plain";
@@ -97,9 +97,9 @@ function ChangeLog({ uid }: { uid: string }) {
   useEffect(() => onSnapshot(query(collection(db, "configHistory"), orderBy("updatedAt", "desc"), limit(10)),
     (snap) => setEntries(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<HistoryEntry, "id">) })))), []);
   return (
-    <section className="panel" aria-labelledby="log-title">
+    <section className="panel stack-sm" aria-labelledby="log-title">
       <h2 className="panel-title" id="log-title">Bitácora de cambios</h2>
-      {!entries.length ? <p className="small muted" style={{ margin: 0 }}>Todavía no hay cambios guardados desde esta pantalla.</p> : (
+      {!entries.length ? <p className="small muted">Todavía no hay cambios guardados desde esta pantalla.</p> : (
         <div className="table-wrap" role="region" aria-label="Bitácora de cambios" tabIndex={0}>
           <table className="table table-compact">
             <thead><tr><th scope="col">Fecha</th><th scope="col">Quién</th><th scope="col">Parámetro</th><th scope="col">Antes</th><th scope="col">Después</th></tr></thead>
@@ -124,17 +124,17 @@ function ModelsSummary() {
   return (
     <div className="grid-3">
       <article className="panel stack-sm">
-        <h3 className="panel-title" style={{ margin: 0 }}>Conducta</h3>
-        {b ? <><div className="mono small">{b.version}</div><div className="small">F1 macro {fmtNum(b.metrics.test_macro_f1, 3)} en prueba · {fmtNum(b.metrics.val_macro_f1, 3)} en validación <span className="xs muted">(meta ≥ 0,75)</span></div></>
+        <h3 className="panel-title">Conducta</h3>
+        {b ? <><div className="mono small">{b.version}</div><div className="small">F1 macro {fmtNum(b.metrics.test_macro_f1, 3)} en prueba · {fmtNum(b.metrics.val_macro_f1, 3)} en validación <span className="xs muted">(meta ≥ 0.75)</span></div></>
           : <div className="small muted">Sin modelo registrado: regla provisional de movimiento.</div>}
       </article>
       <article className="panel stack-sm">
-        <h3 className="panel-title" style={{ margin: 0 }}>Frecuencia cardiaca</h3>
-        {p ? <><div className="mono small">{p.version}</div><div className="small">Combinado con la regla del promedio: F1 {fmtNum(p.metrics.combined_test_f1, 3)} en prueba <span className="xs muted">(meta ≥ 0,75)</span></div></>
+        <h3 className="panel-title">Frecuencia cardiaca</h3>
+        {p ? <><div className="mono small">{p.version}</div><div className="small">Combinado con la regla del promedio: F1 {fmtNum(p.metrics.combined_test_f1, 3)} en prueba <span className="xs muted">(meta ≥ 0.75)</span></div></>
           : <div className="small muted">Sin modelo registrado: regla del promedio respecto a la línea base.</div>}
       </article>
       <article className="panel stack-sm">
-        <h3 className="panel-title" style={{ margin: 0 }}>Temperatura</h3>
+        <h3 className="panel-title">Temperatura</h3>
         <div className="small">Reglas: rango de referencia y desviación respecto al patrón del perro. Se editan abajo.</div>
       </article>
     </div>
@@ -152,7 +152,7 @@ export function ConfigPage() {
   const [busy, setBusy] = useState(false);
   useEffect(() => onSnapshot(doc(db, "config", "fusion"), (s) => setMeta((s.data() as Partial<FusionConfig<Timestamp>> | undefined) ?? null)), []);
   useEffect(() => { if (!loading && d == null) setD(toDraft(cfg)); }, [loading, cfg, d]);
-  if (!d) return <div className="boot" aria-busy="true">Cargando…</div>;
+  if (!d) return <PageLoading title="Modelos y configuración" />;
 
   const { errors, next } = validate(d);
   const candidate = next(cfg);
@@ -191,43 +191,43 @@ export function ConfigPage() {
         sub="Modelos activos y los pesos y umbrales de la fusión (config/fusion). Los cambios se aplican a los bloques siguientes, en menos de 15 s." />
       <div className="stack">
         <ModelsSummary />
-        <div className="callout callout-warn small"><Icon name="info" size={16} style={{ marginTop: 2 }} />
+        <div className="callout callout-warn"><Icon name="info" size={16} style={{ marginTop: 1, color: "var(--color-status-amber)" }} />
           <div>Valores provisionales: las reglas críticas, los pesos y la severidad (C3–C5) los decide el equipo con los barridos del simulador (npm run sim -- sweep).</div></div>
         <div className="split">
           <section className="panel stack" aria-labelledby="fusion-title">
-            <h2 className="panel-title" id="fusion-title" style={{ margin: 0 }}>Fusión y umbrales</h2>
+            <h2 className="panel-title" id="fusion-title">Fusión y umbrales</h2>
             <div>
-              <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Pesos de cada señal</h3>
+              <h3 className="form-group-title">Pesos de cada señal</h3>
               <div className="grid-3">{inp("wb", "Conducta y actividad (b)")}{inp("wp", "Frecuencia cardiaca (p)")}{inp("wt", "Temperatura (t)")}</div>
             </div>
             <div className="codeblock" role="region" aria-label="Fórmula del Health Score" tabIndex={0}>HealthScore = 100 × (1 − ({fmtNum(num(d.wb), 2)}·r_b + {fmtNum(num(d.wp), 2)}·r_p + {fmtNum(num(d.wt), 2)}·r_t))</div>
             <div>
-              <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Niveles y alertas</h3>
+              <h3 className="form-group-title">Niveles y alertas</h3>
               <div className="grid-3">
                 {inp("green", "«Todo normal» desde", undefined, "Health Score mínimo")}
                 {inp("amber", "«Atención» desde", undefined, "Por debajo, «Revisar»")}
                 {inp("alert", "Alerta si el Health Score es menor que")}
               </div>
-              <div className="grid-3" style={{ marginTop: 12 }}>
+              <div className="grid-3 grid-more">
                 {inp("consec", "Regla crítica: ventanas seguidas", undefined, "Ventanas de 2 s")}
                 {inp("sigma", "Desviación respecto a la línea base", "σ", "Actividad, FC y bandas del patrón normal")}
                 {inp("episodeGap", "Cierre de un episodio", "s", "Sin disparos durante este tiempo")}
               </div>
-              <div className="grid-3" style={{ marginTop: 12 }}>
+              <div className="grid-3 grid-more">
                 {inp("minDuration", "Duración mínima de una alerta", "s", "El disparo debe sostenerse este tiempo antes de avisar")}
                 {inp("actSigma", "Regla de actividad baja", "σ", "Bajo el patrón del perro. Vacío: sin regla")}
               </div>
             </div>
             <div>
-              <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Temperatura y frecuencia cardiaca</h3>
+              <h3 className="form-group-title">Temperatura y frecuencia cardiaca</h3>
               <div className="grid-3">{inp("tMin", "Temperatura mínima", "°C")}{inp("tMax", "Temperatura máxima", "°C")}{inp("tDev", "Desviación máxima del patrón", "°C")}</div>
-              <div className="grid-3" style={{ marginTop: 12 }}>
+              <div className="grid-3 grid-more">
                 {inp("hrMin", "FC de referencia mínima", "lpm", "Solo informativa")}
                 {inp("hrMax", "FC de referencia máxima", "lpm")}
               </div>
             </div>
             <div>
-              <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Autoencoder de FC</h3>
+              <h3 className="form-group-title">Autoencoder de FC</h3>
               <div className="grid-3">
                 {inp("critical", "Umbral crítico", "×", "Veces su umbral. Vacío: el del modelo (percentil 99.9)")}
                 {inp("fullScale", "Escala de r_p", "×", "Veces su umbral. Vacío: la del modelo")}
@@ -235,7 +235,7 @@ export function ConfigPage() {
               </div>
             </div>
             <div>
-              <h3 className="field-label" style={{ fontSize: 15, marginBottom: 8 }}>Patrón normal de perros nuevos</h3>
+              <h3 className="form-group-title">Patrón normal de perros nuevos</h3>
               <div className="grid-3">{inp("minBlocks", "Bloques de 10 s por etapa", undefined, Number.isFinite(num(d.minBlocks)) ? `${durationText(num(d.minBlocks) * 10_000)} de datos` : undefined)}</div>
             </div>
             <dl className="kv">
@@ -244,7 +244,7 @@ export function ConfigPage() {
               <dt>FC promediada</dt><dd>{cfg.hrAverageS} s</dd>
               <dt>Última actualización</dt><dd>{meta?.updatedAt ? `${dateTimeText(meta.updatedAt.toMillis())}${meta.updatedBy === user!.uid ? " · por ti" : ""}` : "valores iniciales"}</dd>
             </dl>
-            {errors.length > 0 && <div className="callout callout-error" role="alert"><Icon name="alert-triangle" size={18} style={{ marginTop: 2 }} /><ul style={{ margin: 0, paddingLeft: 18 }}>{errors.map((e) => <li key={e}>{e}</li>)}</ul></div>}
+            {errors.length > 0 && <div className="callout callout-error" role="alert"><Icon name="alert-triangle" size={16} style={{ marginTop: 1 }} /><ul style={{ margin: 0, paddingLeft: 18 }}>{errors.map((e) => <li key={e}>{e}</li>)}</ul></div>}
             {saved === "ok" && <Callout kind="ok">Configuración guardada. Se aplica a los bloques siguientes.</Callout>}
             {saved === "error" && <Callout kind="error">No pudimos guardar la configuración.</Callout>}
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -255,7 +255,7 @@ export function ConfigPage() {
           </section>
           <aside className="panel stack-sm" aria-labelledby="probe-title">
             <h2 className="panel-title" id="probe-title">Probar la fórmula</h2>
-            <p className="small muted" style={{ margin: 0 }}>Mueve la desviación de cada señal (0 = igual a su patrón, 1 = máxima) para ver el Health Score con los pesos de la izquierda.</p>
+            <p className="small muted">Mueve la desviación de cada señal (0 = igual a su patrón, 1 = máxima) para ver el Health Score con los pesos de la izquierda.</p>
             {([["b", "Conducta y actividad (r_b)"], ["p", "Frecuencia cardiaca (r_p)"], ["t", "Temperatura (r_t)"]] as const).map(([k, label]) => (
               <div className="field" key={k}><label htmlFor={`p-${k}`}>{label}: <span className="tabular">{fmtNum(probe[k], 2)}</span></label>
                 <input id={`p-${k}`} type="range" min="0" max="1" step="0.05" value={probe[k]} onChange={(e) => setProbe({ ...probe, [k]: Number(e.target.value) })} /></div>
@@ -266,7 +266,7 @@ export function ConfigPage() {
               <div className="small">{hs == null ? "Corrige la configuración para calcular." : hs < candidate.alertThreshold ? "Generaría una alerta." : "No genera alerta por puntaje (puede generarla una regla crítica)."}</div>
             </div>
             {singleMin != null && (
-              <div className="callout callout-warn small"><Icon name="info" size={16} style={{ marginTop: 2 }} />
+              <div className="callout callout-warn"><Icon name="info" size={16} style={{ marginTop: 1, color: "var(--color-status-amber)" }} />
                 <div>Con estos pesos, si una sola señal se desvía al máximo, el Health Score no baja de <strong>{singleMin}</strong>{singleMin >= candidate.levels.amber ? ": ninguna señal por sí sola lleva a «Revisar» ni genera alerta por puntaje. Esos casos dependen de las reglas críticas." : "."}</div></div>
             )}
           </aside>
