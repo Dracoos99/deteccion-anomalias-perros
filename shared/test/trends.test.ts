@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addBlock, collectSlots, dayKey, daysBetween, emptySlot, mergeSlots, rebucket, slotIndex, slotStartMs, summarize, toPoint,
-  type BlockSummary,
+  addBlock, collectSlots, dayKey, daysBetween, emptySlot, mergeSlots, movingShare, rebucket, rollingMean, slotIndex, slotStartMs, summarize,
+  toPoint, windowAlpha, withMovingShare, type BlockSummary, type TimedSlot,
 } from "../trends";
 
 const block = (over: Partial<BlockSummary> = {}): BlockSummary => ({
@@ -44,5 +44,48 @@ describe("trend slots", () => {
     expect(rebucket(items, 86_400_000).map((i) => i.slot.n)).toEqual([2, 1]);
     expect(toPoint(items[0])).toMatchObject({ healthScore: 90, activity: 0.4, hr: 72, temp: 38.6, level: "green", blocks: 1 });
     expect(daysBetween(Date.parse("2026-09-29T23:00:00Z"), Date.parse("2026-09-30T01:00:00Z"))).toEqual(["2026-09-29", "2026-09-30"]);
+  });
+});
+
+describe("averages the dog's normal band refers to", () => {
+  it("keeps the engine's moving share of time in movement in the slots", () => {
+    const a = addBlock(addBlock(emptySlot(), block({ activityAvg: [0.5, 0.52] })), block({ activityAvg: [0.54] }));
+    expect(a).toMatchObject({ aeSum: 1.56, aeN: 3 });
+    expect(toPoint({ t: 0, slot: a }).activityAvg).toBeCloseTo(0.52);
+    expect(mergeSlots(a, addBlock(emptySlot(), block({ activityAvg: [0.4] })))).toMatchObject({ aeSum: 1.96, aeN: 4 });
+    // Slots written before keep no such fields, and their points have no average.
+    const old = addBlock(emptySlot(), block());
+    expect("aeN" in old).toBe(false);
+    expect(toPoint({ t: 0, slot: old }).activityAvg).toBeNull();
+  });
+
+  it("rebuilds it for older slots, from the baseline mean, and goes on from stored values", () => {
+    const alpha = windowAlpha(1200);
+    const still = (t: number): TimedSlot => ({ t, slot: addBlock(emptySlot(), block({ windows: 30, active: 0 })) });
+    // One hour of a still dog in 1-minute slots: the average falls from the baseline (0.5) like the engine's, about
+    // 95 % of the way to 0 after three time constants, never at once.
+    const items = withMovingShare(Array.from({ length: 60 }, (_, i) => still(i * 60_000)), 0.5, alpha);
+    const v = items.map((i) => toPoint(i).activityAvg!);
+    expect(v[0]).toBeGreaterThan(0.48);
+    expect(v.every((x, i) => i === 0 || x < v[i - 1])).toBe(true);
+    expect(v[59]).toBeCloseTo(0.5 * Math.exp(-3600 / 1200), 1);
+    // A stored value resets the rebuilt one.
+    const mixed = withMovingShare([still(0), { t: 60_000, slot: addBlock(emptySlot(), block({ activityAvg: [0.8] })) }, still(120_000)], 0.5, alpha);
+    expect(toPoint(mixed[1]).activityAvg).toBe(0.8);
+    expect(toPoint(mixed[2]).activityAvg).toBeGreaterThan(0.75);
+    // The same rule for any 0/1 signal, e.g. unusual movements starting at their expected rate.
+    expect(movingShare([still(0)], (s) => [s.nov, s.w], 0.05, windowAlpha(300))[0]).toBeLessThan(0.05);
+  });
+
+  it("averages the heart rate over the last 60 s at each second, with at least half of them", () => {
+    const hr = Array.from({ length: 120 }, (_, i) => ({ t: i * 1000, v: i < 60 ? 70 : 130 }));
+    const avg = rollingMean(hr, 60_000, 30);
+    expect(avg[0]).toEqual({ t: 29_000, v: 70 });   // from the 30th second
+    expect(avg.find((p) => p.t === 59_000)?.v).toBe(70);
+    expect(avg.find((p) => p.t === 89_000)?.v).toBe(100);
+    expect(avg[avg.length - 1].v).toBe(130);
+    // A 1 Hz spike moves the mean by 1/31 of its size in the first half minute (1/60 once the minute is full).
+    const spike = rollingMean(hr.map((p) => (p.t === 30_000 ? { ...p, v: 190 } : p)), 60_000, 30);
+    expect(spike.find((p) => p.t === 30_000)!.v).toBeCloseTo(70 + 120 / 31);
   });
 });

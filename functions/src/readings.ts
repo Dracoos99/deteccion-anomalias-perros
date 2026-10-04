@@ -124,6 +124,8 @@ export async function processReading(db: Firestore, readingId: string, reading: 
         healthScore: ev.result.healthScore, level: ev.result.level, windows: measured.length,
         active: measured.filter((w) => w.active).length, novel: ev.windows.filter((w) => w.novel).length,
         behaviors: ev.windows.map((w) => w.predicted), hr: pre.hr, temp: pre.temp,
+        // What the dog's movement band refers to, so the charts draw the same average the engine compares.
+        activityAvg: measured.flatMap((w) => (w.activityRatio == null ? [] : [w.activityRatio])),
       };
       // Every block writes its slot, so a slot never waits for the next one.
       const same = trend && trend.day === day && trend.index === index;

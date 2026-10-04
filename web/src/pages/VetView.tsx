@@ -11,7 +11,7 @@ import { BarList } from "../components/charts";
 import { EmptyState, Icon, PageLoading, Seg, Skeleton, fmtNum, usePageTitle } from "../components/ui";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
 import { useDogTrend } from "../data/useDogTrend";
-import { BEHAVIOR_LABEL, COMPONENT_LABEL, ageText, alertStartMs, dateText, dateTimeText, durationText, primaryReason, reasonUnit } from "../lib/plain";
+import { BEHAVIOR_LABEL, COMPONENT_LABEL, activityBand, ageText, alertStartMs, dateText, dateTimeText, durationText, hrBand, primaryReason, reasonUnit } from "../lib/plain";
 
 const PERIODS = [{ value: 7, label: "7 días" }, { value: 30, label: "30 días" }];
 const DATASET_TEXT: Record<string, string> = {
@@ -26,8 +26,10 @@ function orderedReasons(reasons: AlertReason[]): AlertReason[] {
   return first ? [first, ...reasons.filter((r) => r !== first)] : reasons;
 }
 
+/** Lowest and highest 20-minute average of time in movement over the 5-minute slots: the quantity of the
+ * baseline, so the row compares like with like. */
 function activityRange(items: TimedSlot[]): { min: number; max: number } | null {
-  const v = items.filter((i) => i.slot.w > 0).map((i) => i.slot.act / i.slot.w);
+  const v = items.filter((i) => i.slot.aeN).map((i) => i.slot.aeSum! / i.slot.aeN!);
   return v.length ? { min: Math.min(...v), max: Math.max(...v) } : null;
 }
 
@@ -39,7 +41,7 @@ export function VetView() {
   usePageTitle(dog ? `${dog.name} · Vista para el veterinario` : "Vista para el veterinario");
   const { data: cfg } = useFusionConfig();
   const [days, setDays] = useState(7);
-  const trend = useDogTrend(dog, viewer, days * 86_400_000);
+  const trend = useDogTrend(dog, viewer, days * 86_400_000, cfg);
   const { data: alerts } = useDogAlerts(dog?.id, viewer, 200);
   const { data: models } = useActiveModels();
 
@@ -52,6 +54,9 @@ export function VetView() {
     );
   }
   const b = dog.baseline, sum = summarize(trend.items), act = activityRange(trend.items);
+  const avgMin = fmtNum(cfg.activity.timeConstantS / 60);
+  const hb = hrBand(b, cfg), ab = activityBand(b, cfg);
+  const bands = [hb && `FC ${hb[0]}–${hb[1]} lpm`, ab && `movimiento ${fmtNum(100 * ab[0])}–${fmtNum(100 * ab[1])} %`].filter(Boolean).join("; ");
   // The models the system applies (modelVersions), not only the ones that scored the latest block: the autoencoder
   // only reads 60 s of heart rate in a row, so the latest block may have been scored without it.
   const activeModel = (kind: string) => models.find((m) => m.kind === kind)?.version ?? null;
@@ -121,7 +126,8 @@ export function VetView() {
                 </tbody>
               </table>
             </div>
-            <p className="xs muted">Mínimo y máximo de FC sobre valores de 1 s; de temperatura, por bloque de datos (2 o 10 s); de movimiento, por franja de 5 minutos.
+            <p className="xs muted">Mínimo y máximo de FC sobre valores de 1 s; de temperatura, por bloque de datos (2 o 10 s); de movimiento, del promedio de {avgMin} minutos en cada franja de 5 minutos.
+              La línea base de FC es la de sus promedios de {cfg.hrAverageS} s, y la de movimiento, la de sus promedios de {avgMin} minutos: el sistema compara esos promedios con la media ± {fmtNum(cfg.baselineSigma)} DE{bands ? ` (${bands})` : ""}.
               Tiempo en cada estado: normal {fmtNum(100 * sum.levels.green)} %, atención {fmtNum(100 * sum.levels.amber)} %, revisar {fmtNum(100 * sum.levels.red)} %.</p>
           </section>
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_FUSION_CONFIG, type AlertReason, type DogStatus } from "../../shared/types";
 import {
   activityFriendly, alertTitle, behaviorNow, byAttention, dayHeading, describeDog, durationText, endSentence, heartFriendly, homeSummary, hrBand,
-  glueTime, namesText, primaryReason, tempFriendly, whatToDo, whenPhrase, whenText,
+  coverageText, glueTime, namesText, primaryReason, tempFriendly, whatToDo, whenPhrase, whenText,
 } from "../src/lib/plain";
 
 const cfg = DEFAULT_FUSION_CONFIG;
@@ -38,8 +38,11 @@ describe("describeDog", () => {
   it("answers in plain language, temperature first, without diagnosing", () => {
     expect(describeDog(status(), baseline, cfg).phrase).toBe("Todo en orden: se mueve y descansa como de costumbre.");
     expect(describeDog(status({ lastTemp: 40.2, lastHr: 90 }), baseline, cfg).phrase).toBe("Su temperatura está más alta de lo normal.");
-    expect(describeDog(status({ lastHr: 90 }), baseline, cfg).phrase).toBe("Su corazón late más rápido de lo habitual.");
-    expect(describeDog(status({ lastActivityRatio: 0.05 }), baseline, cfg).phrase).toBe("Se está moviendo menos de lo habitual.");
+    expect(describeDog(status({ lastHr: 90, level: "amber" }), baseline, cfg).phrase).toBe("Su corazón late más rápido de lo habitual.");
+    expect(describeDog(status({ lastActivityRatio: 0.05, level: "red" }), baseline, cfg).phrase).toBe("Se está moviendo menos de lo habitual.");
+    // Just out of its band while the score stays at "Todo normal": "un poco", so tag and phrase agree.
+    expect(describeDog(status({ lastHr: 90 }), baseline, cfg).phrase).toBe("Su corazón late un poco más rápido de lo habitual.");
+    expect(describeDog(status({ lastActivityRatio: 0.05 }), baseline, cfg).phrase).toBe("Se está moviendo un poco menos de lo habitual.");
     // Amber with every vital inside its band: neutral unless the open alert says what lowered it.
     expect(describeDog(status({ level: "amber" }), baseline, cfg).phrase).toBe("Algo se alejó un poco de su patrón normal en los últimos minutos.");
     expect(describeDog(status({ level: "amber" }), baseline, cfg, [reason("heart_rate", "hr_pattern")]).phrase)
@@ -68,6 +71,12 @@ describe("alerts in plain language", () => {
     expect(alertTitle(rs)).toBe("Su temperatura estuvo alta");
     expect(alertTitle([reason("heart_rate", "hr_low")])).toBe("Su frecuencia cardiaca estuvo baja");
     expect(alertTitle([reason("heart_rate", "hr_pattern")])).toBe("Su frecuencia cardiaca tuvo un patrón poco habitual");
+  });
+  it("names it by a variable out of its band before the shape of the heart rate or unusual movements", () => {
+    // An activity drop with a heart rate inside its band whose shape the autoencoder flagged.
+    expect(alertTitle([reason("heart_rate", "hr_pattern"), reason("behavior", "activity_low")])).toBe("Se movió menos de lo habitual");
+    expect(primaryReason([reason("behavior", "behavior_unusual"), reason("heart_rate", "hr_pattern")])?.code).toBe("hr_pattern");
+    expect(primaryReason([reason("heart_rate", "hr_pattern"), reason("temperature", "temp_deviation")])?.code).toBe("temp_deviation");
   });
   it("suggests observation steps for each variable and always the vet view", () => {
     const steps = whatToDo([reason("temperature", "temp_high")], "Toby", cfg);
@@ -129,6 +138,14 @@ describe("times in words", () => {
     expect(sp(whenText(new Date(2026, 9, 1, 13, 30).getTime(), now))).toBe("ayer a la 1:30 p. m.");
     expect(whenText(new Date(2026, 8, 28, 13, 30).getTime(), now)).toMatch(/^28 set\. 2026/);
     expect(whenPhrase(new Date(2026, 8, 28, 13, 30).getTime(), now)).toMatch(/^el 28 set\. 2026/);
+  });
+  it("says which stretch has data when it covers only part of the chart's period", () => {
+    const end = new Date(2026, 9, 4, 10, 41).getTime();
+    expect(sp(coverageText("las últimas 24 h", end - 86_400_000, end, end - 86_300_000, 180_000))).toBe("Datos de las últimas 24 h, hasta el 4 oct. 2026, 10:41 a. m.");
+    expect(sp(coverageText("las últimas 24 h", end - 86_400_000, end, new Date(2026, 9, 4, 10, 3).getTime(), 180_000)))
+      .toBe("Solo hay datos del 4 oct. 2026, de 10:03 a. m. a 10:41 a. m.");
+    expect(sp(coverageText("los últimos 7 días", end - 7 * 86_400_000, end, new Date(2026, 9, 2, 8, 0).getTime(), 3_600_000)))
+      .toBe("Solo hay datos desde el 2 oct. 2026, 8:00 a. m. hasta el 4 oct. 2026, 10:41 a. m.");
   });
   it("keeps a time and its «p. m.» on one line", () => {
     expect(glueTime("1 oct. 2026, 8:28 p. m.")).toBe("1 oct. 2026, 8:28 p. m.");

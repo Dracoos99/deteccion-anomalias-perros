@@ -70,10 +70,9 @@ export function describeDog(status: DogStatus<unknown> | null | undefined, b: Ba
   else if (temp.dev === "low") phrase = "Su temperatura está más baja de lo normal.";
   // Without a baseline nothing is "habitual" yet; only the reference ranges apply.
   else if (!b) phrase = "Estamos aprendiendo su patrón normal. Mientras tanto, solo se revisan los rangos de referencia.";
-  else if (heart.dev === "high") phrase = "Su corazón late más rápido de lo habitual.";
-  else if (heart.dev === "low") phrase = "Su corazón late más lento de lo habitual.";
-  else if (activity.dev === "low") phrase = "Se está moviendo menos de lo habitual.";
-  else if (activity.dev === "high") phrase = "Se está moviendo más de lo habitual.";
+  // A vital just out of its band can leave the score at "Todo normal"; the phrase then says it is a little.
+  else if (heart.dev !== "normal" && heart.dev !== "unknown") phrase = `Su corazón late ${status.level === "green" ? "un poco " : ""}más ${heart.dev === "high" ? "rápido" : "lento"} de lo habitual.`;
+  else if (activity.dev !== "normal" && activity.dev !== "unknown") phrase = `Se está moviendo ${status.level === "green" ? "un poco " : ""}${activity.dev === "low" ? "menos" : "más"} de lo habitual.`;
   else if (status.level !== "green") {
     // No vital is out of its band: the level dropped for the shape of the heart rate (autoencoder), for unusual
     // movements (novelty) or for a deviation inside the band. Name it only when an alert says which.
@@ -223,6 +222,16 @@ export function dayHeading(ms: number, now = Date.now()): string {
 }
 export const timeText = (ms: number) => glueTime(new Date(ms).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }));
 export const dateText = (ms: number) => new Date(ms).toLocaleDateString("es-PE", { dateStyle: "medium" });
+
+/** Subtitle of a trend chart: the period asked, or, when its data start well inside it, the stretch that has data
+ * (the axis spans the data, so "las últimas 24 h" over 40 minutes of data would misread the chart). */
+export function coverageText(rangeText: string, periodStart: number, end: number, first: number | null, slackMs: number): string {
+  if (first == null || first - periodStart <= slackMs) return `Datos de ${rangeText}, hasta el ${dateTimeText(end)}`;
+  const hm = (ms: number) => glueTime(new Date(ms).toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" }));
+  return calendarDay(first) === calendarDay(end)
+    ? `Solo hay datos del ${dateText(first)}, de ${hm(first)} a ${hm(end)}`
+    : `Solo hay datos desde el ${dateTimeText(first)} hasta el ${dateTimeText(end)}`;
+}
 
 export function ageText(birthDate: string | null | undefined, now = new Date()): string | null {
   if (!birthDate) return null;

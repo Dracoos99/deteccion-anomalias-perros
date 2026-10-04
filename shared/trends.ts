@@ -26,6 +26,10 @@ export interface TrendSlot {
   beh: number[];                // windows per behavior, order of BEHAVIORS
   /**, 10 s tier only: the 1 Hz heart-rate values of the slot, in time order. */
   hrv?: number[];
+  /** The engine's moving share of time in movement (its 20-minute exponential average) after each 2 s window,
+   * as sum and count. The dog's normal band refers to this average, not to the share of a single slot. Slots written
+   * before do not have it (see withMovingShare). */
+  aeSum?: number; aeN?: number;
 }
 
 /** Finer tiers, each in documents that span docMs and hold slotMs slots. */
@@ -89,6 +93,8 @@ export interface BlockSummary {
   behaviors: (Behavior | null)[];
   hr: number[];
   temp: number | null;
+  /** The engine's moving share of time in movement after each measured window. */
+  activityAvg?: number[];
 }
 
 export const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -102,6 +108,11 @@ export function emptySlot(): TrendSlot {
 }
 
 const minOf = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.min(a, b));
+const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
+/** The moving-share sums of two slots, or nothing when neither has them (older slots stay as they were). */
+function movingSums(a: Pick<TrendSlot, "aeSum" | "aeN">, sum: number, n: number): Pick<TrendSlot, "aeSum" | "aeN"> {
+  return a.aeN || n ? { aeSum: r4((a.aeSum ?? 0) + sum), aeN: (a.aeN ?? 0) + n } : {};
+}
 const maxOf = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.max(a, b));
 const LEVEL_INDEX: Record<Level, 0 | 1 | 2> = { green: 0, amber: 1, red: 2 };
 
@@ -121,6 +132,7 @@ export function addBlock(slot: TrendSlot, b: BlockSummary, keepHr = false): Tren
     tMin: minOf(slot.tMin, b.temp), tMax: maxOf(slot.tMax, b.temp),
     beh,
     ...(keepHr ? { hrv: [...(slot.hrv ?? []), ...b.hr.map((v) => Math.round(v * 10) / 10)] } : {}),
+    ...movingSums(slot, (b.activityAvg ?? []).reduce((a, v) => a + v, 0), b.activityAvg?.length ?? 0),
   };
 }
 
@@ -132,6 +144,7 @@ export function mergeSlots(a: TrendSlot, b: TrendSlot): TrendSlot {
     hrSum: a.hrSum + b.hrSum, hrN: a.hrN + b.hrN, hrMin: minOf(a.hrMin, b.hrMin), hrMax: maxOf(a.hrMax, b.hrMax),
     tSum: a.tSum + b.tSum, tN: a.tN + b.tN, tMin: minOf(a.tMin, b.tMin), tMax: maxOf(a.tMax, b.tMax),
     beh: a.beh.map((v, i) => v + (b.beh[i] ?? 0)),
+    ...movingSums(a, b.aeSum ?? 0, b.aeN ?? 0),
   };
 }
 
@@ -144,6 +157,8 @@ export interface TrendPoint {
   t: number;
   healthScore: number | null;
   activity: number | null;  // fraction of 2 s windows in movement
+  /** Mean of the engine's moving share of time in movement, what the dog's normal band refers to. */
+  activityAvg: number | null;
   hr: number | null;
   temp: number | null;
   level: Level | null;
@@ -185,9 +200,54 @@ export function toPoint({ t, slot: s }: TimedSlot): TrendPoint {
     t, blocks: s.n, level,
     healthScore: s.n ? s.hsSum / s.n : null,
     activity: s.w ? s.act / s.w : null,
+    activityAvg: s.aeN ? s.aeSum! / s.aeN : null,
     hr: s.hrN ? s.hrSum / s.hrN : null,
     temp: s.tN ? s.tSum / s.tN : null,
   };
+}
+
+// ── Averages the dog's normal band refers to ─────────────────────────────────────────────────────
+
+/** Weight of each 2 s window in an exponential average with this time constant, as in the engine. */
+export const windowAlpha = (timeConstantS: number) => 1 - Math.exp(-2 / timeConstantS);
+
+/** The engine's exponential average of a 0/1 signal per 2 s window, rebuilt from slots: `count` gives the windows of a
+ * slot and how many of them were 1. Returns the mean of the average over each slot (null for a slot without windows).
+ * It starts at `init`, as the engine starts at the dog's baseline; a slot with a `stored` value resets it to that. */
+export function movingShare(items: TimedSlot[], count: (s: TrendSlot) => [hits: number, n: number], init: number | null, alpha: number,
+  stored?: (s: TrendSlot) => number | null): (number | null)[] {
+  let ema = init;
+  return items.map(({ slot }) => {
+    const known = stored?.(slot) ?? null;
+    if (known != null) { ema = known; return known; }
+    const [hits, n] = count(slot);
+    if (!n) return null;
+    const f = hits / n, before = ema ?? f, after = f + (before - f) * Math.pow(1 - alpha, n);
+    ema = after;
+    return (before + after) / 2;
+  });
+}
+
+/** Slots with the engine's moving share of time in movement. Slots written before get it rebuilt from their
+ * share of active windows (init: the dog's baseline mean; alpha: windowAlpha of config/fusion.activity). */
+export function withMovingShare(items: TimedSlot[], init: number | null, alpha: number): TimedSlot[] {
+  if (items.every((i) => i.slot.aeN || !i.slot.w)) return items;
+  const v = movingShare(items, (s) => [s.act, s.w], init, alpha, (s) => (s.aeN ? s.aeSum! / s.aeN : null));
+  return items.map((it, i) => (it.slot.aeN || v[i] == null ? it : { t: it.t, slot: { ...it.slot, aeSum: v[i]! * it.slot.w, aeN: it.slot.w } }));
+}
+
+/** Mean of each point with the points of the `windowMs` before it: the engine compares the mean of the last 60 s of
+ * heart rate with the dog's band, never a single second. A point with fewer than `minCount` values in its window is
+ * left out, as the engine leaves out a minute with less than half of its values. */
+export function rollingMean(points: { t: number; v: number }[], windowMs: number, minCount = 1): { t: number; v: number }[] {
+  const out: { t: number; v: number }[] = [];
+  let sum = 0, j = 0;
+  for (let i = 0; i < points.length; i++) {
+    sum += points[i].v;
+    while (points[j].t <= points[i].t - windowMs) sum -= points[j++].v;
+    if (i - j + 1 >= minCount) out.push({ t: points[i].t, v: sum / (i - j + 1) });
+  }
+  return out;
 }
 
 export interface Range { min: number; max: number; mean: number }

@@ -13,7 +13,9 @@ describe("live panel series", () => {
     expect(s.hr).toEqual([{ t: T0, v: 100 }, { t: T0 + 1000, v: 101 }, { t: T0 + 10_000, v: 101 }, { t: T0 + 11_000, v: 102 }]);
     expect(s.activity).toEqual([{ t: T0 + 10_000, v: 40 }, { t: T0 + 20_000, v: 40 }]);   // at the end of each block
     expect(s.health.map((p) => p.v)).toEqual([90, 89]);
-    expect([s.latest?.blockStartMs, s.lastHr, s.lastActivity]).toEqual([T0 + 10_000, 102, 40]);
+    // The engine's 60 s mean at the last second of each block, and that mean as the current value.
+    expect(s.hrAvg).toEqual([{ t: T0 + 9_000, v: 100 }, { t: T0 + 19_000, v: 100 }]);
+    expect([s.latest?.blockStartMs, s.lastHr, s.lastActivity]).toEqual([T0 + 10_000, 100, 40]);
   });
 
   it("keeps only the last 10 minutes of data before the latest block", () => {
@@ -32,11 +34,15 @@ describe("live panel series", () => {
     expect(s.activity.every((p) => p.v >= 50)).toBe(true);
   });
 
-  it("falls back to the 60 s mean of older results and skips missing signals", () => {
+  it("keeps the 60 s mean of older results without values second by second, and skips missing signals", () => {
     const s = liveSeries([block(0, { hrValues: null, hr: 96, activeFraction: null })]);
-    expect(s.hr).toEqual([{ t: T0 + 9_000, v: 96 }]);
+    expect([s.hr, s.hrAvg]).toEqual([[], [{ t: T0 + 9_000, v: 96 }]]);
     expect([s.activity, s.lastHr, s.lastActivity]).toEqual([[], 96, null]);
-    expect(liveSeries([])).toMatchObject({ latest: null, hr: [] });
+    // 2 s blocks: the mean goes at their last second.
+    expect(liveSeries([block(0, { blockSeconds: 2 })]).hrAvg).toEqual([{ t: T0 + 1_000, v: 100 }]);
+    // The first minute (no mean yet): the latest second.
+    expect(liveSeries([block(0, { hr: null })]).lastHr).toBe(101);
+    expect(liveSeries([])).toMatchObject({ latest: null, hr: [], hrAvg: [] });
   });
 
   it("is live while the latest result is less than 2 minutes old", () => {

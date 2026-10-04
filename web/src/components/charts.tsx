@@ -1,7 +1,9 @@
 /* Charts in the Broadsheet style: SVG, no chart library. One series per chart, the dog's normal band shaded with thin
    edges, dashed reference lines, amber dots on unusual moments, crosshair with mouse, touch (tap or slide sideways)
    and keyboard (← → Esc, read aloud), and a text summary for screen readers. Look of the v3 mockups: serif
-   title, legend under the plot, zone labels in their level colour inside the plot. */
+   title, legend under the plot, zone labels in their level colour inside the plot. The series compared with
+   the band is the average the engine compares (60 s of heart rate, 20 min of movement); the raw values behind it can
+   go as a faint `detail` line, never marked against the band. */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { fmtNum } from "./ui";
 
@@ -20,20 +22,27 @@ function useWidth(initial = 600): [React.RefObject<HTMLDivElement | null>, numbe
   return [ref, w];
 }
 
-function niceTicks(lo: number, hi: number, n = 4): number[] {
+function niceTicks(lo: number, hi: number, n = 4): { ticks: number[]; step: number } {
   const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= n) ?? 10 * mag;
   const out: number[] = [];
   for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
-  return out;
+  return { ticks: out, step };
 }
+
+/** Decimals a tick step needs, so labels never repeat ("37.5" is not shown as "38" next to "37"). */
+const stepDecimals = (step: number) => [0, 1, 2].find((d) => Math.abs(step * 10 ** d - Math.round(step * 10 ** d)) < 1e-6) ?? 2;
 
 export type RangeKey = "10m" | "1h" | "24h" | "7d";   // 10m: the live panel
 const fmtHM = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const fmtHMS = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 const fmtWD = new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric" });
+const fmtWDHM = new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const fmtDM = new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short" });
-const xLabel = (t: number, r: RangeKey) => (r === "7d" ? fmtWD.format(t) : fmtHM.format(t));
+const HOUR = 3_600_000;
+/** Axis labels by what the data span, not by the period asked: a week with one day of data reads in hours, not as
+ * the same weekday five times. */
+const xFormat = (spanMs: number) => (spanMs > 4 * 24 * HOUR ? fmtWD : spanMs > 36 * HOUR ? fmtWDHM : fmtHM);
 
 export interface ChartPoint { t: number; v: number; mark?: boolean }
 /** A shaded band of values (the Health Score levels); `tone` gives its label the colour of the level. */
@@ -48,13 +57,19 @@ export function healthZones(levels: { green: number; amber: number }): Zone[] {
   ];
 }
 
-export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height,
-  legendBand, legendRefs, legendMarks, gapMs, showLast = false, loading = false }: {
+export function TrendChart({ title, sub, points, detail, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height,
+  highlight, legendLine, legendDetail, legendBand, legendRefs, legendMarks, gapMs, detailGapMs = gapMs, showLast = false, loading = false }: {
   title: string; sub?: string; points: ChartPoint[]; unit: string; decimals?: number; rangeKey: RangeKey;
+  /** The raw values behind the averaged series, as a faint line under it (not marked, not hovered). */
+  detail?: { t: number; v: number }[];
   band?: [number, number] | null; refs?: { value: number; label: string }[]; zones?: Zone[]; domain?: [number, number];
-  height?: number; legendBand?: string; legendRefs?: string; legendMarks?: string;
+  /** A stretch of time shaded behind the series (the alert episode). */
+  highlight?: { from: number; to: number; label: string } | null;
+  height?: number; legendLine?: string; legendDetail?: string; legendBand?: string; legendRefs?: string; legendMarks?: string;
   /** The line breaks where two points are further apart than this (no data in between). */
   gapMs?: number;
+  /** The same for the detail line (one value per second next to one average per block). */
+  detailGapMs?: number;
   /** Dot on the latest point: "now" in the live panel. */
   showLast?: boolean;
   /** The data are still arriving: a placeholder instead of "Sin datos en este periodo". */
@@ -75,22 +90,43 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
   const m = { l: 36, r: zones?.length ? 56 : refs.length ? 44 : 10, t: 10, b: 24 };
   const W = width, H = height ?? (W < 480 ? 150 : 190), iw = W - m.l - m.r, ih = H - m.t - m.b;
   const vals = points.map((p) => p.v);
-  let lo = Math.min(...vals, ...(band ?? []), ...refs.map((r) => r.value));
-  let hi = Math.max(...vals, ...(band ?? []), ...refs.map((r) => r.value));
+  const extra = detail ?? [];
+  // Loops, not Math.min(...array): an hour of 1 Hz values is a lot of arguments for one call.
+  let lo = Infinity, hi = -Infinity;
+  for (const v of [...(band ?? []), ...refs.map((r) => r.value)]) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const p of points) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
+  for (const p of extra) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
   if (domain) [lo, hi] = domain;
   else { const pad = (hi - lo) * 0.12 || 1; lo -= pad; hi += pad; }
-  const t0 = points.length ? points[0].t : 0, t1 = points.length ? points[points.length - 1].t : 1;
-  const X = (t: number) => m.l + ((t - t0) / (t1 - t0 || 1)) * iw;
+  // The axis spans the data drawn: the averaged points and the raw values behind them.
+  let t0 = Infinity, t1 = -Infinity;
+  for (const p of [points[0], points[points.length - 1], extra[0], extra[extra.length - 1]]) if (p) { t0 = Math.min(t0, p.t); t1 = Math.max(t1, p.t); }
+  if (!Number.isFinite(t0)) { t0 = 0; t1 = 1; }
+  const X = (t: number) => (t1 > t0 ? m.l + ((t - t0) / (t1 - t0)) * iw : m.l + iw / 2);
   const Y = (v: number) => m.t + (1 - (v - lo) / (hi - lo || 1)) * ih;
   // With zones, the axis marks only their edges (the level cuts), with no grid over the colours.
+  const nice = niceTicks(lo, hi, 4);
   const ticks = zones?.length ? [...new Set([lo, hi, ...zones.flatMap((z) => [z.from, z.to])])].filter((v) => v >= lo && v <= hi).sort((a, b) => a - b)
-    : niceTicks(lo, hi, 4).filter((v) => v >= lo && v <= hi);
+    : nice.ticks.filter((v) => v >= lo && v <= hi);
+  const tickDecimals = zones?.length ? 0 : Math.max(stepDecimals(nice.step), decimals && hi - lo < 5 ? 1 : 0);
   const fractions = W < 480 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];  // fewer labels on narrow screens
-  const xticks = points.length > 1 ? fractions.map((f) => t0 + f * (t1 - t0)) : points.map((p) => p.t);
-  const path = points.map((p, i) => (i && !(gapMs && p.t - points[i - 1].t > gapMs) ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
+  const xticks = t1 > t0 ? fractions.map((f) => t0 + f * (t1 - t0)) : [t0];
+  const xFmt = xFormat(t1 - t0);
+  const broken = (arr: { t: number }[], i: number, gap = gapMs) => i === 0 || (!!gap && arr[i].t - arr[i - 1].t > gap);
+  const line = (arr: { t: number; v: number }[], gap = gapMs) =>
+    arr.map((p, i) => (broken(arr, i, gap) ? "M" : "L") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
+  const path = line(points);
+  // A point with no neighbour on either side (one block between gaps, or the only one) is drawn as a dot.
+  const lone = points.filter((_, i) => broken(points, i) && (i === points.length - 1 || broken(points, i + 1)));
   const last = points[points.length - 1];
   const fmtV = (v: number) => fmtNum(v, decimals);
   const marks = points.filter((p) => p.mark);
+  // Many points close together: the stretches outside the normal go as an amber line over the series, not as a dot
+  // per point (a quarter of an hour of seconds would be a smear of dots).
+  const dense = points.length > iw / 10;
+  const markRuns = dense ? points.flatMap((p, i) => (p.mark ? [{ p, start: broken(points, i) || !points[i - 1].mark }] : [])) : [];
+  const markPath = markRuns.map(({ p, start }) => (start ? "M" : "L") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
+  const loneMarks = dense ? markRuns.filter((r, i) => r.start && (i === markRuns.length - 1 || markRuns[i + 1].start)).map((r) => r.p) : marks;
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
     const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
     let best = 0, bd = Infinity;
@@ -112,11 +148,12 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
   };
   const hp = hover != null ? points[hover] : null;
   const tipTime = (t: number) => (rangeKey === "7d" ? `${fmtDM.format(t)}, ${fmtHM.format(t)}` : rangeKey === "10m" ? fmtHMS.format(t) : fmtHM.format(t));
+  const minV = vals.reduce((a, v) => Math.min(a, v), Infinity), maxV = vals.reduce((a, v) => Math.max(a, v), -Infinity);
   const summary = points.length
-    ? `${title}: último valor ${fmtV(last.v)} ${unit}, mínimo ${fmtV(Math.min(...vals))}, máximo ${fmtV(Math.max(...vals))}` +
+    ? `${title}${legendLine ? ` (${legendLine.toLowerCase()})` : ""}: último valor ${fmtV(last.v)} ${unit}, mínimo ${fmtV(minV)}, máximo ${fmtV(maxV)}` +
       (marks.length ? `, ${marks.length} ${marks.length === 1 ? "momento" : "momentos"} fuera de lo normal.` : ".")
     : `${title}: sin datos en este periodo.`;
-  const legend = points.length > 0 && (legendBand || legendRefs || (legendMarks && marks.length > 0));
+  const legend = points.length > 0 && (legendLine || legendBand || legendRefs || (legendMarks && marks.length > 0));
   const waiting = loading && !points.length;
   return (
     <figure ref={figRef} className="chart" style={{ margin: 0 }} aria-busy={waiting || undefined}>
@@ -145,9 +182,13 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
             {ticks.map((v) => (
               <g key={v}>
                 {!zones?.length && <line x1={m.l} x2={W - m.r} y1={Y(v)} y2={Y(v)} stroke="var(--chart-grid)" strokeWidth="1" />}
-                <text x={m.l - 6} y={Y(v) + 3.5} textAnchor="end" className="chart-axis">{fmtNum(v, decimals && Math.abs(hi - lo) < 5 ? 1 : 0)}</text>
+                <text x={m.l - 6} y={Y(v) + 3.5} textAnchor="end" className="chart-axis">{fmtNum(v, tickDecimals)}</text>
               </g>
             ))}
+            {highlight && highlight.to >= t0 && highlight.from <= t1 && (() => {
+              const x0 = Math.max(m.l, X(highlight.from)), x1 = Math.min(m.l + iw, X(highlight.to));
+              return <rect className="chart-highlight" x={x0} width={Math.max(2, x1 - x0)} y={m.t} height={ih} />;
+            })()}
             {band && <rect className="chart-band" x={m.l} width={iw} y={Y(band[1])} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="var(--chart-baseline)" />}
             {band && [band[0], band[1]].filter((v) => v >= lo && v <= hi).map((v) => (
               <line key={`edge${v}`} className="chart-band-edge" x1={m.l} x2={m.l + iw} y1={Y(v)} y2={Y(v)} />
@@ -160,11 +201,15 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
             ))}
             {!zones?.length && <line x1={m.l} x2={W - m.r} y1={H - m.b} y2={H - m.b} stroke="var(--color-divider)" />}
             {xticks.map((t, i) => (
-              <text key={i} x={X(t)} y={H - 7} textAnchor={i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"} className="chart-axis">{xLabel(t, rangeKey)}</text>
+              <text key={i} x={X(t)} y={H - 7} textAnchor={xticks.length === 1 ? "middle" : i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"} className="chart-axis">{xFmt.format(t)}</text>
             ))}
-            {points.length > 1 && <path className="chart-series" d={path} fill="none" stroke="var(--chart-line)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />}
+            {/* Several raw values per pixel (an hour of seconds on a phone): fainter, so the average stays the line read. */}
+            {extra.length > 1 && <path className={extra.length > 3 * iw ? "chart-detail is-dense" : "chart-detail"} d={line(extra, detailGapMs)} fill="none" strokeWidth="1" strokeLinejoin="round" />}
+            {points.length > 1 && <path className="chart-series" d={path} fill="none" stroke="var(--chart-line)" strokeWidth={extra.length ? 2 : 1.6} strokeLinejoin="round" strokeLinecap="round" />}
+            {lone.map((p) => <circle key={`lone${p.t}`} cx={X(p.t)} cy={Y(p.v)} r="2.5" fill="var(--chart-line)" />)}
             {showLast && last && <circle cx={X(last.t)} cy={Y(last.v)} r="3.5" fill="var(--chart-line)" stroke="var(--color-sheet)" strokeWidth="1.5" />}
-            {marks.map((p) => <circle key={p.t} cx={X(p.t)} cy={Y(p.v)} r="3.5" fill="var(--chart-mark)" stroke="var(--color-sheet)" strokeWidth="1.5" />)}
+            {markPath && <path className="chart-mark-run" d={markPath} fill="none" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />}
+            {loneMarks.map((p) => <circle key={p.t} cx={X(p.t)} cy={Y(p.v)} r={dense ? 2.5 : 3.5} fill="var(--chart-mark)" stroke="var(--color-sheet)" strokeWidth={dense ? 1 : 1.5} />)}
             {hp && (
               <g>
                 <line x1={X(hp.t)} x2={X(hp.t)} y1={m.t} y2={H - m.b} stroke="var(--color-text)" strokeWidth="1" />
@@ -182,6 +227,9 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
       </div>
       {legend && (
         <div className="chart-legend">
+          {legendLine && <span className="legend-key"><span className="key-line" />{legendLine}</span>}
+          {legendDetail && extra.length > 1 && <span className="legend-key"><span className="key-detail" />{legendDetail}</span>}
+          {highlight && <span className="legend-key"><span className="key-span" />{highlight.label}</span>}
           {legendBand && <span className="legend-key"><span className="key-band" />{legendBand}</span>}
           {legendRefs && <span className="legend-key"><span className="key-dash" />{legendRefs}</span>}
           {legendMarks && marks.length > 0 && <span className="legend-key"><span className="key-mark" />{legendMarks}</span>}

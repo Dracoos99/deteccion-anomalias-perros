@@ -14,12 +14,18 @@ const TITLE: Record<string, string> = {
 };
 const FALLBACK = "Algo se alejó de su patrón normal";
 const PRIORITY: AlertReason["component"][] = ["temperature", "heart_rate", "behavior"];
+/** Reasons about the shape of a signal whose level stays inside the dog's band (the heart-rate autoencoder, movements
+ * unlike any known behavior): they name the alert only when no variable left its band. */
+const SHAPE_ONLY = new Set(["hr_pattern", "behavior_unusual"]);
 
-/** The reason that names the alert: temperature first, then heart rate, then behavior. */
+/** The reason that names the alert: a variable out of its band first (temperature, then heart rate, then movement),
+ * then the shape-only reasons in the same order. */
 export function primaryReason(reasons: AlertReason[]): AlertReason | null {
-  for (const c of PRIORITY) {
-    const r = reasons.find((x) => x.component === c);
-    if (r) return r;
+  for (const shape of [false, true]) {
+    for (const c of PRIORITY) {
+      const r = reasons.find((x) => x.component === c && SHAPE_ONLY.has(x.code) === shape);
+      if (r) return r;
+    }
   }
   return reasons[0] ?? null;
 }

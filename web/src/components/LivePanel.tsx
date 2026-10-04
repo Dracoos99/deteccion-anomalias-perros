@@ -51,13 +51,16 @@ export function LivePanel({ dog, cfg, viewer, live: dogLive }: { dog: Dog; cfg: 
         <p className="xs muted">Últimos 10 minutos de {dog.name}. Se actualiza cada {every} s.</p>
         <dl className="live-now">
           <div><dt>Ahora</dt><dd>{behavior ?? "—"}</dd></div>
-          <div><dt>Corazón</dt><dd>{heart ?? "Sin datos"}</dd></div>
+          <div><dt>Corazón</dt><dd>{heart ? <>{heart}{live.latest.hr != null && <span className="live-now-note">promedio del último minuto</span>}</> : "Sin datos"}</dd></div>
           <div><dt>Movimiento</dt><dd>{live.lastActivity != null ? <>{fmtNum(live.lastActivity)} %<span className="live-now-note">del último minuto</span></> : "—"}</dd></div>
           <div><dt>Health Score</dt><dd>{fmtNum(live.latest.healthScore)}</dd></div>
         </dl>
-        {live.hr.length > 0 && (
-          <TrendChart title="Frecuencia cardiaca, segundo a segundo" rangeKey="10m" unit="lpm" points={live.hr} band={band} height={150} gapMs={3_000} showLast
-            legendBand={band ? `Lo normal para ${dog.name}` : undefined} />
+        {(live.hrAvg.length > 0 || live.hr.length > 0) && (
+          <TrendChart title="Frecuencia cardiaca" rangeKey="10m" unit="lpm" height={150} gapMs={live.hrAvg.length ? 30_000 : 3_000} detailGapMs={3_000} showLast
+            points={(live.hrAvg.length ? live.hrAvg : live.hr).map((p) => ({ ...p, mark: !!band && live.hrAvg.length > 0 && (p.v < band[0] || p.v > band[1]) }))}
+            detail={live.hrAvg.length ? live.hr : undefined} band={band}
+            legendLine={live.hrAvg.length ? "Promedio de 1 minuto" : undefined} legendDetail="Segundo a segundo"
+            legendBand={band ? `Lo normal para ${dog.name}` : undefined} legendMarks="Fuera de lo normal" />
         )}
         <TrendChart title="Tiempo en movimiento en el último minuto" rangeKey="10m" unit="%" domain={[0, 100]} points={live.activity} height={120} gapMs={30_000} showLast />
         <TrendChart title="Health Score en los últimos 10 minutos" rangeKey="10m" unit="puntos" domain={[0, 100]} points={live.health} height={120} gapMs={30_000}
@@ -65,7 +68,8 @@ export function LivePanel({ dog, cfg, viewer, live: dogLive }: { dog: Dog; cfg: 
         <details className="disclosure">
           <summary><Icon name="chevron-right" size={14} />¿Qué muestran estos gráficos?</summary>
           <div className="stack-sm" style={{ marginTop: 8 }}>
-            <p className="xs muted">Los cortes en la frecuencia cardiaca son segundos en que el sensor no la midió. El estado, la tarjeta de Inicio y las alertas usan el promedio del último minuto para no reaccionar a un pico aislado; por eso pueden diferir un poco de estos valores.</p>
+            <p className="xs muted">En la frecuencia cardiaca, la línea oscura es el promedio del último minuto, el mismo que usan el estado, la tarjeta de Inicio y las alertas para no reaccionar a un pico aislado; la clara muestra cada segundo. Los cortes son segundos en que el sensor no la midió.</p>
+            <p className="xs muted">El movimiento de este panel es el del último minuto; lo normal para {dog.name} se compara con el promedio de {cfg.activity.timeConstantS / 60} minutos, en la pestaña Actividad.</p>
             {simulated && (
               <p className="xs muted">Datos simulados: el movimiento y la frecuencia cardiaca vienen de perros distintos de los datasets públicos (ninguno trae las dos señales del mismo perro), así que la frecuencia puede subir mientras el perro simulado está quieto.</p>
             )}

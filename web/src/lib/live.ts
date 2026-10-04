@@ -1,6 +1,7 @@
-/* Live panel of the dog detail: the last minutes of a dog from its results. The heart rate goes second by
-   second (results.hrValues); the Health Score, one point per block; the time in movement, as the share of the last
-   minute (with 2 s blocks the share of a single block is 0 or 100 %). Pure functions, no Firestore. */
+/* Live panel of the dog detail: the last minutes of a dog from its results. The heart rate goes as the
+   engine's mean of the last 60 s at the end of each block over the values
+   second by second (results.hrValues); the Health Score, one point per block; the time in movement, as the share of
+   the last minute (with 2 s blocks the share of a single block is 0 or 100 %). Pure functions, no Firestore. */
 import type { Behavior } from "@shared/types";
 
 export const LIVE_SPAN_MS = 10 * 60_000;
@@ -16,14 +17,15 @@ export interface LiveBlock {
   blockSeconds?: number | null;  // 2 or 10; absent in older results: 10
   createdMs: number | null;      // server time of the result: how fresh the data are
   hrValues: number[] | null;     // 1 Hz from blockStart
-  hr: number | null;             // mean of the last 60 s, the fallback for those older results
+  hr: number | null;             // the engine's mean of the last 60 s at the end of the block
   activeFraction: number | null; // share of the block's 2 s windows with movement
   healthScore: number;
   behavior: Behavior | null;
 }
 
 export interface LiveSeries {
-  hr: LivePoint[];
+  hr: LivePoint[];         // second by second
+  hrAvg: LivePoint[];      // mean of the last 60 s, at the last second of each block
   activity: LivePoint[];   // % of the last minute in movement, at the end of each block
   health: LivePoint[];
   latest: LiveBlock | null;
@@ -53,17 +55,18 @@ function movementByMinute(blocks: LiveBlock[]): LivePoint[] {
 export function liveSeries(blocks: LiveBlock[], spanMs = LIVE_SPAN_MS): LiveSeries {
   const sorted = [...blocks].sort((a, b) => a.blockStartMs - b.blockStartMs);
   const latest = sorted[sorted.length - 1] ?? null;
-  if (!latest) return { hr: [], activity: [], health: [], latest: null, lastHr: null, lastActivity: null };
+  if (!latest) return { hr: [], hrAvg: [], activity: [], health: [], latest: null, lastHr: null, lastActivity: null };
   const recent = sorted.filter((b) => b.blockStartMs > latest.blockStartMs - spanMs);
-  const hr: LivePoint[] = [];
+  const hr: LivePoint[] = [], hrAvg: LivePoint[] = [];
   for (const b of recent) {
-    if (b.hrValues?.length) b.hrValues.forEach((v, i) => hr.push({ t: b.blockStartMs + i * 1000, v }));
-    else if (b.hr != null) hr.push({ t: b.blockStartMs + BLOCK_MS - 1000, v: b.hr });
+    b.hrValues?.forEach((v, i) => hr.push({ t: b.blockStartMs + i * 1000, v }));
+    if (b.hr != null) hrAvg.push({ t: b.blockStartMs + ((b.blockSeconds ?? BLOCK_MS / 1000) - 1) * 1000, v: b.hr });
   }
   const activity = movementByMinute(recent);
   return {
-    hr, activity, health: recent.map((b) => ({ t: b.blockStartMs, v: b.healthScore })), latest,
-    lastHr: latest.hrValues?.length ? latest.hrValues[latest.hrValues.length - 1] : latest.hr,
+    hr, hrAvg, activity, health: recent.map((b) => ({ t: b.blockStartMs, v: b.healthScore })), latest,
+    // The mean the state and the alerts use; the latest second only while the first minute fills.
+    lastHr: latest.hr ?? (latest.hrValues?.length ? latest.hrValues[latest.hrValues.length - 1] : null),
     lastActivity: activity.length ? activity[activity.length - 1].v : null,
   };
 }

@@ -4,8 +4,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { MINUTE_TIER, collectSlots, collectTierSlots, dayKey, tierDocStart, toPoint } from "@shared/trends";
-import type { AlertReason } from "@shared/types";
+import { MINUTE_TIER, collectSlots, collectTierSlots, dayKey, movingShare, tierDocStart, toPoint, windowAlpha, withMovingShare } from "@shared/trends";
+import type { AlertReason, FusionConfig } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { RangeBar, TrendChart, type ChartPoint } from "../components/charts";
 import { Callout, DataTime, EmptyState, Icon, LEVELS, LevelTag, Notice, PageHead, PageLoading, fmtAgo, fmtNum, levelVars, useFreshness, usePageTitle } from "../components/ui";
@@ -43,24 +43,35 @@ function ReasonRow({ r, color }: { r: AlertReason; color: string }) {
 
 /** The primary variable around the episode, from the 1-minute slots; older data only have 5-minute ones.
  * Unusual movements are charted as their own share (not as time in movement): a reason's band never goes on another
- * variable. While the slots arrive, a placeholder of the chart's size keeps the page from jumping. */
-function EpisodeChart({ alert, reason, viewer, dogName }: { alert: Alert; reason: AlertReason; viewer: Viewer; dogName: string }) {
+ * variable. Movement and unusual movements go as the engine's moving averages, the quantities their band refers to
+ *, with the share of each minute behind. The episode is shaded. While the slots arrive, a placeholder of
+ * the chart's size keeps the page from jumping. */
+function EpisodeChart({ alert, reason, viewer, dogName, cfg, activityMean }: {
+  alert: Alert; reason: AlertReason; viewer: Viewer; dogName: string;
+  cfg: Pick<FusionConfig, "activity" | "novelty">; activityMean: number | null;
+}) {
   const start = alertStartMs(alert), end = alert.endedAt?.toMillis?.() ?? start + MARGIN_MS;
   const from = start - MARGIN_MS, to = end + MARGIN_MS;
   const minuteDocs = useTierDocs(MINUTE_TIER, alert.dogId, viewer, tierDocStart(MINUTE_TIER, from), to);
   const dayDocs = useTrendDocs(alert.dogId, viewer, dayKey(from));
   const minute = collectTierSlots(minuteDocs.data, from, to);
   const fine = minute.length >= 2;
-  const slots = fine ? minute : collectSlots(dayDocs.data, from, to);
+  const slots = withMovingShare(fine ? minute : collectSlots(dayDocs.data, from, to), activityMean, windowAlpha(cfg.activity.timeConstantS));
   const band = reason.normalRange;
   const novelty = reason.code === "behavior_unusual";
-  const pick = reason.component === "temperature" ? "temp" : reason.component === "heart_rate" ? "hr" : "activity";
-  const points: ChartPoint[] = slots.flatMap((s) => {
+  const movement = reason.component === "behavior" && !novelty;
+  // The engine starts its novelty average at the expected rate, the top of this band.
+  const noveltyAvg = novelty ? movingShare(slots, (s) => [s.nov, s.w], band[1] / 100, windowAlpha(cfg.novelty.timeConstantS)) : [];
+  const points: ChartPoint[] = slots.flatMap((s, i) => {
     const p = toPoint(s);
-    const raw = novelty ? (s.slot.w ? s.slot.nov / s.slot.w : null) : p[pick];
-    const v = raw == null ? null : pick === "activity" || novelty ? 100 * raw : raw;
+    const raw = novelty ? noveltyAvg[i] : movement ? p.activityAvg : reason.component === "heart_rate" ? p.hr : p.temp;
+    const v = raw == null ? null : novelty || movement ? 100 * raw : raw;
     return v == null ? [] : [{ t: p.t, v, mark: v < band[0] || v > band[1] }];
   });
+  const detail = novelty || movement ? slots.flatMap((s) => {
+    const share = novelty ? (s.slot.w ? s.slot.nov / s.slot.w : null) : toPoint(s).activity;
+    return share == null ? [] : [{ t: s.t, v: 100 * share }];
+  }) : undefined;
   if (points.length < 2) {
     if (!minuteDocs.loading && !dayDocs.loading) return null;
     return <section className="panel" aria-busy="true"><div className="skeleton" style={{ height: 236 }} /></section>;
@@ -68,10 +79,15 @@ function EpisodeChart({ alert, reason, viewer, dogName }: { alert: Alert; reason
   const { unit, decimals } = reasonUnit(reason);
   const title = novelty ? "Movimientos poco habituales"
     : reason.component === "temperature" ? "Temperatura" : reason.component === "heart_rate" ? "Frecuencia cardiaca" : "Tiempo en movimiento";
+  const every = fine ? "cada minuto" : "cada 5 minutos";
+  const average = novelty ? `Promedio de ${fmtNum(cfg.novelty.timeConstantS / 60)} minutos` : movement ? `Promedio de ${fmtNum(cfg.activity.timeConstantS / 60)} minutos` : `Promedio de ${every}`;
+  const last = points[points.length - 1]?.t ?? start;
   return (
     <section className="panel">
-      <TrendChart title={title} sub={`Antes, durante y después del aviso (promedios de ${fine ? "1 minuto" : "5 minutos"})`} rangeKey="1h" unit={unit}
-        decimals={decimals} points={points} band={band} height={170} gapMs={fine ? 180_000 : 900_000} showLast={!alert.endedAt}
+      <TrendChart title={title} sub="Antes, durante y después del aviso" rangeKey="1h" unit={unit}
+        decimals={decimals} points={points} detail={detail} band={band} height={170} gapMs={fine ? 180_000 : 900_000} showLast={!alert.endedAt}
+        highlight={{ from: start, to: alert.endedAt ? end : last, label: "Aviso" }}
+        legendLine={average} legendDetail={detail ? `${every.charAt(0).toUpperCase()}${every.slice(1)}` : undefined}
         legendBand={novelty ? `Lo habitual (hasta ${fmtNum(band[1], decimals)} %)` : `Lo normal para ${dogName}`} legendMarks="Fuera de lo normal" />
     </section>
   );
@@ -157,7 +173,7 @@ export function AlertDetail() {
           <ul className="reason-list" style={levelVars(alert.severity)}>{reasons.map((r) => <ReasonRow key={r.code} r={r} color={LEVELS[alert.severity].color} />)}</ul>
         </section>
 
-        {reason && <EpisodeChart alert={alert} reason={reason} viewer={viewer} dogName={dogName} />}
+        {reason && <EpisodeChart alert={alert} reason={reason} viewer={viewer} dogName={dogName} cfg={cfg} activityMean={dog?.baseline?.activeRatioMean ?? null} />}
 
         <section className="panel stack-sm" aria-labelledby="todo">
           <h2 className="section-title" id="todo">Qué puedes hacer</h2>

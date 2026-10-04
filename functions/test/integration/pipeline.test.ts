@@ -114,7 +114,13 @@ describe("processReading", () => {
     const day = new Date(T0).toISOString().slice(0, 10);
     const doc = await db.doc(`trends/toby_${day}`).get();
     expect(doc.data()).toMatchObject({ dogId: "toby", ownerId: "lucia", day, slotMinutes: 5 });
-    expect(doc.get("slots")[String((10 * 60) / 5)]).toMatchObject({ n: 7, hrN: 70, hrMin: 70, hrMax: 70, tN: 7, w: 35, act: 0 });
+    const slot = doc.get("slots")[String((10 * 60) / 5)];
+    expect(slot).toMatchObject({ n: 7, hrN: 70, hrMin: 70, hrMax: 70, tN: 7, w: 35, act: 0 });
+    // The engine's 20-minute average after each window, what the movement band refers to (a still dog:
+    // below its baseline mean and falling, never at once).
+    expect(slot.aeN).toBe(35);
+    expect(slot.aeSum / slot.aeN).toBeGreaterThan(0);
+    expect(slot.aeSum / slot.aeN).toBeLessThan((await db.doc("dogs/toby").get()).get("baseline.activeRatioMean"));
     expect((await db.doc("dogState/toby").get()).get("trend")).toMatchObject({ day, pending: 0 });
     // With blocks 10 s apart the status (statusMinIntervalS of data time) follows every block.
     expect((await db.doc("dogs/toby").get()).get("status.lastBlockAt").toMillis()).toBe(T0 + 60_000);
