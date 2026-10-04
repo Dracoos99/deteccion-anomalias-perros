@@ -104,15 +104,14 @@ await shot("02-inicio-390");
 await page.setViewport({ width: 1440, height: 900 });
 
 // 4. Research tools stay hidden from owners
-await page.goto(BASE + "/admin", { waitUntil: "load" });
+await spaGo("/admin");
 check("owner opening /admin is sent to Inicio without a message", await waitPath("/") && !(await text()).includes("No tienes acceso"));
-await page.goto(BASE + "/perfil", { waitUntil: "load" });
+await spaGo("/perfil");
 await page.waitForSelector("#p-account", { timeout: 10000 }).catch(() => {});
 check("owner Perfil shows the account and dogs, without research tools",
   (await text()).includes("lucia.paredes@example.com") && (await text()).includes("Mis perros") && !(await page.$("#p-research")));
-await page.goto(BASE + "/alertas", { waitUntil: "load" });
-await sleep(1200);
-check("Alertas loads (empty state or list)", /Sin alertas|Sin revisar|Revisada/.test(await text()));
+await spaGo("/alertas");
+check("Alertas loads (empty state or list)", /Sin alertas|Nueva|Revisada/.test(await text()));
 await shot("07-alertas-1440");
 await logout();
 check("logout returns to /acceso", path_() === "/acceso");
@@ -123,8 +122,10 @@ check("admin also lands on Inicio", await waitPath("/"));
 await page.waitForSelector(".dog-card", { timeout: 10000 }).catch(() => {});
 check("admin sees every dog on Inicio (the 10 of the seed at least)", (await page.$$(".dog-card")).length >= 10, String((await page.$$(".dog-card")).length));
 check("no role is shown to the admin either", !(await noRoleWords()).length, (await noRoleWords()).join(", "));
-await page.goto(BASE + "/perfil", { waitUntil: "load" });
+await spaGo("/perfil");
 await page.waitForSelector("#p-research", { timeout: 10000 }).catch(() => {});
+// The dog list arrives after the page: wait for it, so the research link does not move under the click.
+await page.waitForSelector(".dog-list li", { timeout: 10000 }).catch(() => {});
 check("admin Perfil offers the research tools", (await text()).includes("Herramientas de investigación"));
 await page.waitForSelector("section[aria-labelledby='p-research'] a", { visible: true, timeout: 10000 });
 await page.click("section[aria-labelledby='p-research'] a");
@@ -184,20 +185,22 @@ try {
   await page.type("#d-name", "Mora Luna");
   await page.click("button[type=submit]");
   check("edited name is saved", await waitPath(dogPath) && await page.waitForFunction(() => document.body.innerText.includes("Mora Luna"), { timeout: 10000 }).then(() => true, () => false));
-  await page.goto(BASE + dogPath + "/veterinario", { waitUntil: "load" });
+  await spaGo(dogPath + "/veterinario");
   // The kicker is uppercased by CSS, and innerText returns it transformed: compare case-insensitively.
   await page.waitForFunction(() => document.body.innerText.toLowerCase().includes("vista para el veterinario"), { timeout: 10000 }).catch(() => {});
   const vetText = await text();
   check("vet view shows the dog's data read-only", vetText.toLowerCase().includes("vista para el veterinario") && vetText.includes("Hembra") && vetText.includes("12.5 kg")
     && vetText.includes("Sin diagnóstico") && vetText.includes("Descargar PDF"));
-  await page.goto(BASE + "/", { waitUntil: "load" });
+  await spaGo("/");
   await page.waitForSelector(".dog-card", { timeout: 10000 }).catch(() => {});
   check("the new dog appears on Inicio with a plain phrase", (await text()).includes("Mora Luna") && (await text()).includes("Todavía no hay datos."));
 
   // 7b. Phase 5: first-use guide, CSV upload of the example file, and the notifications section.
   check("Inicio guides the owner to load the dog's data (screen 9)", (await text()).includes("Conecta sus datos") && !!(await page.$("a[href^='/perfil/datos']")));
   await clickText("a", "Cargar datos");
+  // Pages other than Inicio load on first use: wait for the form, not only for the address.
   check("the guide opens the upload with the dog chosen", await waitPath("/perfil/datos")
+    && !!(await page.waitForSelector("#csv-dog", { timeout: 10000 }).catch(() => null))
     && await page.$eval("#csv-dog", (el) => el.options[el.selectedIndex].text.startsWith("Mora Luna")));
   await clickText("button", "Probar con un archivo de ejemplo");
   await page.waitForFunction(() => document.body.innerText.includes("bloques de 10 s"), { timeout: 10000 }).catch(() => {});
@@ -210,16 +213,18 @@ try {
   check("the 4 blocks are written in order and scored by the Function", analysed, analysed ? "" : (await text()).replace(/\s+/g, " ").slice(0, 600));
   await shot("07b-carga-csv-lista-1440");
   check("the upload is listed as analysed", (await text()).includes("Cargas recientes") && (await text()).includes("Analizada"));
-  await page.goto(BASE + dogPath, { waitUntil: "load" });
+  await spaGo(dogPath);
   const learning = await page.waitForFunction(() => document.body.innerText.includes("Aprendiendo qué es normal para Mora Luna"), { timeout: 15000 }).then(() => true, () => false);
-  check("the dog now has data and is learning its normal pattern", learning && (await text()).includes("Estamos aprendiendo su patrón normal"));
+  check("the dog now has data and is learning its normal pattern", learning && (await text()).includes("Estamos aprendiendo su patrón normal"),
+    learning ? "" : (await text()).replace(/\s+/g, " ").slice(0, 500));
+  if (!learning) await shot("03b-detalle-aprendiendo-fallo-1440");
   await page.waitForSelector("#tabbtn-resumen", { timeout: 10000 }).catch(() => {});
   await page.focus("#tabbtn-resumen"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight");
   check("the detail tabs move with the arrow keys", await page.evaluate(() => document.activeElement?.id === "tabbtn-corazon"
     && document.getElementById("tabbtn-corazon")?.getAttribute("aria-selected") === "true"));
   check("the browser tab is named after the dog", (await page.title()).startsWith("Mora Luna · "));
   await shot("03b-detalle-aprendiendo-1440");
-  await page.goto(BASE + "/perfil", { waitUntil: "load" });
+  await spaGo("/perfil");
   await page.waitForFunction(() => document.body.innerText.includes("Qué quieres recibir"), { timeout: 10000 }).catch(() => {});
   check("Perfil offers the data upload and the notification settings", (await text()).includes("Cargar datos") && (await text()).includes("Avisos")
     && (await text()).includes("los avisos no funcionan con los emuladores"));

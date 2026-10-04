@@ -4,21 +4,23 @@ import { AuthProvider } from "./auth/AuthContext";
 import { RequireAccount, RequireAdmin } from "./auth/guards";
 import { Shell } from "./components/Shell";
 import { EmptyState, PageLoading } from "./components/ui";
-import { AlertDetail } from "./pages/AlertDetail";
-import { AlertsPage } from "./pages/AlertsPage";
 import { AuthPage } from "./pages/AuthPage";
-import { CompleteProfile } from "./pages/CompleteProfile";
-import { CsvUploadPage } from "./pages/CsvUploadPage";
-import { DogDetail } from "./pages/DogDetail";
-import { DogForm } from "./pages/DogForm";
 import { Home } from "./pages/Home";
-import { ProfilePage } from "./pages/ProfilePage";
-import { VetView } from "./pages/VetView";
 
-// Research tools load as a separate chunk, only when an admin opens /admin.
+// The first screens (sign-in and Inicio) come with the app; every other page loads when it is first opened, so a phone
+// downloads much less before it shows anything. The research tools also load apart, only for an admin.
+const AlertDetail = lazy(() => import("./pages/AlertDetail").then((m) => ({ default: m.AlertDetail })));
+const AlertsPage = lazy(() => import("./pages/AlertsPage").then((m) => ({ default: m.AlertsPage })));
+const CompleteProfile = lazy(() => import("./pages/CompleteProfile").then((m) => ({ default: m.CompleteProfile })));
+const CsvUploadPage = lazy(() => import("./pages/CsvUploadPage").then((m) => ({ default: m.CsvUploadPage })));
+const DogDetail = lazy(() => import("./pages/DogDetail").then((m) => ({ default: m.DogDetail })));
+const DogForm = lazy(() => import("./pages/DogForm").then((m) => ({ default: m.DogForm })));
+const ProfilePage = lazy(() => import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+const VetView = lazy(() => import("./pages/VetView").then((m) => ({ default: m.VetView })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((m) => ({ default: m.SimulatorPage })));
 const ConfigPage = lazy(() => import("./pages/ConfigPage").then((m) => ({ default: m.ConfigPage })));
-const adminPage = (page: ReactNode) => <RequireAdmin><Suspense fallback={<PageLoading />}>{page}</Suspense></RequireAdmin>;
+const page = (el: ReactNode) => <Suspense fallback={<PageLoading />}>{el}</Suspense>;
+const adminPage = (el: ReactNode) => <RequireAdmin>{page(el)}</RequireAdmin>;
 
 function NotFound() {
   return (
@@ -38,17 +40,17 @@ export function App() {
           <Route path="/acceso" element={<AuthPage mode="login" />} />
           <Route path="/acceso/registro" element={<AuthPage mode="registro" />} />
           <Route path="/acceso/recuperar" element={<AuthPage mode="recuperar" />} />
-          <Route path="/acceso/completar" element={<CompleteProfile />} />
+          <Route path="/acceso/completar" element={page(<CompleteProfile />)} />
           <Route element={<RequireAccount><Shell /></RequireAccount>}>
             <Route path="/" element={<Home />} />
-            <Route path="/alertas" element={<AlertsPage />} />
-            <Route path="/alertas/:alertId" element={<AlertDetail />} />
-            <Route path="/perros/nuevo" element={<DogForm />} />
-            <Route path="/perros/:dogId" element={<DogDetail />} />
-            <Route path="/perros/:dogId/editar" element={<DogForm />} />
-            <Route path="/perros/:dogId/veterinario" element={<VetView />} />
-            <Route path="/perfil" element={<ProfilePage />} />
-            <Route path="/perfil/datos" element={<CsvUploadPage />} />
+            <Route path="/alertas" element={page(<AlertsPage />)} />
+            <Route path="/alertas/:alertId" element={page(<AlertDetail />)} />
+            <Route path="/perros/nuevo" element={page(<DogForm />)} />
+            <Route path="/perros/:dogId" element={page(<DogDetail />)} />
+            <Route path="/perros/:dogId/editar" element={page(<DogForm />)} />
+            <Route path="/perros/:dogId/veterinario" element={page(<VetView />)} />
+            <Route path="/perfil" element={page(<ProfilePage />)} />
+            <Route path="/perfil/datos" element={page(<CsvUploadPage />)} />
             <Route path="/admin" element={adminPage(<SimulatorPage />)} />
             <Route path="/admin/configuracion" element={adminPage(<ConfigPage />)} />
             <Route path="*" element={<NotFound />} />

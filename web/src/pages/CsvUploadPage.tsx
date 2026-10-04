@@ -43,9 +43,12 @@ function Check({ state, children }: { state: "ok" | "warn" | "error"; children: 
 function uploadState(u: CsvUpload, now = Date.now()): { text: string; tone: "ok" | "warn" | "muted" } {
   if (u.status === "done") return { text: "Analizada", tone: "ok" };
   const last = (u.updatedAt ?? u.createdAt)?.toMillis?.() ?? now;
-  if (now - last > 5 * 60_000) return { text: `Interrumpida (${u.blocksProcessed} de ${u.blocksExpected} bloques)`, tone: "warn" };
-  return { text: `En curso (${u.blocksProcessed} de ${u.blocksExpected} bloques)`, tone: "muted" };
+  if (now - last > 5 * 60_000) return { text: `Interrumpida (${fmtNum(u.blocksProcessed)} de ${fmtNum(u.blocksExpected)} bloques)`, tone: "warn" };
+  return { text: `En curso (${fmtNum(u.blocksProcessed)} de ${fmtNum(u.blocksExpected)} bloques)`, tone: "muted" };
 }
+
+/** A long file name keeps its start and its end: "lecturas_collar_de_toby…_2026-10-02.csv". */
+const shortName = (n: string) => (n.length > 40 ? `${n.slice(0, 22)}…${n.slice(-14)}` : n);
 
 function RecentUploads({ uploads, dogs }: { uploads: CsvUpload[]; dogs: Map<string, Dog> }) {
   if (!uploads.length) return null;
@@ -53,16 +56,16 @@ function RecentUploads({ uploads, dogs }: { uploads: CsvUpload[]; dogs: Map<stri
     <section className="panel stack-sm" aria-labelledby="recent-title">
       <h2 className="panel-title" id="recent-title">Cargas recientes</h2>
       <div className="table-wrap" role="region" aria-label="Cargas recientes" tabIndex={0}>
-        <table className="table">
+        <table className="table uploads-table">
           <thead><tr><th scope="col">Archivo</th><th scope="col">Perro</th><th scope="col">Datos</th><th scope="col">Estado</th></tr></thead>
           <tbody>{uploads.map((u) => {
             const st = uploadState(u);
             const first = u.firstBlockAt?.toMillis?.();
             return (
               <tr key={u.id}>
-                <td>{u.fileName}</td>
+                <td title={u.fileName}><strong>{shortName(u.fileName)}</strong></td>
                 <td>{dogs.get(u.dogId)?.name ?? "—"}</td>
-                <td>{first ? dateTimeText(first) : "—"} · {durationText(u.blocksExpected * 10_000)}</td>
+                <td><span className="upload-meta"><span className="nowrap">{first ? dateTimeText(first) : "—"}</span><span aria-hidden="true">·</span><span className="nowrap">{durationText(u.blocksExpected * 10_000)}</span></span></td>
                 <td><span className={`tag ${st.tone === "ok" ? "tag-green" : st.tone === "warn" ? "tag-amber" : "tag-open"}`}>
                   <Icon name={st.tone === "ok" ? "check-circle" : st.tone === "warn" ? "alert-triangle" : "clock"} size={12} />{st.text}</span></td>
               </tr>
@@ -92,6 +95,14 @@ export function CsvUploadPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const reviewRef = useRef<HTMLUListElement>(null);
+  const changedFile = useRef(false);
+  // The drop zone (and the focused button) go away when a file is chosen: focus moves to its review; after "Cambiar
+  // archivo", back to the file button.
+  useEffect(() => {
+    if (file) reviewRef.current?.focus();
+    else if (changedFile.current) inputRef.current?.focus();
+  }, [file]);
 
   useEffect(() => { if (!dogId && dogs.length) setDogId(dogs[0].id); }, [dogs, dogId]);
   const dog = dogMap.get(dogId) ?? null;
@@ -120,7 +131,7 @@ export function CsvUploadPage() {
     if (f.size > CSV_MAX_BYTES) { load(f.name, f.size, ""); return; }
     f.text().then((t) => load(f.name, f.size, t), () => setError("No pudimos leer el archivo."));
   };
-  const reset = () => { setFile(null); setProgress(null); setDone(false); setError(null); if (inputRef.current) inputRef.current.value = ""; };
+  const reset = () => { changedFile.current = true; setFile(null); setProgress(null); setDone(false); setError(null); if (inputRef.current) inputRef.current.value = ""; };
   const useSample = () => { const t = sampleCsv(); load("ejemplo_60s.csv", new Blob([t]).size, t); };
 
   const upload = async () => {
@@ -136,16 +147,21 @@ export function CsvUploadPage() {
     }
   };
 
-  const step = progress || done ? 4 : check ? (check.blocking.length ? 2 : 3) : 1;
+  const step = done ? STEPS.length + 1 : progress ? 4 : check ? (check.blocking.length ? 2 : 3) : 1;
   const learnTime = durationText((cfg.baseline?.minBlocks ?? 360) * 10_000);
   const writtenPct = progress ? Math.round((100 * progress.written) / progress.total) : 0;
   const processedPct = progress ? Math.round((100 * progress.processed) / progress.total) : 0;
   const warnings = check ? check.warnings.filter((w) => !REPEATS_A_CHECK.some((r) => w.includes(r))) : [];
+  // Screen readers hear the start, every quarter and the end of an upload, not each of its blocks.
+  const quarter = progress ? Math.min(3, Math.floor((4 * progress.processed) / progress.total)) : -1;
+  const milestone = done && progress ? `Listo: ${plural(progress.processed, "bloque analizado", "bloques analizados")}.`
+    : quarter === 0 ? `Cargando ${plural(progress!.total, "bloque", "bloques")}.` : quarter > 0 ? `${quarter * 25} % analizado.` : "";
 
   return (
     <main className="page" id="main">
       <nav className="crumbs" aria-label="Ruta"><Link to="/perfil">Perfil</Link><span aria-hidden="true">›</span><span>Cargar datos</span></nav>
       <PageHead title="Cargar datos desde un archivo" sub="Sube las lecturas del sensor de tu perro. Las revisamos antes de guardarlas." />
+      <p className="sr-only" role="status">{milestone}</p>
       <ol className="stepper" aria-label="Pasos">
         {STEPS.map((s, i) => (
           <li key={s} aria-current={step === i + 1 ? "step" : undefined} data-done={step > i + 1}>
@@ -173,16 +189,17 @@ export function CsvUploadPage() {
                 </div>
 
                 {!file && (
-                  <div className="dropzone" data-over={over} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+                  <div className="dropzone" data-over={over} onDragEnter={(e) => { e.preventDefault(); setOver(true); }} onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
                     onDrop={(e) => { e.preventDefault(); setOver(false); onFile(e.dataTransfer.files[0]); }}>
                     <Icon name="upload" size={28} style={{ color: "var(--color-text-muted)" }} />
                     <div className="drop-title">Arrastra tu archivo CSV aquí</div>
                     <div className="small muted">o</div>
                     <div className="row drop-actions">
+                      <input ref={inputRef} id="csv-file" type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
                       <label className="btn btn-primary" htmlFor="csv-file"><Icon name="file" />Elegir archivo</label>
                       <button className="btn btn-secondary" type="button" onClick={useSample}>Probar con un archivo de ejemplo</button>
                     </div>
-                    <input ref={inputRef} id="csv-file" type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
                     <div className="xs muted">Hasta {CSV_MAX_BYTES / 1048576} MB · 100 muestras por segundo</div>
                   </div>
                 )}
@@ -195,8 +212,8 @@ export function CsvUploadPage() {
                       <span className="small file-name"><Icon name="file" size={14} /> <strong>{file.name}</strong> · {fmtBytes(file.size)}</span>
                       {!busy && !done && <button className="btn btn-ghost btn-sm" type="button" onClick={reset}><Icon name="x" size={12} />Cambiar archivo</button>}
                     </div>
-                    <ul className="checklist">
-                      <Check state={check.missing.length ? "error" : "ok"}>{check.missing.length ? `Faltan columnas: ${check.missing.join(", ")}.` : "Las 10 columnas esperadas están presentes."}</Check>
+                    <ul className="checklist" ref={reviewRef} tabIndex={-1} aria-labelledby="val-title">
+                      {!check.otherSeparator && <Check state={check.missing.length ? "error" : "ok"}>{check.missing.length ? `Faltan columnas: ${check.missing.join(", ")}.` : "Las 10 columnas esperadas están presentes."}</Check>}
                       {!check.missing.length && <Check state={check.rowsDropped ? (check.valid ? "warn" : "error") : "ok"}>
                         {check.rowsDropped ? `${plural(check.rowsDropped, "fila", "filas")} con la fecha o el movimiento mal escritos: no se cargan.` : "Fechas y movimiento bien escritos en todas las filas."}</Check>}
                       {!check.missing.length && <Check state={check.valuesDropped ? "warn" : "ok"}>
@@ -244,10 +261,10 @@ export function CsvUploadPage() {
               )}
 
               {file && check && !check.blocking.length && (
-                <section className="stack-sm upload-step" aria-live="polite" aria-labelledby="up-title">
+                <section className="stack-sm upload-step" aria-labelledby="up-title">
                   <h2 className="sr-only" id="up-title">Carga</h2>
                   {done && progress ? (
-                    <div className="callout callout-ok"><Icon name="check-circle" size={16} style={{ marginTop: 1, color: "var(--color-status-green)" }} />
+                    <div className="callout callout-ok appear"><Icon name="check-circle" size={16} style={{ marginTop: 1, color: "var(--color-status-green)" }} />
                       <div><strong>Listo: {plural(progress.processed, "bloque analizado", "bloques analizados")} de {progress.total}.</strong> Ya puedes ver los resultados de {dog?.name}.
                         {!dog?.baseline && ` Su patrón normal se aprende con ${learnTime} de sus primeros datos: hasta entonces, solo se vigilan los valores fuera de los rangos de referencia.`}
                         <div className="row" style={{ marginTop: 8 }}>
@@ -256,10 +273,10 @@ export function CsvUploadPage() {
                         </div></div></div>
                   ) : progress ? (
                     <>
-                      <div className="row-between small"><span>Enviando bloques de 10 s…</span><span className="tabular">{progress.written} de {progress.total}</span></div>
-                      <div className="progress" role="progressbar" aria-valuenow={writtenPct} aria-valuemin={0} aria-valuemax={100} aria-label="Bloques enviados"><div className="progress-fill" style={{ width: `${writtenPct}%` }} /></div>
-                      <div className="row-between small"><span>Analizados por el sistema</span><span className="tabular">{progress.processed} de {progress.total}</span></div>
-                      <div className="progress" role="progressbar" aria-valuenow={processedPct} aria-valuemin={0} aria-valuemax={100} aria-label="Bloques analizados"><div className="progress-fill" style={{ width: `${processedPct}%` }} /></div>
+                      <div className="row-between small"><span>Enviando bloques de 10 s…</span><span className="tabular">{fmtNum(progress.written)} de {fmtNum(progress.total)}</span></div>
+                      <div className="progress" role="progressbar" aria-valuenow={writtenPct} aria-valuemin={0} aria-valuemax={100} aria-label="Bloques enviados"><div className="progress-fill" style={{ ["--p" as string]: writtenPct / 100 }} /></div>
+                      <div className="row-between small"><span>Analizados por el sistema</span><span className="tabular">{fmtNum(progress.processed)} de {fmtNum(progress.total)}</span></div>
+                      <div className="progress" role="progressbar" aria-valuenow={processedPct} aria-valuemin={0} aria-valuemax={100} aria-label="Bloques analizados"><div className="progress-fill" style={{ ["--p" as string]: processedPct / 100 }} /></div>
                       <p className="xs muted">Se envían en orden, uno tras otro, para que el sistema los analice como si llegaran en vivo. No cierres esta pestaña hasta que termine.</p>
                     </>
                   ) : (

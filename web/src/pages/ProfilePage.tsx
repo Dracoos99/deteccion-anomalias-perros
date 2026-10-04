@@ -76,7 +76,7 @@ export function ProfilePage() {
   const sorted = [...dogs].sort((a, b) => a.name.localeCompare(b.name, "es"));
   const onLogout = async () => { await logout(); navigate("/acceso", { replace: true }); };
   return (
-    <main className="page" id="main" style={{ maxWidth: 760 }}>
+    <main className="page page-profile" id="main">
       <PageHead title="Perfil" />
       <div className="stack">
         <section className="panel stack-sm" aria-labelledby="p-account">
@@ -123,7 +123,8 @@ export function ProfilePage() {
             </div>
           </section>
         )}
-        <div><button type="button" className="btn btn-ghost" onClick={onLogout}><Icon name="log-out" />Cerrar sesión</button></div>
+        {/* On wider screens «Cerrar sesión» is already in the side column or the masthead. */}
+        <div className="profile-logout"><button type="button" className="btn btn-ghost" onClick={onLogout}><Icon name="log-out" />Cerrar sesión</button></div>
       </div>
     </main>
   );

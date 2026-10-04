@@ -1,8 +1,8 @@
-/* Charts in the Broadsheet style: SVG, no chart library. One series per chart, the dog's normal band shaded,
-   dashed reference lines, amber dots on unusual moments, crosshair with pointer and keyboard (← → Esc), and a text
-   summary for screen readers. Look of the v3 mockups: serif title, legend under the plot, zone labels in
-   their level colour inside the plot. */
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+/* Charts in the Broadsheet style: SVG, no chart library. One series per chart, the dog's normal band shaded with thin
+   edges, dashed reference lines, amber dots on unusual moments, crosshair with mouse, touch (tap or slide sideways)
+   and keyboard (← → Esc, read aloud), and a text summary for screen readers. Look of the v3 mockups: serif
+   title, legend under the plot, zone labels in their level colour inside the plot. */
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { fmtNum } from "./ui";
 
 function useWidth(initial = 600): [React.RefObject<HTMLDivElement | null>, number] {
@@ -49,7 +49,7 @@ export function healthZones(levels: { green: number; amber: number }): Zone[] {
 }
 
 export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height,
-  legendBand, legendRefs, legendMarks, gapMs, showLast = false }: {
+  legendBand, legendRefs, legendMarks, gapMs, showLast = false, loading = false }: {
   title: string; sub?: string; points: ChartPoint[]; unit: string; decimals?: number; rangeKey: RangeKey;
   band?: [number, number] | null; refs?: { value: number; label: string }[]; zones?: Zone[]; domain?: [number, number];
   height?: number; legendBand?: string; legendRefs?: string; legendMarks?: string;
@@ -57,9 +57,20 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
   gapMs?: number;
   /** Dot on the latest point: "now" in the live panel. */
   showLast?: boolean;
+  /** The data are still arriving: a placeholder instead of "Sin datos en este periodo". */
+  loading?: boolean;
 }) {
   const [ref, width] = useWidth();
+  const figRef = useRef<HTMLElement | null>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const [kbd, setKbd] = useState(false);   // the crosshair moves with the keyboard: its value is read aloud
+  // A tapped value stays until the next tap elsewhere (lifting the finger must not hide it).
+  useEffect(() => {
+    if (hover == null) return;
+    const away = (e: Event) => { if (!figRef.current?.contains(e.target as Node)) setHover(null); };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [hover]);
   // Zone labels and labelled reference lines get a gutter on the right; otherwise the plot runs to the edge.
   const m = { l: 36, r: zones?.length ? 56 : refs.length ? 44 : 10, t: 10, b: 24 };
   const W = width, H = height ?? (W < 480 ? 150 : 190), iw = W - m.l - m.r, ih = H - m.t - m.b;
@@ -85,29 +96,40 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
     let best = 0, bd = Infinity;
     points.forEach((p, i) => { const d = Math.abs(X(p.t) - x); if (d < bd) { bd = d; best = i; } });
     setHover(best);
+    setKbd(false);
+  };
+  // Touch and pen: a tap shows the value; sliding sideways follows the finger (the page still scrolls vertically).
+  const onDown = (e: PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === "mouse") return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    onMove(e);
   };
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
     if (!points.length) return;
-    if (e.key === "ArrowLeft") { setHover((h) => Math.max(0, (h ?? points.length) - 1)); e.preventDefault(); }
-    if (e.key === "ArrowRight") { setHover((h) => Math.min(points.length - 1, (h ?? -1) + 1)); e.preventDefault(); }
+    if (e.key === "ArrowLeft") { setHover((h) => Math.max(0, (h ?? points.length) - 1)); setKbd(true); e.preventDefault(); }
+    if (e.key === "ArrowRight") { setHover((h) => Math.min(points.length - 1, (h ?? -1) + 1)); setKbd(true); e.preventDefault(); }
     if (e.key === "Escape") setHover(null);
   };
   const hp = hover != null ? points[hover] : null;
+  const tipTime = (t: number) => (rangeKey === "7d" ? `${fmtDM.format(t)}, ${fmtHM.format(t)}` : rangeKey === "10m" ? fmtHMS.format(t) : fmtHM.format(t));
   const summary = points.length
     ? `${title}: último valor ${fmtV(last.v)} ${unit}, mínimo ${fmtV(Math.min(...vals))}, máximo ${fmtV(Math.max(...vals))}` +
-      (marks.length ? `, ${marks.length} momentos fuera de lo normal.` : ".")
+      (marks.length ? `, ${marks.length} ${marks.length === 1 ? "momento" : "momentos"} fuera de lo normal.` : ".")
     : `${title}: sin datos en este periodo.`;
   const legend = points.length > 0 && (legendBand || legendRefs || (legendMarks && marks.length > 0));
+  const waiting = loading && !points.length;
   return (
-    <figure className="chart" style={{ margin: 0 }}>
+    <figure ref={figRef} className="chart" style={{ margin: 0 }} aria-busy={waiting || undefined}>
       <figcaption>
         <div className="chart-title">{title}</div>
         {sub && <div className="chart-sub">{sub}</div>}
       </figcaption>
       <div ref={ref} style={{ position: "relative" }}>
-        {!points.length ? <div className="chart-empty small muted" style={{ height: H }}>Sin datos en este periodo.</div> : (
-          <svg width={W} height={H} role="img" aria-label={summary} tabIndex={0}
-            onPointerMove={onMove} onPointerLeave={() => setHover(null)} onKeyDown={onKey} onBlur={() => setHover(null)}>
+        {waiting ? <div className="skeleton" style={{ height: H }} aria-hidden="true" />
+          : !points.length ? <div className="chart-empty small muted" style={{ height: H }}>Sin datos en este periodo.</div> : (
+          <svg width={W} height={H} role="img" aria-label={summary} tabIndex={0} style={{ touchAction: "pan-y" }}
+            onPointerMove={onMove} onPointerDown={onDown} onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }}
+            onPointerCancel={() => setHover(null)} onKeyDown={onKey} onBlur={() => setHover(null)}>
             {zones?.map((z, i) => {
               const top = Y(Math.min(hi, z.to)), bottom = Y(Math.max(lo, z.from));
               // The colour runs under the label gutter; the label sits right of the latest point, so the line never covers it.
@@ -126,7 +148,10 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
                 <text x={m.l - 6} y={Y(v) + 3.5} textAnchor="end" className="chart-axis">{fmtNum(v, decimals && Math.abs(hi - lo) < 5 ? 1 : 0)}</text>
               </g>
             ))}
-            {band && <rect x={m.l} width={iw} y={Y(band[1])} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="var(--chart-baseline)" />}
+            {band && <rect className="chart-band" x={m.l} width={iw} y={Y(band[1])} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="var(--chart-baseline)" />}
+            {band && [band[0], band[1]].filter((v) => v >= lo && v <= hi).map((v) => (
+              <line key={`edge${v}`} className="chart-band-edge" x1={m.l} x2={m.l + iw} y1={Y(v)} y2={Y(v)} />
+            ))}
             {refs.map((r) => (
               <g key={r.label}>
                 <line x1={m.l} x2={W - m.r} y1={Y(r.value)} y2={Y(r.value)} stroke="var(--chart-ref)" strokeWidth="1.2" strokeDasharray="4 3" />
@@ -137,7 +162,7 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
             {xticks.map((t, i) => (
               <text key={i} x={X(t)} y={H - 7} textAnchor={i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"} className="chart-axis">{xLabel(t, rangeKey)}</text>
             ))}
-            {points.length > 1 && <path d={path} fill="none" stroke="var(--chart-line)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />}
+            {points.length > 1 && <path className="chart-series" d={path} fill="none" stroke="var(--chart-line)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />}
             {showLast && last && <circle cx={X(last.t)} cy={Y(last.v)} r="3.5" fill="var(--chart-line)" stroke="var(--color-sheet)" strokeWidth="1.5" />}
             {marks.map((p) => <circle key={p.t} cx={X(p.t)} cy={Y(p.v)} r="3.5" fill="var(--chart-mark)" stroke="var(--color-sheet)" strokeWidth="1.5" />)}
             {hp && (
@@ -150,9 +175,10 @@ export function TrendChart({ title, sub, points, unit, decimals = 0, rangeKey, b
         )}
         {hp && (
           <div className="chart-tip" style={{ left: Math.min(Math.max(0, X(hp.t) - 60), W - 150), top: 0 }}>
-            <strong>{fmtV(hp.v)} {unit}</strong><br />{rangeKey === "7d" ? `${fmtDM.format(hp.t)}, ${fmtHM.format(hp.t)}` : rangeKey === "10m" ? fmtHMS.format(hp.t) : fmtHM.format(hp.t)}
+            <strong>{fmtV(hp.v)} {unit}</strong><br />{tipTime(hp.t)}
           </div>
         )}
+        <p className="sr-only" aria-live="polite">{kbd && hp ? `${fmtV(hp.v)} ${unit}, ${tipTime(hp.t)}` : ""}</p>
       </div>
       {legend && (
         <div className="chart-legend">

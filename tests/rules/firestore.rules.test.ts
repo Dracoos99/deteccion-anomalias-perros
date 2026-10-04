@@ -1,11 +1,12 @@
 // Security rules tests (run with: npm run test:rules). Cover the access matrix,,
-// (owners and a script-assigned admin; no vet role) (CSV uploads, notification tokens).
+// (owners and a script-assigned admin; no vet role), (CSV uploads, notification tokens)
+// (clearing the Alertas list and undoing a review).
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 import {
   assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { Timestamp, deleteDoc, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 
 let env: RulesTestEnvironment;
 const owner = () => env.authenticatedContext("owner1", { role: "owner" }).firestore();
@@ -138,6 +139,24 @@ describe("alerts", () => {
     await assertFails(updateDoc(doc(owner(), "alerts/a1"), { status: "acknowledged", acknowledgedBy: "owner2", acknowledgedAt: serverTimestamp() }));
     await assertFails(updateDoc(doc(otherOwner(), "alerts/a1"), { status: "acknowledged", acknowledgedBy: "owner2", acknowledgedAt: serverTimestamp() }));
   });
+  it("whoever reviewed an alert can make it new again within 10 minutes, and nobody else", async () => {
+    const reopen = { status: "open", acknowledgedBy: null, acknowledgedAt: null };
+    await assertSucceeds(updateDoc(doc(owner(), "alerts/a1"), { status: "acknowledged", acknowledgedBy: "owner1", acknowledgedAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(otherOwner(), "alerts/a1"), reopen));
+    await assertFails(updateDoc(doc(admin(), "alerts/a1"), reopen));
+    await assertFails(updateDoc(doc(owner(), "alerts/a1"), { status: "open" }));
+    await assertFails(updateDoc(doc(owner(), "alerts/a1"), { ...reopen, severity: "amber" }));
+    await assertSucceeds(updateDoc(doc(owner(), "alerts/a1"), reopen));
+    // A review older than 10 minutes stays.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "alerts/a3"), { dogId: "dog1", ownerId: "owner1", severity: "amber", status: "acknowledged",
+        acknowledgedBy: "owner1", acknowledgedAt: Timestamp.fromMillis(Date.now() - 11 * 60_000) });
+    });
+    await assertFails(updateDoc(doc(owner(), "alerts/a3"), reopen));
+    // Alerts are never deleted: the dog's history and the vet view are built from them.
+    await assertFails(deleteDoc(doc(owner(), "alerts/a1")));
+    await assertFails(deleteDoc(doc(admin(), "alerts/a2")));
+  });
   it("only an admin writes the expert review, as itself and with server time", async () => {
     const review = { reviewerId: "admin1", relevant: true, notes: "", reviewedAt: serverTimestamp() };
     await assertFails(updateDoc(doc(owner(), "alerts/a2"), { expertReview: { ...review, reviewerId: "owner1" } }));
@@ -171,6 +190,17 @@ describe("users", () => {
     await assertSucceeds(getDoc(doc(owner(), "users/owner1")));
     await assertFails(getDoc(doc(owner(), "users/owner2")));
     await assertSucceeds(getDoc(doc(admin(), "users/owner2")));
+  });
+  it("a user marks when it cleared its own Alertas list, for every dog or one, and undoes it", async () => {
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.byDog.dog1": serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.all": deleteField() }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.other": serverTimestamp() }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { alertsCleared: "all" }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"),
+      { "alertsCleared.byDog": Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`d${i}`, new Date()])) }));
+    await assertFails(updateDoc(doc(otherOwner(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
+    await assertFails(updateDoc(doc(admin(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
   });
 });
 

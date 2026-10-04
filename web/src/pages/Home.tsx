@@ -5,8 +5,9 @@ import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DogCard } from "../components/DogCard";
-import { Callout, EmptyState, Icon, Notice, PageHead, Skeleton, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, Notice, PageHead, Skeleton, useNow, usePageTitle } from "../components/ui";
 import { useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog } from "../data/hooks";
+import { freshness } from "../lib/live";
 import { byAttention, homeSummary } from "../lib/plain";
 
 const HIDE_KEY = (uid: string) => `onboarding-hidden:${uid}`;
@@ -65,8 +66,12 @@ export function Home() {
   const viewer = { uid: user!.uid, isAdmin };
   const { data: dogs, loading, error } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });
   const { data: cfg } = useFusionConfig();
-  const { data: open } = useOpenAlerts(viewer);
+  const { data: open, loading: openLoading } = useOpenAlerts(viewer);
   const [hidden, setHidden] = useState(() => readHidden(user!.uid));
+  const now = useNow(5000);
+  // Alerts open when the page loaded arrive with their cards; only one that opens while the owner looks eases in.
+  const openAtLoad = useRef<Set<string> | null>(null);
+  if (!openLoading && openAtLoad.current == null) openAtLoad.current = new Set(open.map((a) => a.id));
   const newestOpen = useMemo(() => {
     const m = new Map<string, Alert>();
     for (const a of open) {
@@ -89,25 +94,31 @@ export function Home() {
   }, [ids]);
   orderRef.current = order;
   const cards = order.map((id) => sorted.find((d) => d.id === id)!).filter(Boolean);
-  const summary = homeSummary(sorted.map((d) => ({ name: d.name, level: d.status?.level ?? null, learning: !d.baseline })));
+  const isStale = (d: Dog) => !!d.status && freshness(d.status.lastBlockAt?.toMillis?.() ?? null, d.status.updatedAt?.toMillis?.() ?? null, now) === "stale";
+  const summary = homeSummary(sorted.map((d) => ({
+    name: d.name, level: d.status?.level ?? null, learning: !d.baseline, stale: isStale(d), openAlert: newestOpen.has(d.id),
+  })));
   const anyData = sorted.some((d) => d.status);
   // The guide shows until a dog has data; with dogs registered it can be hidden (without dogs it is the empty state).
   const showGuide = !isAdmin && !loading && !anyData && (!sorted.length || !hidden);
   const hide = () => { try { localStorage.setItem(HIDE_KEY(user!.uid), "1"); } catch { /* not stored */ } setHidden(true); };
   return (
     <main className="page" id="main">
-      <PageHead title="Tus perros" sub={loading ? undefined : summary ?? "Aquí verás cómo están tus perros respecto a su patrón normal."} />
+      {/* The summary line keeps its place while loading, so the cards below do not jump when it arrives. */}
+      <PageHead title="Tus perros" sub={loading ? "Cargando tus perros…" : summary ?? "Aquí verás cómo están tus perros respecto a su patrón normal."} />
       <div className="stack">
         <Notice />
         {error && <Callout kind="error">No pudimos cargar tus perros. Revisa tu conexión e inténtalo de nuevo.</Callout>}
         {showGuide && <Onboarding dogs={sorted} onHide={sorted.length ? hide : null} />}
         {isAdmin && !loading && !sorted.length && <EmptyState title="Todavía no hay perros" text="Los perros de la demostración se crean con el seed o el bootstrap." />}
         {loading ? (
-          <div className="stack" aria-busy="true">
-            <p className="small muted">Cargando tus perros…</p>
-            <div className="grid-cards"><Skeleton /><Skeleton lines={[35, 50, 100]} /></div>
-          </div>
-        ) : sorted.length > 0 && <div className="grid-cards">{cards.map((d) => <DogCard key={d.id} dog={d} cfg={cfg} openAlert={newestOpen.get(d.id)} />)}</div>}
+          <div className="grid-cards" aria-busy="true"><Skeleton className="skeleton-card" /><Skeleton className="skeleton-card" lines={[35, 50, 100]} /></div>
+        ) : sorted.length > 0 && (
+          <div className="grid-cards">{cards.map((d) => {
+            const a = newestOpen.get(d.id);
+            return <DogCard key={d.id} dog={d} cfg={cfg} openAlert={a} alertIsNew={!!a && !!openAtLoad.current && !openAtLoad.current.has(a.id)} />;
+          })}</div>
+        )}
       </div>
     </main>
   );

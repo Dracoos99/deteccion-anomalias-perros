@@ -18,7 +18,9 @@
  *                tempRange; an alert needs consecutiveCritical windows
  * The block result is its last window (C8). Without a baseline only the absolute rules apply.
  */
-import { healthScore, levelOf, type AlertReason, type Baseline, type Behavior, type FusionConfig, type Level } from "./types";
+import {
+  ACTIVITY_SD_FLOOR, HR_SD_FLOOR, healthScore, levelOf, normalBand, type AlertReason, type Baseline, type Behavior, type FusionConfig, type Level,
+} from "./types";
 import { readWindow, type BehaviorOutput } from "./behavior-model";
 import { ratioToScore, sequenceZ, type PhysioScorer } from "./physio-model";
 
@@ -28,8 +30,6 @@ export const WINDOW_SAMPLES = 200;   // 2 s at 100 Hz
 /** Length of the blocks of CSV uploads and older readings; live blocks may be shorter. */
 export const BLOCK_SECONDS = 10;
 export const WINDOW_S = 2;
-const ACTIVITY_SD_FLOOR = 0.02;      // 2 percentage points
-const HR_SD_FLOOR = 1;               // bpm
 const WINDOW_MS = (WINDOW_SAMPLES / 100) * 1000;
 /** rNovelty below this still lowers the score but is not listed as an alert reason. */
 export const NOVELTY_REASON_MIN = 0.1;
@@ -178,16 +178,20 @@ function tempScore(temp: number | null, baseline: BaselineStats | null, cfg: Eng
   return 0;
 }
 
-/** Plain-Spanish reasons of the deviated components. */
+/** Plain-Spanish reasons of the deviated components. Movement and
+ * heart rate are listed when they leave the dog's normal band, the same baseline ± baselineSigma band the app shows
+ * («Qué es normal», chart bands); smaller deviations still lower the score through rB and rP. */
 export function buildReasons(w: WindowEval, baseline: BaselineStats | null, cfg: EngineConfig): AlertReason[] {
+  const k = cfg.baselineSigma;
   const reasons: AlertReason[] = [];
-  if (baseline && w.rActivity > 0 && w.activityRatio != null && w.zActivity != null) {
-    const sd = Math.max(baseline.activeRatioStd, ACTIVITY_SD_FLOOR);
-    const lo = round(100 * clamp01(baseline.activeRatioMean - sd)), hi = round(100 * clamp01(baseline.activeRatioMean + sd));
-    const low = w.zActivity < 0;
-    reasons.push({ component: "behavior", code: low ? "activity_low" : "activity_high", value: round(100 * w.activityRatio),
+  const act = baseline && w.rActivity > 0 && w.activityRatio != null && w.zActivity != null
+    ? normalBand(baseline.activeRatioMean, baseline.activeRatioStd, ACTIVITY_SD_FLOOR, k).map((x) => round(100 * clamp01(x))) as [number, number]
+    : null;
+  if (act && Math.abs(w.zActivity!) > k) {
+    const [lo, hi] = act, low = w.zActivity! < 0;
+    reasons.push({ component: "behavior", code: low ? "activity_low" : "activity_high", value: round(100 * w.activityRatio!),
       normalRange: [lo, hi],
-      message: `El tiempo en movimiento (${fmt(100 * w.activityRatio)} %) está ${low ? "por debajo" : "por encima"} de su rango habitual (${fmt(lo)}–${fmt(hi)} %).` });
+      message: `El tiempo en movimiento (${fmt(100 * w.activityRatio!)} %) está ${low ? "por debajo" : "por encima"} de su rango habitual (${fmt(lo)}–${fmt(hi)} %).` });
   }
   // Listed only when novelty weighs (it still counts in rB below this), and never as "5 % (up to 5 %)".
   if (w.rNovelty >= NOVELTY_REASON_MIN && w.noveltyRatio != null && w.noveltyExpected != null) {
@@ -196,17 +200,18 @@ export function buildReasons(w: WindowEval, baseline: BaselineStats | null, cfg:
     reasons.push({ component: "behavior", code: "behavior_unusual", value: round(val, d), normalRange: [0, round(exp, d)],
       message: `En los últimos minutos, el ${fmt(val, d)} % de sus movimientos no se pareció a ninguna de las conductas conocidas (lo habitual es hasta el ${fmt(exp, d)} %).` });
   }
-  if (baseline?.hrMean != null && (w.rP > 0 || w.hrCritical) && w.hr != null && w.zHr != null) {
-    const sd = Math.max(baseline.hrStd ?? 0, HR_SD_FLOOR);
-    const lo = round(baseline.hrMean - sd), hi = round(baseline.hrMean + sd);
-    const high = w.hr > baseline.hrMean;
-    if (w.hrRatio != null && Math.abs(w.zHr) < 1) {
+  const hrb = baseline?.hrMean != null && (w.rP > 0 || w.hrCritical) && w.hr != null && w.zHr != null
+    ? normalBand(baseline.hrMean, baseline.hrStd ?? 0, HR_SD_FLOOR, k).map((x) => round(x)) as [number, number]
+    : null;
+  if (hrb) {
+    const [lo, hi] = hrb, high = w.hr! > baseline!.hrMean!;
+    if (Math.abs(w.zHr!) > k) {
+      reasons.push({ component: "heart_rate", code: high ? "hr_high" : "hr_low", value: round(w.hr!), normalRange: [lo, hi],
+        message: `La frecuencia cardiaca de los últimos ${cfg.hrAverageS} s (${fmt(w.hr!)} lpm) está ${high ? "por encima" : "por debajo"} de su rango habitual (${fmt(lo)}–${fmt(hi)} lpm).` });
+    } else if (w.hrRatio != null && w.hrRatio > 1) {
       // The autoencoder flags the shape of the last minute even when its mean is within the usual range.
-      reasons.push({ component: "heart_rate", code: "hr_pattern", value: round(w.hr), normalRange: [lo, hi],
-        message: `En el último minuto, su frecuencia cardiaca (${fmt(w.hr)} lpm en promedio) no siguió su patrón normal, aunque su promedio está dentro de su rango habitual (${fmt(lo)}–${fmt(hi)} lpm).` });
-    } else {
-      reasons.push({ component: "heart_rate", code: high ? "hr_high" : "hr_low", value: round(w.hr), normalRange: [lo, hi],
-        message: `La frecuencia cardiaca de los últimos ${cfg.hrAverageS} s (${fmt(w.hr)} lpm) está ${high ? "por encima" : "por debajo"} de su rango habitual (${fmt(lo)}–${fmt(hi)} lpm).` });
+      reasons.push({ component: "heart_rate", code: "hr_pattern", value: round(w.hr!), normalRange: [lo, hi],
+        message: `En el último minuto, su frecuencia cardiaca (${fmt(w.hr!)} lpm en promedio) no siguió su patrón normal, aunque su promedio está dentro de su rango habitual (${fmt(lo)}–${fmt(hi)} lpm).` });
     }
   }
   if (w.rT > 0 && w.temp != null) {
@@ -221,6 +226,17 @@ export function buildReasons(w: WindowEval, baseline: BaselineStats | null, cfg:
         normalRange: [round(baseline.tempMean - d, 1), round(baseline.tempMean + d, 1)],
         message: `La temperatura (${fmt(w.temp, 1)} °C) se aleja más de ${fmt(d, 1)} °C de su valor habitual (${fmt(baseline.tempMean, 1)} °C).` });
     }
+  }
+  // An alert always names a variable. With an unusual configuration (a critical rule or an alert threshold tighter than
+  // the normal band) a trigger can come from a deviation inside the band: it is described against the dog's average.
+  if (!reasons.length && hrb && Math.abs(w.zHr!) > 1) {
+    const high = w.hr! > baseline!.hrMean!;
+    reasons.push({ component: "heart_rate", code: high ? "hr_high" : "hr_low", value: round(w.hr!), normalRange: hrb,
+      message: `La frecuencia cardiaca de los últimos ${cfg.hrAverageS} s (${fmt(w.hr!)} lpm) está ${high ? "más alta" : "más baja"} que su promedio habitual (${fmt(baseline!.hrMean!)} lpm).` });
+  } else if (!reasons.length && act) {
+    const low = w.zActivity! < 0;
+    reasons.push({ component: "behavior", code: low ? "activity_low" : "activity_high", value: round(100 * w.activityRatio!), normalRange: act,
+      message: `El tiempo en movimiento (${fmt(100 * w.activityRatio!)} %) está ${low ? "por debajo" : "por encima"} de su promedio habitual (${fmt(100 * baseline!.activeRatioMean)} %).` });
   }
   return reasons;
 }

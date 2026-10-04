@@ -5,8 +5,10 @@
  * FCM needs the project's Web Push certificate (VITE_FIREBASE_VAPID_KEY) and does not work with the emulators.
  */
 import { arrayRemove, arrayUnion, doc, updateDoc } from "firebase/firestore";
-import { deleteToken, getMessaging, getToken, isSupported } from "firebase/messaging";
 import { app, db, usingEmulators } from "../firebase";
+
+// The Messaging client loads only when the owner looks at or changes the notification settings.
+const messaging = () => import("firebase/messaging");
 
 const env = import.meta.env;
 const VAPID_KEY = env.VITE_FIREBASE_VAPID_KEY as string | undefined;
@@ -18,6 +20,7 @@ export type PushSupport = "ok" | "emulator" | "unconfigured" | "unsupported";
 export async function pushSupport(): Promise<PushSupport> {
   if (usingEmulators) return "emulator";
   if (!VAPID_KEY || !app.options.messagingSenderId) return "unconfigured";
+  const { isSupported } = await messaging();
   return (await isSupported().catch(() => false)) && "Notification" in window && "serviceWorker" in navigator ? "ok" : "unsupported";
 }
 
@@ -41,6 +44,7 @@ async function registration(): Promise<ServiceWorkerRegistration> {
 
 export async function enablePush(uid: string): Promise<"granted" | "denied"> {
   if (permission() !== "granted" && (await Notification.requestPermission()) !== "granted") return "denied";
+  const { getMessaging, getToken } = await messaging();
   const token = await getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: await registration() });
   await updateDoc(doc(db, "users", uid), { fcmTokens: arrayUnion(token) });
   try { localStorage.setItem(TOKEN_KEY, token); } catch { /* private mode: the token still works for this session */ }
@@ -50,6 +54,7 @@ export async function enablePush(uid: string): Promise<"granted" | "denied"> {
 export async function disablePush(uid: string): Promise<void> {
   const token = storedToken();
   if (token) await updateDoc(doc(db, "users", uid), { fcmTokens: arrayRemove(token) });
+  const { deleteToken, getMessaging } = await messaging();
   await deleteToken(getMessaging(app)).catch(() => undefined);
   try { localStorage.removeItem(TOKEN_KEY); } catch { /* nothing stored */ }
 }

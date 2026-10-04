@@ -3,6 +3,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Behavior, FusionConfig, Level } from "@shared/types";
 import { usingEmulators } from "../firebase";
+import { freshness as freshnessOf, shownDataMs, type Freshness } from "../lib/live";
+import { glueTime, whenPhrase } from "../lib/plain";
 
 /* Line icons on a 24 px grid, 2 px stroke: the set of the v3 mockups, plus a few more for the research tools. */
 const ICONS: Record<string, ReactNode> = {
@@ -37,6 +39,7 @@ const ICONS: Record<string, ReactNode> = {
   download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
   file: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></>,
   check: <><path d="M20 6 9 17l-5-5" /></>,
+  archive: <><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></>,
   "bell-off": <><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5" /><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><path d="m2 2 20 20" /></>,
   sliders: <><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></>,
   "wifi-off": <><path d="M2 2l20 20" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M5 12.9a10 10 0 0 1 5.2-2.8" /><path d="M19 12.9a10 10 0 0 0-2.2-1.6" /><path d="M12 20h.01" /></>,
@@ -93,20 +96,36 @@ export function Ago({ t }: { t: Date | null | undefined }) {
   return <>{fmtAgo(t, now)}</>;
 }
 
-/** "En vivo" while the latest data are less than maxAgeS old: dot and text, never the color alone. */
-export function LiveBadge({ t, maxAgeS = 30 }: { t: Date | null | undefined; maxAgeS?: number }) {
-  const now = useNow();
-  if (!t || now - t.getTime() > maxAgeS * 1000) return null;
+/** "En vivo": dot and text, never the color alone. Shown only while the dog's state is live. */
+export function LiveBadge() {
   return <span className="live-badge"><span className="live-dot" aria-hidden="true" />En vivo</span>;
+}
+
+type Millis = { toMillis?: () => number } | null | undefined;
+
+/** How current a dog's state is, refreshed every 5 s: live, recent or stale (old data are not its current state), and
+ * the time to show the owner. */
+export function useFreshness(status: { lastBlockAt?: Millis; updatedAt?: Millis } | null | undefined): { freshness: Freshness | null; shownMs: number | null } {
+  const now = useNow(5000);
+  if (!status) return { freshness: null, shownMs: null };
+  const dataMs = status.lastBlockAt?.toMillis?.() ?? null, receivedMs = status.updatedAt?.toMillis?.() ?? null;
+  return { freshness: freshnessOf(dataMs, receivedMs, now), shownMs: shownDataMs(dataMs, receivedMs) };
+}
+
+/** "Actualizado hace 12 s · En vivo", or, for old data, "Últimos datos: el 1 oct. 2026, 5:43 p. m.". */
+export function DataTime({ freshness, shownMs }: { freshness: Freshness; shownMs: number | null }) {
+  if (freshness === "stale") return <>Últimos datos: {shownMs != null ? whenPhrase(shownMs) : "—"}</>;
+  return <>Actualizado <Ago t={shownMs != null ? new Date(shownMs) : null} />{freshness === "live" && <LiveBadge />}</>;
 }
 
 export function fmtAgo(t: Date | null | undefined, now = Date.now()): string {
   if (!t) return "—";
   const s = Math.max(0, Math.round((now - t.getTime()) / 1000));
+  if (s < 5) return "hace un momento";
   if (s < 60) return `hace ${s} s`;
   if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
   if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
-  return t.toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+  return `el ${glueTime(t.toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" }))}`;
 }
 
 function polar(cx: number, cy: number, r: number, deg: number): [number, number] {
@@ -128,13 +147,18 @@ export function HealthGauge({ score, level, levels, size = 150 }: { score: numbe
   const label = score == null || !L ? "Health Score sin datos" : `Health Score ${score} de 100: ${L.text}`;
   // A three-digit score (100) gets a smaller figure so it stays inside the arc.
   const k = score != null && score >= 100 ? 0.235 : 0.285;
+  // The cut numbers are only legible on a large gauge (10 px rendered); smaller ones keep the white cut marks.
+  const labelPx = size >= 120 ? (10 * 132) / size : null;
   return (
     <div className="gauge" style={{ width: size, maxWidth: "100%", containerType: "inline-size" }} role="img" aria-label={label}>
       <svg viewBox="-6 -4 132 106">
         <path d={arcPath(cx, cy, r, A0, A0 + SWEEP)} fill="none" stroke={L ? L.bg : "var(--color-surface)"} strokeWidth="11" />
         {score != null && L && <path d={arcPath(cx, cy, r, A0, Math.max(A0 + 0.5, valA))} fill="none" stroke={L.color} strokeWidth="11" />}
         {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x0, y0] = polar(cx, cy, r - 8, a), [x1, y1] = polar(cx, cy, r + 8, a); return <line key={v} className="gauge-cut" x1={x0} y1={y0} x2={x1} y2={y1} />; })}
-        {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x, y] = polar(cx, cy, r + 13, a); return <text key={`t${v}`} className="gauge-label" x={x} y={y + 3} textAnchor="middle">{v}</text>; })}
+        {labelPx != null && cuts.map((v) => {
+          const a = A0 + (SWEEP * v) / 100; const [x, y] = polar(cx, cy, r + 13, a);
+          return <text key={`t${v}`} className="gauge-label" x={x} y={y + labelPx * 0.35} textAnchor="middle" style={{ fontSize: `${labelPx.toFixed(1)}px` }}>{v}</text>;
+        })}
       </svg>
       <div className="gauge-center" aria-hidden="true">
         <div className="gauge-value" style={{ fontSize: `min(${Math.round(size * k)}px, ${(100 * k).toFixed(1)}cqw)` }}>{score ?? "—"}</div>
@@ -172,9 +196,10 @@ export function EmulatorBanner() {
   );
 }
 
+/** A message after an action. Success eases in (it appears because of what the owner did); errors appear at once. */
 export function Callout({ kind, children }: { kind: "error" | "ok"; children: ReactNode }) {
   return (
-    <div className={`callout callout-${kind}`} role={kind === "error" ? "alert" : "status"}>
+    <div className={`callout callout-${kind}${kind === "ok" ? " appear" : ""}`} role={kind === "error" ? "alert" : "status"}>
       <Icon name={kind === "error" ? "alert-triangle" : "check-circle"} size={16}
         style={{ marginTop: 1, color: kind === "error" ? "var(--color-status-red)" : "var(--color-status-green)" }} /><div>{children}</div>
     </div>
@@ -225,18 +250,18 @@ export function EmptyState({ icon = "paw", title, text, action }: { icon?: strin
 }
 
 /** Placeholder blocks while the first snapshot arrives. */
-export function Skeleton({ lines = [40, 60, 100] }: { lines?: number[] }) {
+export function Skeleton({ lines = [40, 60, 100], className }: { lines?: number[]; className?: string }) {
   return (
-    <div className="panel stack-sm" aria-hidden="true">
+    <div className={className ? `panel stack-sm ${className}` : "panel stack-sm"} aria-hidden="true">
       {lines.map((w, i) => <div key={i} className="skeleton" style={{ height: i === lines.length - 1 ? 56 : i === 1 ? 22 : 14, width: `${w}%` }} />)}
     </div>
   );
 }
 
 /** A whole page while its first snapshot arrives: the frame (main, title) with placeholder panels, not a blank screen. */
-export function PageLoading({ title, text = "Cargando…", maxWidth }: { title?: string; text?: string; maxWidth?: number }) {
+export function PageLoading({ title, text = "Cargando…", className }: { title?: string; text?: string; className?: string }) {
   return (
-    <main className="page" id="main" aria-busy="true" style={maxWidth ? { maxWidth } : undefined}>
+    <main className={className ? `page ${className}` : "page"} id="main" aria-busy="true">
       {title && <PageHead title={title} />}
       <div className="stack">
         <p className="small muted">{text}</p>

@@ -69,6 +69,12 @@ describe("checkCsv", () => {
     expect(checkCsv(csv(rows(10)), 70 * 1024 * 1024, pf).blocking.join(" ")).toMatch(/pesa más/);
   });
 
+  it("names the separator of a spreadsheet saved with semicolons instead of listing every column as missing", () => {
+    const r = check(csv(rows(1000)).replace(/,/g, ";"));
+    expect(r.otherSeparator).toBe(true);
+    expect(r.blocking).toEqual(["El archivo usa punto y coma (;) para separar las columnas. Guárdalo como «CSV (delimitado por comas)» e inténtalo de nuevo."]);
+  });
+
   it("notes a file without heart rate or temperature", () => {
     const r = check(csv(rows(1000, { hrEvery: 0 })));
     expect(r.blocking).toEqual([]);

@@ -1,8 +1,58 @@
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Link, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useOpenAlerts } from "../data/hooks";
 import { sectionOf } from "../lib/nav";
 import { EmulatorBanner, Icon, NOTICE_TEXT, OfflineBanner } from "./ui";
+
+/** Scroll offset of each visited page, by history entry. */
+const scrollByKey = new Map<string, number>();
+
+/** Moving between pages: a new page opens at its top and Back returns to where the owner was (re-applied while the
+ * page's data arrive, for up to 3 s or until the owner scrolls); focus moves to the content and the page's name is
+ * announced, instead of staying on <body>. No page transition: navigation is frequent. */
+function useNavigationEffects(contentRef: React.RefObject<HTMLDivElement | null>): string {
+  const location = useLocation();
+  const navType = useNavigationType();
+  const keyRef = useRef(location.key);
+  keyRef.current = location.key;
+  const first = useRef(true);
+  const [announce, setAnnounce] = useState("");
+  useEffect(() => {
+    window.history.scrollRestoration = "manual";
+    const save = () => scrollByKey.set(keyRef.current, window.scrollY);
+    window.addEventListener("scroll", save, { passive: true });
+    return () => window.removeEventListener("scroll", save);
+  }, []);
+  useLayoutEffect(() => {
+    if (first.current) { first.current = false; return; }
+    let stop = () => {};
+    if (navType !== "POP") window.scrollTo(0, 0);
+    else {
+      const target = scrollByKey.get(location.key) ?? 0;
+      const ro = new ResizeObserver(() => apply());
+      const timer = window.setTimeout(() => stop(), 3000);
+      stop = () => {
+        ro.disconnect(); window.clearTimeout(timer);
+        window.removeEventListener("wheel", stop); window.removeEventListener("touchstart", stop); window.removeEventListener("keydown", stop);
+      };
+      const apply = () => {
+        if (document.documentElement.scrollHeight - window.innerHeight >= target) { window.scrollTo(0, target); stop(); }
+      };
+      ro.observe(document.body);
+      window.addEventListener("wheel", stop, { passive: true });
+      window.addEventListener("touchstart", stop, { passive: true });
+      window.addEventListener("keydown", stop);
+      apply();
+    }
+    contentRef.current?.focus({ preventScroll: true });
+    // The page sets its title once its data arrive; announce it a moment later, without the app's name.
+    const t = window.setTimeout(() => setAnnounce(document.title.split(" · ")[0]), 600);
+    return () => { stop(); window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+  return announce;
+}
 
 /** Owner navigation: the same three sections for every account; no role is ever shown.
  * The research tools (/admin) are reached from Perfil, only by admin accounts. */
@@ -33,7 +83,7 @@ function NavItems({ linkClass, iconSize, openCount, badgeAtEnd = false }: { link
             <span className="nav-icon"><Icon name={n.icon} size={iconSize} />{!badgeAtEnd && <NavBadge count={count} />}</span>
             <span className="nav-label">{n.label}</span>
             {badgeAtEnd && <NavBadge count={count} end />}
-            {count > 0 && <span className="sr-only">, {count} sin revisar</span>}
+            {count > 0 && <span className="sr-only">, {count} {count === 1 ? "nueva" : "nuevas"}</span>}
           </Link>
         );
       })}
@@ -49,6 +99,8 @@ export function Shell() {
   const { data: open } = useOpenAlerts({ uid: user!.uid, isAdmin });
   const onLogout = async () => { await logout(); navigate("/acceso", { replace: true }); };
   const name = user?.displayName || user?.email || "";
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const announce = useNavigationEffects(contentRef);
   return (
     <>
       <div className="shell">
@@ -85,7 +137,8 @@ export function Shell() {
               <NavItems linkClass="nav-link" iconSize={16} openCount={open.length} badgeAtEnd />
             </div></nav>
           </header>
-          <Outlet />
+          <div className="page-content" ref={contentRef} tabIndex={-1}><Outlet /></div>
+          <p className="sr-only" role="status">{announce}</p>
           <footer className="footer"><div className="footer-inner">
             <span>Proyecto de tesis · Ingeniería de Sistemas de Información · UPC</span>
             <span>{NOTICE_TEXT}</span>

@@ -3,11 +3,10 @@
    through the resetBaseline function. */
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
+import { collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext";
 import { Callout, EmptyState, Icon, PageHead, PageLoading, Seg, usePageTitle } from "../components/ui";
-import { db, functions } from "../firebase";
+import { callFunction, db } from "../firebase";
 import { useDog, type Dog } from "../data/hooks";
 
 /** Discards the learned baseline so the next data teach it again. */
@@ -18,7 +17,7 @@ function ResetBaseline({ dog }: { dog: Dog }) {
   const onReset = async () => {
     if (!window.confirm(`¿Volver a aprender el patrón normal de ${dog.name}? Se usarán sus próximos datos.`)) return;
     setState("busy");
-    try { await httpsCallable(functions, "resetBaseline")({ dogId: dog.id }); setState("done"); }
+    try { await callFunction("resetBaseline", { dogId: dog.id }); setState("done"); }
     catch { setState("error"); }
   };
   return (
@@ -39,7 +38,13 @@ function ResetBaseline({ dog }: { dog: Dog }) {
 
 type SexChoice = "female" | "male" | "none";
 const SEXES = [{ value: "female" as const, label: "Hembra" }, { value: "male" as const, label: "Macho" }, { value: "none" as const, label: "Sin indicar" }];
-const today = () => new Date().toISOString().slice(0, 10);
+const NAME_MAX = 40, BREED_MAX = 60, MAX_AGE_YEARS = 30;   // name: the limit of firestore.rules
+/** A local calendar date as YYYY-MM-DD (the UTC date is already tomorrow in the evening in Lima). */
+const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const today = () => isoDate(new Date());
+const oldestBirth = () => { const d = new Date(); d.setFullYear(d.getFullYear() - MAX_AGE_YEARS); return isoDate(d); };
+/** How long a save may wait for the server before the owner is told it will finish later. */
+const SAVE_WAIT_MS = 8000;
 
 export function DogForm() {
   const { dogId } = useParams();
@@ -51,6 +56,7 @@ export function DogForm() {
   const [f, setF] = useState({ name: "", breed: "", weight: "", birthDate: "", sex: "none" as SexChoice });
   const [loaded, setLoaded] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [submits, setSubmits] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,36 +66,49 @@ export function DogForm() {
       setLoaded(true);
     }
   }, [editing, dog, loaded]);
+  // After a submit with mistakes, the first field to fix gets the focus (its message is read with it).
+  useEffect(() => { if (submits) document.querySelector<HTMLElement>("form [aria-invalid=true]")?.focus(); }, [submits]);
 
-  if (editing && loading) return <PageLoading maxWidth={640} />;
+  if (editing && loading) return <PageLoading className="page-form" />;
   if (editing && (!dog || (dog.ownerId !== user!.uid && !isAdmin))) {
     return <main className="page" id="main"><EmptyState icon="info" title="No encontramos este perro" action={<Link className="btn btn-secondary" to="/perfil">Ir a Perfil</Link>} /></main>;
   }
 
-  const weight = f.weight.trim() ? Number(f.weight.replace(",", ".")) : null;
-  const errors: Partial<Record<"name" | "weight" | "birthDate", string>> = {};
+  const weightText = f.weight.trim().replace(/\s*kg\.?$/i, "");
+  const weight = weightText ? Number(weightText.replace(",", ".")) : null;
+  const errors: Partial<Record<"name" | "breed" | "weight" | "birthDate", string>> = {};
   if (!f.name.trim()) errors.name = "Escribe el nombre de tu perro.";
-  else if (f.name.trim().length > 40) errors.name = "Usa como máximo 40 caracteres.";
+  else if (f.name.trim().length > NAME_MAX) errors.name = `Usa como máximo ${NAME_MAX} caracteres.`;
+  if (f.breed.trim().length > BREED_MAX) errors.breed = `Usa como máximo ${BREED_MAX} caracteres.`;
   if (weight != null && (!Number.isFinite(weight) || weight < 0.5 || weight > 100)) errors.weight = "Escribe un peso entre 0.5 y 100 kg.";
   if (f.birthDate && f.birthDate > today()) errors.birthDate = "La fecha de nacimiento no puede ser futura.";
+  else if (f.birthDate && f.birthDate < oldestBirth()) {
+    errors.birthDate = `Revisa el año: tendría ${new Date().getFullYear() - Number(f.birthDate.slice(0, 4))} años.`;
+  }
   const shown = (k: keyof typeof errors) => (touched ? errors[k] : undefined);
   const err = (k: keyof typeof errors) => shown(k) && <div className="field-error" id={`d-${k}-err`}><Icon name="alert-triangle" size={13} />{shown(k)}</div>;
-  const inv = (k: keyof typeof errors) => (shown(k) ? { "aria-invalid": true, "aria-describedby": `d-${k}-err` } : {});
+  const inv = (k: keyof typeof errors, hint?: string) => {
+    const ids = [hint, shown(k) ? `d-${k}-err` : null].filter(Boolean).join(" ");
+    return { ...(shown(k) ? { "aria-invalid": true } : {}), ...(ids ? { "aria-describedby": ids } : {}) };
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    if (Object.keys(errors).length) return;
+    if (Object.keys(errors).length) { setSubmits((n) => n + 1); return; }
     setBusy(true); setError(null);
     const profile = { name: f.name.trim(), breed: f.breed.trim() || null, weightKg: weight, birthDate: f.birthDate || null, sex: f.sex === "none" ? null : f.sex };
+    const ref = editing ? doc(db, "dogs", dogId!) : doc(collection(db, "dogs"));
+    const write = editing
+      ? updateDoc(ref, { ...profile, updatedAt: serverTimestamp() })
+      : setDoc(ref, { ...profile, ownerId: user!.uid, active: true, schemaVersion: 1, createdAt: serverTimestamp() });
+    // Offline, Firestore keeps the change and sends it when the connection returns; the write only resolves then.
+    const later = () => navigate(`/perros/${ref.id}`, { replace: true, state: { offlineSaved: true } });
+    if (!navigator.onLine) { write.catch(() => undefined); later(); return; }
     try {
-      if (editing) {
-        await updateDoc(doc(db, "dogs", dogId!), { ...profile, updatedAt: serverTimestamp() });
-        navigate(`/perros/${dogId}`, { replace: true });
-      } else {
-        const ref = await addDoc(collection(db, "dogs"), { ...profile, ownerId: user!.uid, active: true, schemaVersion: 1, createdAt: serverTimestamp() });
-        navigate(`/perros/${ref.id}`, { replace: true });
-      }
+      const done = await Promise.race([write.then(() => true), new Promise<false>((r) => window.setTimeout(() => r(false), SAVE_WAIT_MS))]);
+      if (done) navigate(`/perros/${ref.id}`, { replace: true });
+      else { write.catch(() => undefined); later(); }
     } catch {
       setError("No pudimos guardar los datos. Revisa tu conexión e inténtalo de nuevo.");
     } finally {
@@ -98,20 +117,21 @@ export function DogForm() {
   };
 
   return (
-    <main className="page" id="main" style={{ maxWidth: 640 }}>
+    <main className="page page-form" id="main">
       <nav className="crumbs" aria-label="Ruta"><Link to="/perfil">Perfil</Link><span aria-hidden="true">›</span><span>{editing ? dog!.name : "Nuevo perro"}</span></nav>
       <PageHead title={editing ? `Editar a ${dog!.name}` : "Registrar a tu perro"} sub={editing ? undefined : "Con estos datos lo reconocerás en la app y en la Vista para el veterinario."} />
       <div className="stack">
       <form className="panel stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
         {error && <Callout kind="error">{error}</Callout>}
         <div className="field"><label htmlFor="d-name">Nombre</label>
-          <input id="d-name" className="input" maxLength={60} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} {...inv("name")} />{err("name")}</div>
+          <input id="d-name" className="input" maxLength={NAME_MAX} aria-required="true" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} {...inv("name", "d-name-hint")} />
+          <div className="field-hint" id="d-name-hint">Hasta {NAME_MAX} caracteres.</div>{err("name")}</div>
         <div className="field"><label htmlFor="d-breed">Raza <span className="muted">(opcional)</span></label>
-          <input id="d-breed" className="input" value={f.breed} onChange={(e) => setF({ ...f, breed: e.target.value })} placeholder="Por ejemplo, mestizo" /></div>
+          <input id="d-breed" className="input" maxLength={BREED_MAX} value={f.breed} onChange={(e) => setF({ ...f, breed: e.target.value })} placeholder="Por ejemplo, mestizo" {...inv("breed")} />{err("breed")}</div>
         <div className="field"><label htmlFor="d-weight">Peso en kg <span className="muted">(opcional)</span></label>
           <input id="d-weight" className="input" inputMode="decimal" value={f.weight} onChange={(e) => setF({ ...f, weight: e.target.value })} {...inv("weight")} />{err("weight")}</div>
         <div className="field"><label htmlFor="d-birth">Fecha de nacimiento <span className="muted">(opcional)</span></label>
-          <input id="d-birth" className="input" type="date" max={today()} value={f.birthDate} onChange={(e) => setF({ ...f, birthDate: e.target.value })} {...inv("birthDate")} />{err("birthDate")}</div>
+          <input id="d-birth" className="input" type="date" min={oldestBirth()} max={today()} value={f.birthDate} onChange={(e) => setF({ ...f, birthDate: e.target.value })} {...inv("birthDate")} />{err("birthDate")}</div>
         <div className="field"><span className="field-label" id="d-sex">Sexo</span>
           <Seg label="Sexo" options={SEXES} value={f.sex} onChange={(sex) => setF({ ...f, sex })} /></div>
         <div className="row" style={{ marginTop: 4 }}>

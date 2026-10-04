@@ -1,15 +1,16 @@
 /* Screen 3 · Detalle del perro: state, trends of the last hour, day or week with the dog's normal band,
-   what is normal for this dog, and its alerts. Charts are anchored at the dog's latest data. */
-import { useState, type KeyboardEvent, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+   what is normal for this dog, and its alerts, then the "En vivo" panel. Charts are anchored at the dog's latest data
+. */
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { summarize } from "@shared/trends";
 import { useAuth } from "../auth/AuthContext";
 import { BarList, TrendChart, healthZones, type ChartPoint } from "../components/charts";
-import { Ago, Callout, EmptyState, HealthGauge, Icon, LevelTag, LiveBadge, Notice, PageHead, PageLoading, Seg, fmtNum, usePageTitle } from "../components/ui";
+import { Callout, DataTime, EmptyState, HealthGauge, Icon, LevelTag, Notice, PageHead, PageLoading, Seg, fmtNum, useFreshness, usePageTitle } from "../components/ui";
 import { LivePanel } from "../components/LivePanel";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig, type Dog, type Fusion, type ModelVersion } from "../data/hooks";
 import { RANGES, useDogTrend, type DogTrend, type RangeKey } from "../data/useDogTrend";
-import { BEHAVIOR_LABEL, activityBand, ageText, dateTimeText, describeDog, hrBand } from "../lib/plain";
+import { BEHAVIOR_LABEL, activityBand, ageText, dateTimeText, describeDog, endSentence, hrBand, whenPhrase } from "../lib/plain";
 import { AlertItem } from "./AlertsPage";
 import { BaselineProgress } from "../components/BaselineProgress";
 
@@ -18,6 +19,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "resumen", label: "Resumen" }, { key: "actividad", label: "Actividad" }, { key: "corazon", label: "Corazón" },
   { key: "temperatura", label: "Temperatura" }, { key: "alertas", label: "Alertas" },
 ];
+const ALERTS_PAGE = 50;
 
 const pct = (x: number) => fmtNum(100 * x);
 const outside = (v: number, band: [number, number] | null | undefined) => !!band && (v < band[0] || v > band[1]);
@@ -34,7 +36,7 @@ function NormalForDog({ dog, cfg }: { dog: Dog; cfg: Fusion }) {
   if (!b) {
     return (
       <div className="stack-sm">
-        <p className="small muted" style={{ margin: 0 }}>Todavía no hay suficientes datos para saber qué es normal para {dog.name}.</p>
+        <p className="small muted">Todavía no hay suficientes datos para saber qué es normal para {dog.name}.</p>
         <BaselineProgress dog={dog} cfg={cfg} />
       </div>
     );
@@ -72,8 +74,24 @@ function ChartPanel({ children }: { children: ReactNode }) {
   return <section className="panel stack-sm">{children}</section>;
 }
 
+/** The tab row scrolls sideways on narrow phones: a fade at the right edge says there is more. */
+function useOverflowCue(ref: React.RefObject<HTMLDivElement | null>, deps: unknown[]) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => { el.dataset.overflow = String(el.scrollLeft + el.clientWidth < el.scrollWidth - 1); };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    el.addEventListener("scroll", update, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener("scroll", update); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
 export function DogDetail() {
   const { dogId } = useParams();
+  const location = useLocation();
   const { user, isAdmin } = useAuth();
   const viewer = { uid: user!.uid, isAdmin };
   const { data: dog, loading, error } = useDog(dogId);
@@ -81,11 +99,15 @@ export function DogDetail() {
   const { data: cfg } = useFusionConfig();
   const [range, setRange] = useState<RangeKey>("24h");
   const [tab, setTab] = useState<Tab>("resumen");
+  const [alertsMax, setAlertsMax] = useState(ALERTS_PAGE);
   const r = RANGES[range];
   const trend = useDogTrend(dog, viewer, r.ms, r.bucketMs, r.tier);
   const gapMs = 3 * r.bucketMs;   // no line across missing data
-  const { data: alerts } = useDogAlerts(dog?.id, viewer, 50);
+  const { data: alerts, loading: alertsLoading } = useDogAlerts(dog?.id, viewer, alertsMax);
   const { data: models } = useActiveModels();
+  const { freshness, shownMs } = useFreshness(dog?.status);
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  useOverflowCue(tabsRef, [loading, !!dog?.status, alerts.length > 0]);
 
   if (loading) return <PageLoading text="Cargando a tu perro…" />;
   if (error || !dog) {
@@ -96,10 +118,18 @@ export function DogDetail() {
       </main>
     );
   }
-  const s = dog.status, d = describeDog(s, dog.baseline, cfg);
-  const openAlerts = alerts.filter((a) => a.status === "open").length;
+  const s = dog.status;
+  const stale = freshness === "stale";
+  const newestOpen = alerts.find((a) => a.status === "open");
+  const d = describeDog(s, dog.baseline, cfg, newestOpen?.reasons);
+  // The dog's own count (kept by the Function), not the open alerts among the newest 50.
+  const openAlerts = s?.openAlerts ?? alerts.filter((a) => a.status === "open").length;
   // A dog without any data yet: one clear next step instead of empty tabs and charts.
   const noData = !s && !alerts.length;
+  const selectTab = (k: Tab) => {
+    setTab(k);
+    document.getElementById(`tabbtn-${k}`)?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  };
   // Tabs pattern (WAI-ARIA): arrows, Home and End move between tabs; Tab goes into the panel.
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = TABS.findIndex((t) => t.key === tab);
@@ -107,7 +137,7 @@ export function DogDetail() {
     if (next == null) return;
     e.preventDefault();
     const k = TABS[(next + TABS.length) % TABS.length].key;
-    setTab(k);
+    selectTab(k);
     document.getElementById(`tabbtn-${k}`)?.focus();
   };
   const canEdit = isAdmin || dog.ownerId === user!.uid;
@@ -115,23 +145,27 @@ export function DogDetail() {
   const aBand = activityBand(dog.baseline, cfg), hBand = hrBand(dog.baseline, cfg);
   const summary = summarize(trend.items);
   const empty = !trend.loading && !trend.points.length;
+  const weight = dog.weightKg ? `${fmtNum(dog.weightKg, Number.isInteger(dog.weightKg) ? 0 : 1)} kg` : null;
+  const savedOffline = (location.state as { offlineSaved?: boolean } | null)?.offlineSaved;
+  const levels = cfg.levels;
 
   return (
     <main className="page" id="main">
       <nav className="crumbs" aria-label="Ruta"><Link to="/">Inicio</Link><span aria-hidden="true">›</span><span>{dog.name}</span></nav>
-      <PageHead title={dog.name} sub={[dog.breed, ageText(dog.birthDate), dog.weightKg ? `${fmtNum(dog.weightKg, 1)} kg` : null].filter(Boolean).join(" · ") || undefined}
+      <PageHead title={dog.name} sub={[dog.breed, ageText(dog.birthDate), weight].filter(Boolean).join(" · ") || undefined}
         actions={<>
           <Link className="btn btn-primary btn-sm" to={`/perros/${dog.id}/veterinario`}><Icon name="stethoscope" size={14} />Vista para el veterinario</Link>
           {canEdit && <Link className="btn btn-secondary btn-sm" to={`/perros/${dog.id}/editar`}>Editar perfil</Link>}
         </>} />
       <div className="stack">
+        {savedOffline && <Callout kind="ok">Sin conexión: guardaremos los cambios cuando vuelvas a conectarte.</Callout>}
         <section className="panel dog-state" aria-label="Estado actual">
-          <div className="stack-sm" style={{ minWidth: 0 }}>
-            <LevelTag level={s?.level ?? null} />
-            <p className="dog-phrase">{d.phrase}</p>
-            {s ? (
-              <div className="xs muted row" style={{ gap: 8 }}><span>Actualizado <Ago t={s.updatedAt?.toDate?.()} /></span>
-                <LiveBadge t={s.updatedAt?.toDate?.()} /></div>
+          <div className="stack-sm dog-state-main">
+            {stale ? <span className="tag tag-outline"><Icon name="clock" size={14} />Sin datos recientes</span> : <LevelTag level={s?.level ?? null} />}
+            <p className="dog-phrase">{stale && shownMs != null ? endSentence(`No recibimos datos de ${dog.name} desde ${whenPhrase(shownMs)}`) : d.phrase}</p>
+            {stale && <div className="last-state small">Último estado: <LevelTag level={s?.level ?? null} iconSize={12} /></div>}
+            {s && freshness ? (
+              <div className="xs muted row data-time"><span><DataTime freshness={freshness} shownMs={shownMs} /></span></div>
             ) : (
               <>
                 <p className="small muted">Sus gráficos y su patrón normal aparecerán cuando lleguen sus primeras lecturas.</p>
@@ -139,7 +173,7 @@ export function DogDetail() {
               </>
             )}
           </div>
-          {s && <HealthGauge score={s.healthScore} level={s.level} levels={cfg.levels} size={120} />}
+          {s && <HealthGauge score={s.healthScore} level={s.level} levels={levels} size={96} />}
         </section>
 
         {noData ? (
@@ -148,12 +182,10 @@ export function DogDetail() {
             <NormalForDog dog={dog} cfg={cfg} />
           </section>
         ) : <>
-        <LivePanel dog={dog} cfg={cfg} viewer={viewer} />
-
-        <div className="tabs" role="tablist" aria-label="Secciones del detalle" onKeyDown={onTabKey}>
+        <div className="tabs" role="tablist" aria-label="Secciones del detalle" onKeyDown={onTabKey} ref={tabsRef}>
             {TABS.map((t) => (
-              <button key={t.key} id={`tabbtn-${t.key}`} type="button" role="tab" aria-selected={tab === t.key} aria-controls={`tab-${t.key}`}
-                tabIndex={tab === t.key ? 0 : -1} onClick={() => setTab(t.key)}>{t.label}{t.key === "alertas" && openAlerts > 0 && <span className="tab-count">{openAlerts}<span className="sr-only"> sin revisar</span></span>}</button>
+              <button key={t.key} id={`tabbtn-${t.key}`} type="button" role="tab" aria-selected={tab === t.key} aria-controls={tab === t.key ? `tab-${t.key}` : undefined}
+                tabIndex={tab === t.key ? 0 : -1} onClick={() => selectTab(t.key)}>{t.label}{t.key === "alertas" && openAlerts > 0 && <span className="tab-count">{openAlerts}<span className="sr-only"> {openAlerts === 1 ? "nueva" : "nuevas"}</span></span>}</button>
             ))}
         </div>
         {tab !== "alertas" && (
@@ -170,9 +202,10 @@ export function DogDetail() {
           {tab === "resumen" && !empty && (
             <div className="detail-two">
               <ChartPanel>
-                <TrendChart title="Salud general (Health Score)" sub={sub} rangeKey={range} gapMs={gapMs} unit="puntos" domain={[0, 100]}
+                <TrendChart title="Salud general (Health Score)" sub={sub} rangeKey={range} gapMs={gapMs} unit="puntos" domain={[0, 100]} loading={trend.loading}
                   points={trend.points.flatMap((p) => (p.healthScore == null ? [] : [{ t: p.t, v: p.healthScore, mark: p.level !== "green" }]))}
-                  zones={healthZones(cfg.levels)} legendMarks="Momentos fuera de lo normal" />
+                  zones={healthZones(levels)} legendMarks="Momentos fuera de lo normal" />
+                <p className="xs muted">El Health Score resume de 0 a 100 qué tan cerca están sus datos de su patrón normal: desde {levels.green} es «Todo normal», de {levels.amber} a {levels.green - 1} «Atención» y debajo de {levels.amber} «Revisar».</p>
                 {methodNote(dog, models) && <p className="xs muted">{methodNote(dog, models)}</p>}
               </ChartPanel>
               <section className="panel stack-sm">
@@ -191,7 +224,7 @@ export function DogDetail() {
           {tab === "actividad" && !empty && (
             <div className="detail-two">
               <ChartPanel>
-                <TrendChart title="Tiempo en movimiento" sub={sub} rangeKey={range} gapMs={gapMs} unit="%" domain={[0, 100]}
+                <TrendChart title="Tiempo en movimiento" sub={sub} rangeKey={range} gapMs={gapMs} unit="%" domain={[0, 100]} loading={trend.loading}
                   points={series(trend, (p) => (p.activity == null ? null : 100 * p.activity), aBand && [100 * aBand[0], 100 * aBand[1]])}
                   band={aBand && [100 * aBand[0], 100 * aBand[1]]} legendBand={`Lo normal para ${dog.name}`} legendMarks="Fuera de lo normal" />
               </ChartPanel>
@@ -209,8 +242,8 @@ export function DogDetail() {
             <ChartPanel>
               {trend.hr && trend.hr.length > 0
                 ? <TrendChart title="Frecuencia cardiaca, segundo a segundo" sub={sub} rangeKey={range} unit="lpm" points={trend.hr} band={hBand} gapMs={3_000}
-                    legendBand={`Lo normal para ${dog.name}`} />
-                : <TrendChart title="Frecuencia cardiaca" sub={sub} rangeKey={range} unit="lpm" gapMs={gapMs}
+                    legendBand={`Lo normal para ${dog.name}`} loading={trend.loading} />
+                : <TrendChart title="Frecuencia cardiaca" sub={sub} rangeKey={range} unit="lpm" gapMs={gapMs} loading={trend.loading}
                     points={series(trend, (p) => p.hr, hBand)} band={hBand} legendBand={`Lo normal para ${dog.name}`} legendMarks="Fuera de lo normal" />}
               <p className="xs muted">Se compara con el ritmo habitual de {dog.name}. El rango de referencia general ({cfg.hrRange.join("–")} lpm) es solo informativo.</p>
             </ChartPanel>
@@ -218,7 +251,7 @@ export function DogDetail() {
 
           {tab === "temperatura" && !empty && (
             <ChartPanel>
-              <TrendChart title="Temperatura" sub={sub} rangeKey={range} gapMs={gapMs} unit="°C" decimals={1}
+              <TrendChart title="Temperatura" sub={sub} rangeKey={range} gapMs={gapMs} unit="°C" decimals={1} loading={trend.loading}
                 points={series(trend, (p) => p.temp, cfg.tempRange)} band={cfg.tempRange}
                 legendBand={`Rango de referencia (${fmtNum(cfg.tempRange[0], 1)}–${fmtNum(cfg.tempRange[1], 1)} °C)`} legendMarks="Fuera del rango" />
               {dog.source?.temp?.datasetId === "synthetic" && <p className="xs muted">Temperatura simulada: no existen series públicas de temperatura de perros.</p>}
@@ -226,11 +259,20 @@ export function DogDetail() {
           )}
 
           {tab === "alertas" && (
-            alerts.length
-              ? <ul className="alert-list">{alerts.map((a) => <AlertItem key={a.id} alert={a} showDog={false} />)}</ul>
-              : <EmptyState icon="check-circle" title="Sin alertas" text={`${dog.name} no tiene alertas registradas.`} />
+            alerts.length ? <>
+              <ul className="alert-list">{alerts.map((a) => <AlertItem key={a.id} alert={a} showDog={false} />)}</ul>
+              {alerts.length >= alertsMax && (
+                <div className="row more-row">
+                  <p className="xs muted">Se muestran las {alertsMax} alertas más recientes.</p>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAlertsMax(alertsMax + ALERTS_PAGE)} disabled={alertsLoading}>
+                    {alertsLoading ? "Cargando…" : `Ver ${ALERTS_PAGE} más`}
+                  </button>
+                </div>
+              )}
+            </> : <EmptyState icon="check-circle" title="Sin alertas" text={`${dog.name} no tiene alertas registradas.`} />
           )}
         </div>
+        <LivePanel dog={dog} cfg={cfg} viewer={viewer} live={freshness === "live"} />
         </>}
         <Notice />
       </div>

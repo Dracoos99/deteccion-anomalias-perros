@@ -46,6 +46,8 @@ export interface CsvCheck {
   blocking: string[];
   /** Data that is left out, in plain Spanish. */
   warnings: string[];
+  /** The header is separated by semicolons or tabs (a spreadsheet saved with another separator), not commas. */
+  otherSeparator?: boolean;
 }
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("es-PE")} ${n === 1 ? one : many}`;
@@ -61,7 +63,16 @@ export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfi
   const lines = text.replace(/^﻿/, "").split(/\r?\n/);
   const headerIdx = lines.findIndex((l) => l.trim().length > 0);
   if (headerIdx < 0) { res.blocking.push("El archivo está vacío."); return res; }
-  res.header = lines[headerIdx].split(",").map((s) => s.trim().toLowerCase());
+  const first = lines[headerIdx];
+  if (!first.includes(",") && /[;\t]/.test(first)) {
+    // Not ten missing columns: one file saved with another separator.
+    res.otherSeparator = true;
+    res.missing = [...CSV_HEADER];   // nothing can be read: no row checks either
+    const sep = first.includes(";") ? "punto y coma (;)" : "tabulaciones";
+    res.blocking.push(`El archivo usa ${sep} para separar las columnas. Guárdalo como «CSV (delimitado por comas)» e inténtalo de nuevo.`);
+    return res;
+  }
+  res.header = first.split(",").map((s) => s.trim().toLowerCase());
   res.missing = CSV_HEADER.filter((c) => !res.header.includes(c));
   if (res.missing.length) { res.blocking.push(`Faltan columnas: ${res.missing.join(", ")}.`); return res; }
   const idx = Object.fromEntries(res.header.map((h, i) => [h, i])) as Record<string, number>;

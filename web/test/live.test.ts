@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLive, liveSeries, type LiveBlock } from "../src/lib/live";
+import { STALE_AFTER_MS, freshness, isLive, isLiveBlock, liveSeries, shownDataMs, type LiveBlock } from "../src/lib/live";
 
 const T0 = Date.UTC(2026, 9, 1, 10, 0, 0);
 const block = (k: number, over: Partial<LiveBlock> = {}): LiveBlock => ({
@@ -43,5 +43,31 @@ describe("live panel series", () => {
     expect(isLive(T0, T0 + 119_000)).toBe(true);
     expect(isLive(T0, T0 + 121_000)).toBe(false);
     expect(isLive(null, T0)).toBe(false);
+  });
+
+  it("is not live for old data written now (a CSV of yesterday)", () => {
+    const now = T0 + 10_500;
+    expect(isLiveBlock(block(0), now)).toBe(true);
+    expect(isLiveBlock(block(0, { blockStartMs: T0 - 86_400_000 }), now)).toBe(false);
+    expect(isLiveBlock(null, now)).toBe(false);
+  });
+});
+
+describe("freshness of a dog's state", () => {
+  const now = T0;
+  it("is live while blocks keep arriving, also with data ahead of the clock (a fast simulation)", () => {
+    expect(freshness(now - 4_000, now - 2_000, now)).toBe("live");
+    expect(freshness(now + 3_600_000, now - 1_000, now)).toBe("live");
+  });
+  it("is stale for data measured long ago, even if they were just loaded", () => {
+    expect(freshness(now - 86_400_000, now - 5_000, now)).toBe("stale");
+    expect(freshness(now - STALE_AFTER_MS - 1, now - STALE_AFTER_MS - 1, now)).toBe("stale");
+    expect(freshness(now - 10 * 60_000, now - 10 * 60_000, now)).toBe("recent");
+    expect(freshness(null, null, now)).toBe("stale");
+  });
+  it("shows the time of the data, never later than when they arrived", () => {
+    expect(shownDataMs(now - 86_400_000, now)).toBe(now - 86_400_000);
+    expect(shownDataMs(now + 3_600_000, now - 1_000)).toBe(now - 1_000);
+    expect(shownDataMs(null, now)).toBe(now);
   });
 });

@@ -14,7 +14,7 @@ export function BaselineProgress({ dog, cfg }: { dog: Dog; cfg: Fusion }) {
     <div className="baseline-progress">
       <span className="xs muted">{text}</span>
       <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Patrón normal">
-        <div className="progress-fill" style={{ width: `${pct}%` }} />
+        <div className="progress-fill" style={{ ["--p" as string]: pct / 100 }} />
       </div>
     </div>
   );

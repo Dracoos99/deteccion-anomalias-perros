@@ -170,7 +170,7 @@ function RunDetail({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
           <div className="stat"><div className="stat-label">Bloques escritos</div><div className="stat-value tabular">{fmtNum(s.blocksWritten)}</div>
             <div className="stat-note">{fmtNum((perDog * 10) / 60, 1)} min simulados por perro{run.durationS ? ` de ${run.durationS / 60}` : ""}</div></div>
           <div className="stat"><div className="stat-label">Resultados</div><div className="stat-value tabular">{fmtNum(s.resultsSeen ?? 0)}</div></div>
-          <div className="stat"><div className="stat-label">Último bloque</div><div className="stat-value" style={{ fontSize: 20 }}><Ago t={s.lastBlockAt?.toDate?.()} /></div></div>
+          <div className="stat"><div className="stat-label">Último bloque</div><div className="stat-value stat-value-sm"><Ago t={s.lastBlockAt?.toDate?.()} /></div></div>
         </div>
       </section>
 

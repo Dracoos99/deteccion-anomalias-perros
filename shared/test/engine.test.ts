@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  activityBaseline, activityBaselineFromFlags, evaluateBlock, hrBaseline, initialState, windowIntensity, type BaselineStats, type EngineState,
+  activityBaseline, activityBaselineFromFlags, buildReasons, evaluateBlock, hrBaseline, initialState, windowIntensity, type BaselineStats, type EngineState,
+  type WindowEval,
 } from "../engine";
 import { DEFAULT_FUSION_CONFIG } from "../types";
 import { imuStats, normalizeWindows, readWindow, type BehaviorModelMeta } from "../behavior-model";
@@ -79,7 +80,7 @@ describe("evaluateBlock", () => {
     const res = run([...Array(6).fill({ hr: Array(10).fill(70) }), ...Array(8).fill({ hr: Array(10).fill(98) })]);
     const first = res.findIndex((e) => e.alert);
     expect(first).toBeGreaterThan(5);
-    expect(res[first].alert?.reasons.find((r) => r.component === "heart_rate")).toMatchObject({ code: "hr_high", normalRange: [65, 75] });
+    expect(res[first].alert?.reasons.find((r) => r.component === "heart_rate")).toMatchObject({ code: "hr_high", normalRange: [60, 80] });
     expect(res[res.length - 1].result.rP).toBeGreaterThan(0.9);
   });
 
@@ -363,7 +364,7 @@ describe("evaluateBlock with the physiological model", () => {
     expect(res[0].result.rP).toBeCloseTo(ratioToScore(3, meta.fullScaleRatio), 3);
     expect(res[0].windows.every((w) => w.hrCritical)).toBe(true);
     expect(res[0].alert?.action).toBe("open");
-    expect(res[0].alert?.reasons.find((r) => r.component === "heart_rate")).toMatchObject({ code: "hr_pattern", normalRange: [65, 75] });
+    expect(res[0].alert?.reasons.find((r) => r.component === "heart_rate")).toMatchObject({ code: "hr_pattern", normalRange: [60, 80] });
     expect(res[0].alert?.reasons[0].message).toContain("no siguió su patrón normal");
   });
 
@@ -432,5 +433,32 @@ describe("physio-model helpers", () => {
     expect(ratioToScore(2, 3)).toBe(0.5);
     expect(ratioToScore(9, 3)).toBe(1);
     expect(Array.from(packSequences([Float32Array.of(1, 2), Float32Array.of(3, 4)], 2))).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("alert reasons name the dog's normal band, the one the app shows (baseline ± baselineSigma)", () => {
+  // baseline: movement 40 % ± 8, heart rate 70 ± 5 lpm; baselineSigma 2: normal 24–56 % and 60–80 lpm.
+  const w = (over: Partial<WindowEval>): WindowEval => ({
+    intensity: null, active: null, activityRatio: 0.4, predicted: null, maxProb: null, novel: null, noveltyRatio: null, noveltyExpected: null,
+    rActivity: 0, rNovelty: 0, hr: 70, hrRatio: null, temp: null, zActivity: 0, zHr: 0, rB: 0, rP: 0, rT: 0, healthScore: 50, level: "red",
+    hrCritical: false, tempCritical: false, trigger: true, armed: true, runStartMs: null, ...over,
+  });
+  it("lists a signal only when it leaves the band, with the band as its range", () => {
+    const rs = buildReasons(w({ activityRatio: 0.28, zActivity: -1.5, rActivity: 0.17, hr: 85, zHr: 3, rP: 0.5, hrCritical: true }), baseline, cfg);
+    expect(rs.map((r) => r.code)).toEqual(["hr_high"]);
+    expect(rs[0]).toMatchObject({ normalRange: [60, 80], value: 85 });
+    expect(rs[0].message).toContain("(60–80 lpm)");
+    expect(buildReasons(w({ activityRatio: 0.2, zActivity: -2.5, rActivity: 0.5 }), baseline, cfg)[0])
+      .toMatchObject({ code: "activity_low", normalRange: [24, 56], value: 20 });
+  });
+  it("names the shape of the heart rate when its mean stays inside the band", () => {
+    const rs = buildReasons(w({ hr: 77, zHr: 1.4, hrRatio: 1.8, rP: 0.4 }), baseline, cfg);
+    expect(rs).toEqual([expect.objectContaining({ code: "hr_pattern", normalRange: [60, 80] })]);
+  });
+  it("still names a variable when a trigger comes from a deviation inside the band (unusual configuration)", () => {
+    const rs = buildReasons(w({ activityRatio: 0.28, zActivity: -1.5, rActivity: 0.17 }), baseline, cfg);
+    expect(rs).toHaveLength(1);
+    expect(rs[0]).toMatchObject({ code: "activity_low", normalRange: [24, 56] });
+    expect(rs[0].message).toBe("El tiempo en movimiento (28 %) está por debajo de su promedio habitual (40 %).");
   });
 });

@@ -25,6 +25,9 @@ export interface UserDoc<T = unknown> {
   fcmTokens?: string[];
   /** Which alerts are pushed. Missing means both; "red" alerts stay on in the app. */
   notificationPrefs?: { red: boolean; amber: boolean };
+  /** When this person last cleared their Alertas list, for every dog (`all`) or for one (`byDog`). Alerts
+   * created until then leave their list; they stay in the dog's history and in the vet view. */
+  alertsCleared?: { all?: T; byDog?: Record<string, T> };
   /** RNF-03 (Ley N.° 29733): when the user accepted the processing of personal data at sign-up. */
   privacyConsentAt?: T;
   schemaVersion: number;
@@ -312,4 +315,16 @@ export function healthScore(r: { rB: number; rP: number; rT: number }, w: Fusion
 
 export function levelOf(hs: number, levels: FusionConfig["levels"]): Level {
   return hs >= levels.green ? "green" : hs >= levels.amber ? "amber" : "red";
+}
+
+/** Floors of the per-dog standard deviations: 2 percentage points of time in movement and 1 bpm. */
+export const ACTIVITY_SD_FLOOR = 0.02;
+export const HR_SD_FLOOR = 1;
+
+/** The dog's normal band of a signal: its baseline mean ± `sigma` standard deviations (config/fusion baselineSigma),
+ * with the floor above. The engine's alert reasons and the app («Qué es normal», chart bands, friendly vitals) both use
+ * it, so «normal» is one range everywhere. */
+export function normalBand(mean: number, std: number, floor: number, sigma: number): [number, number] {
+  const sd = Math.max(std, floor);
+  return [mean - sigma * sd, mean + sigma * sd];
 }

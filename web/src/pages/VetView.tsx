@@ -8,11 +8,10 @@ import { summarize, type TimedSlot } from "@shared/trends";
 import type { AlertReason } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { BarList } from "../components/charts";
-import { EmptyState, Icon, PageLoading, Seg, fmtNum, usePageTitle } from "../components/ui";
+import { EmptyState, Icon, PageLoading, Seg, Skeleton, fmtNum, usePageTitle } from "../components/ui";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
 import { useDogTrend } from "../data/useDogTrend";
-import { BEHAVIOR_LABEL, COMPONENT_LABEL, ageText, dateText, dateTimeText, durationText, primaryReason, reasonUnit } from "../lib/plain";
-import { alertStartMs } from "./AlertsPage";
+import { BEHAVIOR_LABEL, COMPONENT_LABEL, ageText, alertStartMs, dateText, dateTimeText, durationText, primaryReason, reasonUnit } from "../lib/plain";
 
 const PERIODS = [{ value: 7, label: "7 días" }, { value: 30, label: "30 días" }];
 const DATASET_TEXT: Record<string, string> = {
@@ -85,7 +84,7 @@ export function VetView() {
         <dl className="vet-facts">
           <div><dt>Raza</dt><dd>{dog.breed || "—"}</dd></div>
           <div><dt>Edad</dt><dd>{ageText(dog.birthDate) ?? "—"}</dd></div>
-          <div><dt>Peso</dt><dd>{dog.weightKg ? `${fmtNum(dog.weightKg, 1)} kg` : "—"}</dd></div>
+          <div><dt>Peso</dt><dd>{dog.weightKg ? `${fmtNum(dog.weightKg, Number.isInteger(dog.weightKg) ? 0 : 1)} kg` : "—"}</dd></div>
           <div><dt>Sexo</dt><dd>{sexText}</dd></div>
           <div><dt>Periodo</dt><dd>{trend.start != null ? `${dateText(trend.start)} – ${dateText(trend.end!)}` : "Sin datos"}</dd></div>
           <div><dt>Generado</dt><dd>{dateTimeText(Date.now())}</dd></div>
@@ -93,32 +92,32 @@ export function VetView() {
         <p className="vet-disclaimer"><Icon name="info" size={14} /> Datos de sensores y modelo predictivo. Sin diagnóstico.</p>
       </header>
 
-      {!trend.items.length ? (
+      {trend.loading && !trend.items.length ? <div aria-busy="true"><Skeleton lines={[30, 60, 100]} /></div> : !trend.items.length ? (
         <EmptyState icon="clock" title="Sin datos en este periodo" text={`Todavía no hay datos de ${dog.name} para este periodo.`} />
       ) : (
         <>
           <section className="vet-section" aria-labelledby="v-signals">
             <h2 className="section-title" id="v-signals">Señales del periodo</h2>
             <div className="table-wrap" role="region" aria-label="Señales del periodo" tabIndex={0}>
-              <table className="table table-compact">
-                <thead><tr><th>Señal</th><th className="num">Mínimo</th><th className="num">Máximo</th><th className="num">Promedio</th><th className="num">Línea base del perro (media ± DE)</th><th>Referencia</th></tr></thead>
-                <tbody>
-                  <tr><td>Frecuencia cardiaca (lpm)</td>
-                    <td className="num">{sum.hr ? fmtNum(sum.hr.min) : "—"}</td><td className="num">{sum.hr ? fmtNum(sum.hr.max) : "—"}</td>
-                    <td className="num">{sum.hr ? fmtNum(sum.hr.mean) : "—"}</td><td className="num">{b ? pm(b.hrMean, b.hrStd) : "—"}</td>
-                    <td>{cfg.hrRange.join("–")} (informativa; alerta respecto a la línea base)</td></tr>
-                  <tr><td>Temperatura (°C)</td>
-                    <td className="num">{sum.temp ? fmtNum(sum.temp.min, 1) : "—"}</td><td className="num">{sum.temp ? fmtNum(sum.temp.max, 1) : "—"}</td>
-                    <td className="num">{sum.temp ? fmtNum(sum.temp.mean, 1) : "—"}</td><td className="num">{b ? pm(b.tempMean, b.tempStd, 1) : "—"}</td>
-                    <td>{fmtNum(cfg.tempRange[0], 1)}–{fmtNum(cfg.tempRange[1], 1)}</td></tr>
-                  <tr><td>Tiempo en movimiento (%)</td>
-                    <td className="num">{act ? fmtNum(100 * act.min) : "—"}</td><td className="num">{act ? fmtNum(100 * act.max) : "—"}</td>
-                    <td className="num">{sum.activity != null ? fmtNum(100 * sum.activity) : "—"}</td><td className="num">{b ? pm(100 * b.activeRatioMean, 100 * b.activeRatioStd) : "—"}</td>
-                    <td>—</td></tr>
-                  <tr><td>Health Score (0–100)</td>
-                    <td className="num">{sum.healthScore ? fmtNum(sum.healthScore.min) : "—"}</td><td className="num">—</td>
-                    <td className="num">{sum.healthScore ? fmtNum(sum.healthScore.mean) : "—"}</td><td className="num">—</td>
-                    <td>≥ {cfg.levels.green} normal · {cfg.levels.amber}–{cfg.levels.green - 1} atención · &lt; {cfg.levels.amber} revisar</td></tr>
+              <table className="table table-compact" role="table">
+                <thead role="rowgroup"><tr role="row"><th role="columnheader">Señal</th><th role="columnheader" className="num">Mínimo</th><th role="columnheader" className="num">Máximo</th><th role="columnheader" className="num">Promedio</th><th role="columnheader" className="num">Línea base del perro (media ± DE)</th><th role="columnheader">Referencia</th></tr></thead>
+                <tbody role="rowgroup">
+                  <tr role="row"><td role="cell">Frecuencia cardiaca (lpm)</td>
+                    <td role="cell" className="num" data-label="Mínimo">{sum.hr ? fmtNum(sum.hr.min) : "—"}</td><td role="cell" className="num" data-label="Máximo">{sum.hr ? fmtNum(sum.hr.max) : "—"}</td>
+                    <td role="cell" className="num" data-label="Promedio">{sum.hr ? fmtNum(sum.hr.mean) : "—"}</td><td role="cell" className="num" data-label="Línea base">{b ? pm(b.hrMean, b.hrStd) : "—"}</td>
+                    <td role="cell" data-label="Referencia">{cfg.hrRange.join("–")} (informativa; alerta respecto a la línea base)</td></tr>
+                  <tr role="row"><td role="cell">Temperatura (°C)</td>
+                    <td role="cell" className="num" data-label="Mínimo">{sum.temp ? fmtNum(sum.temp.min, 1) : "—"}</td><td role="cell" className="num" data-label="Máximo">{sum.temp ? fmtNum(sum.temp.max, 1) : "—"}</td>
+                    <td role="cell" className="num" data-label="Promedio">{sum.temp ? fmtNum(sum.temp.mean, 1) : "—"}</td><td role="cell" className="num" data-label="Línea base">{b ? pm(b.tempMean, b.tempStd, 1) : "—"}</td>
+                    <td role="cell" data-label="Referencia">{fmtNum(cfg.tempRange[0], 1)}–{fmtNum(cfg.tempRange[1], 1)}</td></tr>
+                  <tr role="row"><td role="cell">Tiempo en movimiento (%)</td>
+                    <td role="cell" className="num" data-label="Mínimo">{act ? fmtNum(100 * act.min) : "—"}</td><td role="cell" className="num" data-label="Máximo">{act ? fmtNum(100 * act.max) : "—"}</td>
+                    <td role="cell" className="num" data-label="Promedio">{sum.activity != null ? fmtNum(100 * sum.activity) : "—"}</td><td role="cell" className="num" data-label="Línea base">{b ? pm(100 * b.activeRatioMean, 100 * b.activeRatioStd) : "—"}</td>
+                    <td role="cell" data-label="Referencia">—</td></tr>
+                  <tr role="row"><td role="cell">Health Score (0–100)</td>
+                    <td role="cell" className="num" data-label="Mínimo">{sum.healthScore ? fmtNum(sum.healthScore.min) : "—"}</td><td role="cell" className="num" data-label="Máximo">—</td>
+                    <td role="cell" className="num" data-label="Promedio">{sum.healthScore ? fmtNum(sum.healthScore.mean) : "—"}</td><td role="cell" className="num" data-label="Línea base">—</td>
+                    <td role="cell" data-label="Referencia">≥ {cfg.levels.green} normal · {cfg.levels.amber}–{cfg.levels.green - 1} atención · &lt; {cfg.levels.amber} revisar</td></tr>
                 </tbody>
               </table>
             </div>
@@ -131,19 +130,19 @@ export function VetView() {
             <h2 className="section-title" id="v-events">Eventos anómalos ({inPeriod.length})</h2>
             {!inPeriod.length ? <p className="small muted">Sin eventos en el periodo.</p> : (
               <div className="table-wrap" role="region" aria-label="Eventos anómalos" tabIndex={0}>
-                <table className="table table-compact">
-                  <thead><tr><th>Fecha y hora</th><th>Duración</th><th>Variable</th><th className="num">Valor</th><th>Rango de referencia</th><th>Estado</th></tr></thead>
-                  <tbody>
+                <table className="table table-compact" role="table">
+                  <thead role="rowgroup"><tr role="row"><th role="columnheader">Fecha y hora</th><th role="columnheader">Duración</th><th role="columnheader">Variable</th><th role="columnheader" className="num">Valor</th><th role="columnheader">Rango normal</th><th role="columnheader">Estado</th></tr></thead>
+                  <tbody role="rowgroup">
                     {inPeriod.flatMap((a) => orderedReasons(a.reasons).map((r, i) => {
                       const { unit, decimals } = reasonUnit(r), start = alertStartMs(a), end = a.endedAt?.toMillis?.();
                       return (
-                        <tr key={`${a.id}-${r.code}`}>
-                          <td>{i === 0 ? dateTimeText(start) : ""}</td>
-                          <td>{i === 0 ? (end ? durationText(end - start) : "en curso") : ""}</td>
-                          <td>{COMPONENT_LABEL[r.component]}</td>
-                          <td className="num">{fmtNum(r.value, decimals)} {unit}</td>
-                          <td>{fmtNum(r.normalRange[0], decimals)}–{fmtNum(r.normalRange[1], decimals)} {unit}</td>
-                          <td>{i === 0 ? (a.status === "open" ? "Sin revisar" : "Revisada") : ""}</td>
+                        <tr key={`${a.id}-${r.code}`} role="row">
+                          <td role="cell" className="nowrap" data-label="Fecha y hora">{i === 0 ? dateTimeText(start) : ""}</td>
+                          <td role="cell" className="nowrap" data-label="Duración">{i === 0 ? (end ? durationText(end - start) : "en curso") : ""}</td>
+                          <td role="cell" data-label="Variable">{COMPONENT_LABEL[r.component]}</td>
+                          <td role="cell" className="num" data-label="Valor">{fmtNum(r.value, decimals)} {unit}</td>
+                          <td role="cell" className="nowrap" data-label="Rango normal">{fmtNum(r.normalRange[0], decimals)}–{fmtNum(r.normalRange[1], decimals)} {unit}</td>
+                          <td role="cell" className="nowrap" data-label="Estado">{i === 0 ? (a.status === "open" ? "Nueva" : "Revisada") : ""}</td>
                         </tr>
                       );
                     }))}

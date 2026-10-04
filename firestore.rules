@@ -26,10 +26,14 @@ service cloud.firestore {
       // The profile (with its role and consent) is created by setInitialRole. The client may only edit
       // its own contact and notification fields, never the role.
       allow create: if false;
-      // At most 10 browsers with notifications per account.
+      // At most 10 browsers with notifications per account. AlertsCleared marks when the person
+      // cleared their own Alertas list (for every dog or for one); it hides nothing from anyone else.
       allow update: if signedIn() && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'fcmTokens', 'notificationPrefs'])
-        && request.resource.data.get('fcmTokens', []).size() <= 10;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'fcmTokens', 'notificationPrefs', 'alertsCleared'])
+        && request.resource.data.get('fcmTokens', []).size() <= 10
+        && request.resource.data.get('alertsCleared', {}) is map
+        && request.resource.data.get('alertsCleared', {}).keys().hasOnly(['all', 'byDog'])
+        && request.resource.data.get('alertsCleared', {}).get('byDog', {}).size() <= 200;
       allow delete: if isAdmin();
     }
 
@@ -97,16 +101,32 @@ service cloud.firestore {
 
     match /alerts/{alertId} {
       allow read: if canReadDogData(resource.data);
+      // Alerts are never deleted from the app: the dog's history and the vet view are built from them.
       allow create, delete: if false;
-      // "Marcar como revisada": only status, acknowledgedBy and acknowledgedAt may change.
-      // expertReview (TP2, Cohen's kappa) is written only by an admin, the thesis reviewer.
-      allow update: if (canReadDogData(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acknowledgedBy', 'acknowledgedAt'])
-          && request.resource.data.status == 'acknowledged'
+
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+      // "Marcar como revisada" and "Marcar todas como revisadas": reviewed by the person writing, at the server time.
+      function reviewsNow() {
+        return request.resource.data.status == 'acknowledged'
           && request.resource.data.acknowledgedBy == request.auth.uid
-          && request.resource.data.acknowledgedAt == request.time)
+          && request.resource.data.acknowledgedAt == request.time;
+      }
+      // "Deshacer": whoever reviewed the alert makes it new again, within 10 minutes.
+      function reopensOwnReview() {
+        return resource.data.status == 'acknowledged'
+          && resource.data.acknowledgedBy == request.auth.uid
+          && request.time < resource.data.acknowledgedAt + duration.value(10, 'm')
+          && request.resource.data.status == 'open'
+          && request.resource.data.acknowledgedBy == null
+          && request.resource.data.acknowledgedAt == null;
+      }
+      // Only status, acknowledgedBy and acknowledgedAt change. expertReview (TP2, Cohen's kappa) is written only by an
+      // admin, the thesis reviewer.
+      allow update: if (canReadDogData(resource.data)
+          && changed().hasOnly(['status', 'acknowledgedBy', 'acknowledgedAt'])
+          && (reviewsNow() || reopensOwnReview()))
         || (isAdmin()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['expertReview'])
+          && changed().hasOnly(['expertReview'])
           && request.resource.data.expertReview.reviewerId == request.auth.uid
           && request.resource.data.expertReview.reviewedAt == request.time);
     }

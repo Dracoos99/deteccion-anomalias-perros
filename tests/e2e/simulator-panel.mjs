@@ -34,6 +34,12 @@ const text = () => page.evaluate(() => document.body.innerText);
 const waitText = async (needle, t = 30000) => {
   try { await page.waitForFunction((n) => document.body.innerText.includes(n), { timeout: t }, needle); return true; } catch { return false; }
 };
+/** Navigate inside the app, as a person following links does: no reload, so the emulator's HTTP/1.1 connections
+ * (6 per host) are not used up by the Firestore channels of earlier pages. */
+const spaGo = async (p) => {
+  await page.evaluate((x) => { history.pushState({}, "", x); dispatchEvent(new PopStateEvent("popstate")); }, p);
+  await new Promise((r) => setTimeout(r, 1200));
+};
 const clickButton = async (label, scope = "body") => {
   const [btn] = await page.$$(`xpath/.//${scope === "body" ? "" : `section[@aria-labelledby='${scope}']//`}button[normalize-space(.)='${label}' or contains(., '${label}')]`);
   if (!btn) throw new Error(`button not found: ${label}`);
@@ -47,7 +53,7 @@ await page.type("#a-pass", "demo-1234");
 await page.click("button[type=submit]");
 // Every account lands on Inicio; the admin reaches the research tools at /admin.
 await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
-await page.goto(BASE + "/admin", { waitUntil: "load" });
+await spaGo("/admin");
 await page.waitForSelector("section[aria-labelledby='new-title'] input[type=checkbox]", { timeout: 15000 });
 
 // New run: only Toby, ×10, 30 simulated minutes.
@@ -104,8 +110,18 @@ await page.type("#a-pass", "demo-1234");
 await page.click("button[type=submit]");
 await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
 await page.waitForSelector(".dog-card", { timeout: 15000 });
-const banner = await page.waitForSelector("xpath/.//article[.//h2//a[normalize-space(.)='Toby']]//a[contains(@class, 'alert-banner')]", { timeout: 15000 }).catch(() => null);
-check("Inicio shows Toby's open alert", !!banner);
+const bannerSelector = "xpath/.//article[.//h2//a[normalize-space(.)='Toby']]//a[contains(@class, 'alert-banner')]";
+check("Inicio shows Toby's open alert", !!await page.waitForSelector(bannerSelector, { timeout: 15000 }).catch(() => null));
+// «Marcar todas como revisadas» in Alertas, and «Deshacer» makes the alert new again.
+const newCount = () => page.evaluate(() => [...document.querySelectorAll(".seg button")].map((b) => b.textContent).find((t) => t?.startsWith("Nuevas")));
+await spaGo("/alertas");
+await page.waitForSelector("xpath/.//button[contains(., 'Marcar todas como revisadas')]", { timeout: 10000 }).catch(() => {});
+await clickButton("Marcar todas como revisadas").catch((e) => errors.push(String(e)));
+check("Alertas marks every new alert as reviewed at once", await waitText("quedó revisada", 10000) && await newCount() === "Nuevas (0)");
+await clickButton("Deshacer").catch((e) => errors.push(String(e)));
+check("«Deshacer» makes it new again", await waitText("volvió a quedar como nueva", 10000) && await newCount() === "Nuevas (1)");
+await spaGo("/");
+const banner = await page.waitForSelector(bannerSelector, { timeout: 15000 }).catch(() => null);
 if (banner) {
   await banner.click();
   await page.waitForSelector("#why", { timeout: 10000 }).catch(() => {});
@@ -116,14 +132,28 @@ if (banner) {
   await clickButton("Marcar como revisada");
   check("the owner marks it as reviewed", await waitText("Revisada", 10000));
 }
-await page.goto(BASE + "/perros/toby", { waitUntil: "load" });
+// «Limpiar lista» takes the alerts off Alertas (they stay in the dog's history) and «Deshacer» brings them back.
+await spaGo("/alertas");
+await page.waitForSelector("xpath/.//button[contains(., 'Limpiar lista')]", { timeout: 10000 }).catch(() => {});
+await clickButton("Limpiar lista").catch((e) => errors.push(String(e)));
+check("«Limpiar lista» empties Alertas and says the alerts stay in each dog's history",
+  await waitText("Quitamos las alertas de la lista", 10000) && (await text()).includes("Lista limpia")
+  && (await text()).includes("siguen en el historial de cada perro"));
+await page.screenshot({ path: path.join(OUT, "07b-alertas-limpias-1440.png"), fullPage: true });
+await clickButton("Deshacer").catch((e) => errors.push(String(e)));
+check("«Deshacer» brings them back", await waitText("volvieron a la lista", 10000)
+  && await page.waitForSelector(".alert-item", { timeout: 10000 }).then(() => true, () => false));
+await spaGo("/perros/toby");
 await page.waitForSelector(".dog-state", { timeout: 10000 }).catch(() => {});
 const [tempTab] = await page.$$("xpath/.//button[@role='tab' and normalize-space(.)='Temperatura']");
-await tempTab.click();
-check("dog detail charts the temperature of the run", await page.waitForFunction(() =>
-  [...document.querySelectorAll("svg[role=img]")].some((s) => (s.getAttribute("aria-label") ?? "").startsWith("Temperatura: último valor")), { timeout: 15000 }).then(() => true, () => false));
+if (!tempTab) check("dog detail shows its tabs", false, (await text()).replace(/\s+/g, " ").slice(0, 600));
+else {
+  await tempTab.click();
+  check("dog detail charts the temperature of the run", await page.waitForFunction(() =>
+    [...document.querySelectorAll("svg[role=img]")].some((s) => (s.getAttribute("aria-label") ?? "").startsWith("Temperatura: último valor")), { timeout: 15000 }).then(() => true, () => false));
+}
 await page.screenshot({ path: path.join(OUT, "03-detalle-perro-1440.png"), fullPage: true });
-await page.goto(BASE + "/perros/toby/veterinario", { waitUntil: "load" });
+await spaGo("/perros/toby/veterinario");
 check("vet view summarizes signals and lists the event", await page.waitForFunction(() => {
   const t = document.body.innerText;
   return t.includes("Señales del periodo") && /Temperatura \(°C\)\s+\d/.test(t) && /Eventos anómalos \([1-9]/.test(t);
@@ -138,7 +168,7 @@ await page.type("#a-email", "admin@example.com");
 await page.type("#a-pass", "demo-1234");
 await page.click("button[type=submit]");
 await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
-await page.goto(BASE + "/admin/configuracion", { waitUntil: "load" });
+await spaGo("/admin/configuracion");
 await page.waitForSelector("#c-wb", { timeout: 15000 }).catch(() => {});
 check("A2 shows the active models and the fusion form", await waitText("Fusión y umbrales", 10000) && await waitText("lstm-ae-v1", 10000) && (await text()).includes(MODEL));
 await page.$eval("#c-wb", (el) => { el.value = ""; });
