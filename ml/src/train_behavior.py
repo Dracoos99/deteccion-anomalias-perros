@@ -8,6 +8,7 @@ v2 members, one per seed, not exported (src.ensemble_behavior averages and expor
   python -m src.train_behavior --version cnn-lstm-v2 --seed 1 --label-smoothing 0.1 --cosine --epochs 60 --patience 15 --member
 Outputs:
   ml/models/behavior/<version>/        Keras model (h5), metrics.json, history.json (not versioned)
+Only without --member, --quick or --no-export (this replaces the deployed v2 bundle with a single v1 network):
   functions/models/behavior/           model.json + weights (TF.js layers format) and metadata.json (versioned)
   functions/test/fixtures/behavior-parity.json   windows + Keras probabilities that the TF.js loader must reproduce
 """
@@ -32,7 +33,7 @@ from .dataset import load_sequences, load_windows
 
 REPO = C.ML_DIR.parent
 VERSION = "cnn-lstm-v1"
-ACTIVE_CLASSES = ("trot", "walk", "play", "sniff")
+ACTIVE_CLASSES = C.ACTIVE_CLASSES
 NOVELTY_QUANTILE = 0.05   # 5 % of normal validation windows fall below the threshold
 BUNDLE_DIR = REPO / "functions" / "models" / "behavior"
 PARITY_PATH = REPO / "functions" / "test" / "fixtures" / "behavior-parity.json"

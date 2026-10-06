@@ -3,7 +3,6 @@
  * - when an alert is marked as reviewed, recount the dog's open alerts (idempotent: a recount, not a decrement) and
  *   store it in dogState and dogs.status;
  * - when an open alert rises from "Atención" (amber) to "Revisar" (red), push it again to the owner.
- * The vetIds copy to open alerts (onDogUpdated) was retired with the vet role.
  */
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";

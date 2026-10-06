@@ -1,5 +1,5 @@
 // The TF.js bundle loaded by the Function must reproduce the Keras probabilities saved at export time
-// (functions/test/fixtures/behavior-parity.json, written by ml/src/train_behavior.py).
+// (functions/test/fixtures/behavior-parity.json, written with the bundle by ml/src/ensemble_behavior.py).
 import fs from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";

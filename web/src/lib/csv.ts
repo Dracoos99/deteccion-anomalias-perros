@@ -11,10 +11,10 @@
 import type { FusionConfig } from "@shared/types";
 
 export const CSV_HEADER = ["timestamp", "dog_id", "acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z", "hr_bpm", "temp_c"] as const;
-export const IMU_COLUMNS = ["acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z"] as const;
+const IMU_COLUMNS = ["acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z"] as const;
 export const CSV_MAX_BYTES = 60 * 1024 * 1024;   // about 2.5 h of data at 100 Hz
-export const SAMPLES_PER_BLOCK = 1000;
-export const MAX_BLOCKS = 2000;                   // firestore.rules: csvUploads.blocksExpected <= 2000
+const SAMPLES_PER_BLOCK = 1000;
+const MAX_BLOCKS = 2000;                   // firestore.rules: csvUploads.blocksExpected <= 2000
 const GAP_MS = 15;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const MAX_ISSUES = 200;
@@ -40,8 +40,6 @@ export interface CsvCheck {
   runs: number;
   blocks: CsvBlock[];
   leftoverSamples: number;
-  firstMs: number | null;
-  lastMs: number | null;
   /** Problems that stop the upload, in plain Spanish. */
   blocking: string[];
   /** Data that is left out, in plain Spanish. */
@@ -57,7 +55,7 @@ export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfi
   opts: { notAfterMs?: number | null; dogName?: string } = {}): CsvCheck {
   const res: CsvCheck = {
     header: [], missing: [], rows: 0, valid: 0, rowsDropped: 0, valuesDropped: 0, issues: [], preview: [], dogIds: [], rateHz: null,
-    hasHr: false, hasTemp: false, runs: 0, blocks: [], leftoverSamples: 0, firstMs: null, lastMs: null, blocking: [], warnings: [],
+    hasHr: false, hasTemp: false, runs: 0, blocks: [], leftoverSamples: 0, blocking: [], warnings: [],
   };
   if (sizeBytes > CSV_MAX_BYTES) res.blocking.push(`El archivo pesa más de ${CSV_MAX_BYTES / 1024 / 1024} MB: divídelo en partes.`);
   const lines = text.replace(/^﻿/, "").split(/\r?\n/);
@@ -157,8 +155,6 @@ export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfi
     res.rateHz = med > 0 ? Math.round(1000 / med) : null;
     if (!res.rateHz || Math.abs(res.rateHz - 100) > 5) res.blocking.push(`La frecuencia de muestreo detectada es de ${res.rateHz ?? "—"} Hz; se esperan 100 Hz.`);
   }
-  res.firstMs = ts[keep[0]];
-  res.lastMs = ts[keep[keep.length - 1]];
 
   // Runs without gaps, and blocks of 1 000 samples inside each run.
   let runStart = 0;

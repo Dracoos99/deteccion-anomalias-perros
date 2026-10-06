@@ -4,9 +4,9 @@
    the last minute (with 2 s blocks the share of a single block is 0 or 100 %). Pure functions, no Firestore. */
 import type { Behavior } from "@shared/types";
 
-export const LIVE_SPAN_MS = 10 * 60_000;
-export const LIVE_MAX_AGE_MS = 2 * 60_000;
-export const MOVEMENT_SPAN_MS = 60_000;
+const LIVE_SPAN_MS = 10 * 60_000;
+const LIVE_MAX_AGE_MS = 2 * 60_000;
+const MOVEMENT_SPAN_MS = 60_000;
 const BLOCK_MS = 10_000;   // results written before had 10 s blocks
 
 export interface LivePoint { t: number; v: number }
@@ -84,7 +84,7 @@ export const isLiveBlock = (b: LiveBlock | null, now: number) =>
 // ── Freshness of a dog's state ─────────────────────────────────────────────────────────────────────────────
 
 /** dogs.status written less than this ago, with data measured in the last LIVE_MAX_AGE_MS: "En vivo". */
-export const STATUS_LIVE_MS = 30_000;
+const STATUS_LIVE_MS = 30_000;
 /** Newest data older than this: the card stops presenting them as the dog's current state. A display rule, not a
  * scoring threshold. */
 export const STALE_AFTER_MS = 30 * 60_000;

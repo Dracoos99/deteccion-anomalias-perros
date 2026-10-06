@@ -88,7 +88,7 @@ def apply_temp(value: float, inj: Injection, offset_s: float) -> float:
 
 
 def write_fixture() -> dict:
-    """Deterministic cases that the TypeScript tests (simulator/test) must reproduce exactly."""
+    """Deterministic cases that the TypeScript tests (shared/test/anomalies.test.ts) must reproduce exactly."""
     from .activity import window_intensity
 
     rng = np.random.default_rng(7)

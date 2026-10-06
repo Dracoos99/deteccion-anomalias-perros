@@ -60,7 +60,6 @@
   --chart-line: #201e1d;
   --chart-baseline: rgba(0, 103, 134, 0.14);   /* the dog's normal band */
   --chart-grid: rgba(32, 30, 29, 0.10);
-  --chart-ref: #605d5d;
   --chart-mark: var(--color-status-amber);     /* moments outside the normal */
   --chart-detail: rgba(32, 30, 29, 0.3);        /* the raw values behind an average */
   --chart-highlight: rgba(32, 30, 29, 0.07);    /* the alert episode behind the series */
@@ -225,7 +224,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sidebar-foot { margin-top: auto; border-top: 1px solid var(--color-rule); padding-top: 10px; display: grid; gap: 4px; justify-items: start; }
 .sidebar-user { display: grid; min-width: 0; max-width: 100%; line-height: 1.3; }
 .sidebar-user-name { font-weight: 600; font-size: var(--text-sm); overflow-wrap: anywhere; }
-.sidebar-user-mail { font-size: var(--text-xs); color: var(--color-text-muted); overflow-wrap: anywhere; }
 .sidebar-foot .logout-btn { padding: 0; min-height: 28px; font-size: var(--text-xs); gap: 4px; }
 @media (hover: hover) and (pointer: fine) { .sidebar-foot .logout-btn:hover:not(:disabled) { background: none; text-decoration: underline; } }
 
@@ -425,7 +423,6 @@ input[type="range"] { accent-color: var(--color-accent); width: 100%; height: 24
 .tag-red { background: var(--color-status-red-bg); color: var(--color-status-red); }
 .tag-open { background: var(--color-surface); color: var(--color-text); }
 .tag-done, .tag-outline { background: transparent; border: 1px solid var(--color-divider); color: var(--color-text-muted); padding: 1px 7px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 
 /* ── Health Score gauge ─────────────────────────────────────────────────── */
 .gauge { position: relative; display: grid; place-items: center; }
@@ -490,7 +487,6 @@ input[type="range"] { accent-color: var(--color-accent); width: 100%; height: 24
 .key-band { width: 12px; height: 8px; background: var(--chart-baseline); border-block: 1px solid var(--color-accent); display: inline-block; }
 /* The dog's normal band: the tint alone is too faint to read as a range (1.2:1), so it gets thin edges (3:1 or more). */
 .chart-band-edge { stroke: var(--color-accent); stroke-width: 1; }
-.key-dash { width: 14px; height: 0; border-top: 1.5px dashed var(--chart-ref); display: inline-block; }
 .key-mark { width: 8px; height: 8px; border-radius: 50%; background: var(--chart-mark); display: inline-block; }
 .key-line { width: 14px; height: 0; border-top: 2px solid var(--chart-line); display: inline-block; }
 .key-detail { width: 14px; height: 0; border-top: 1px solid var(--chart-detail); display: inline-block; }

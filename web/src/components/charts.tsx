@@ -1,5 +1,5 @@
 /* Charts in the Broadsheet style: SVG, no chart library. One series per chart, the dog's normal band shaded with thin
-   edges, dashed reference lines, amber dots on unusual moments, crosshair with mouse, touch (tap or slide sideways)
+   edges, amber dots on unusual moments, crosshair with mouse, touch (tap or slide sideways)
    and keyboard (← → Esc, read aloud), and a text summary for screen readers. Look of the v3 mockups: serif
    title, legend under the plot, zone labels in their level colour inside the plot. The series compared with
    the band is the average the engine compares (60 s of heart rate, 20 min of movement); the raw values behind it can
@@ -33,7 +33,7 @@ function niceTicks(lo: number, hi: number, n = 4): { ticks: number[]; step: numb
 /** Decimals a tick step needs, so labels never repeat ("37.5" is not shown as "38" next to "37"). */
 const stepDecimals = (step: number) => [0, 1, 2].find((d) => Math.abs(step * 10 ** d - Math.round(step * 10 ** d)) < 1e-6) ?? 2;
 
-export type RangeKey = "10m" | "1h" | "24h" | "7d";   // 10m: the live panel
+type ChartRange = "10m" | "1h" | "24h" | "7d";   // 10m: the live panel
 const fmtHM = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const fmtHMS = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 const fmtWD = new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric" });
@@ -57,15 +57,15 @@ export function healthZones(levels: { green: number; amber: number }): Zone[] {
   ];
 }
 
-export function TrendChart({ title, sub, points, detail, unit, decimals = 0, rangeKey, band, refs = [], zones, domain, height,
-  highlight, legendLine, legendDetail, legendBand, legendRefs, legendMarks, gapMs, detailGapMs = gapMs, showLast = false, loading = false }: {
-  title: string; sub?: string; points: ChartPoint[]; unit: string; decimals?: number; rangeKey: RangeKey;
+export function TrendChart({ title, sub, points, detail, unit, decimals = 0, rangeKey, band, zones, domain, height,
+  highlight, legendLine, legendDetail, legendBand, legendMarks, gapMs, detailGapMs = gapMs, showLast = false, loading = false }: {
+  title: string; sub?: string; points: ChartPoint[]; unit: string; decimals?: number; rangeKey: ChartRange;
   /** The raw values behind the averaged series, as a faint line under it (not marked, not hovered). */
   detail?: { t: number; v: number }[];
-  band?: [number, number] | null; refs?: { value: number; label: string }[]; zones?: Zone[]; domain?: [number, number];
+  band?: [number, number] | null; zones?: Zone[]; domain?: [number, number];
   /** A stretch of time shaded behind the series (the alert episode). */
   highlight?: { from: number; to: number; label: string } | null;
-  height?: number; legendLine?: string; legendDetail?: string; legendBand?: string; legendRefs?: string; legendMarks?: string;
+  height?: number; legendLine?: string; legendDetail?: string; legendBand?: string; legendMarks?: string;
   /** The line breaks where two points are further apart than this (no data in between). */
   gapMs?: number;
   /** The same for the detail line (one value per second next to one average per block). */
@@ -86,14 +86,14 @@ export function TrendChart({ title, sub, points, detail, unit, decimals = 0, ran
     document.addEventListener("pointerdown", away);
     return () => document.removeEventListener("pointerdown", away);
   }, [hover]);
-  // Zone labels and labelled reference lines get a gutter on the right; otherwise the plot runs to the edge.
-  const m = { l: 36, r: zones?.length ? 56 : refs.length ? 44 : 10, t: 10, b: 24 };
+  // Zone labels get a gutter on the right; otherwise the plot runs to the edge.
+  const m = { l: 36, r: zones?.length ? 56 : 10, t: 10, b: 24 };
   const W = width, H = height ?? (W < 480 ? 150 : 190), iw = W - m.l - m.r, ih = H - m.t - m.b;
   const vals = points.map((p) => p.v);
   const extra = detail ?? [];
   // Loops, not Math.min(...array): an hour of 1 Hz values is a lot of arguments for one call.
   let lo = Infinity, hi = -Infinity;
-  for (const v of [...(band ?? []), ...refs.map((r) => r.value)]) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const v of band ?? []) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   for (const p of points) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
   for (const p of extra) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
   if (domain) [lo, hi] = domain;
@@ -153,7 +153,7 @@ export function TrendChart({ title, sub, points, detail, unit, decimals = 0, ran
     ? `${title}${legendLine ? ` (${legendLine.toLowerCase()})` : ""}: último valor ${fmtV(last.v)} ${unit}, mínimo ${fmtV(minV)}, máximo ${fmtV(maxV)}` +
       (marks.length ? `, ${marks.length} ${marks.length === 1 ? "momento" : "momentos"} fuera de lo normal.` : ".")
     : `${title}: sin datos en este periodo.`;
-  const legend = points.length > 0 && (legendLine || legendBand || legendRefs || (legendMarks && marks.length > 0));
+  const legend = points.length > 0 && (legendLine || legendBand || (legendMarks && marks.length > 0));
   const waiting = loading && !points.length;
   return (
     <figure ref={figRef} className="chart" style={{ margin: 0 }} aria-busy={waiting || undefined}>
@@ -193,12 +193,6 @@ export function TrendChart({ title, sub, points, detail, unit, decimals = 0, ran
             {band && [band[0], band[1]].filter((v) => v >= lo && v <= hi).map((v) => (
               <line key={`edge${v}`} className="chart-band-edge" x1={m.l} x2={m.l + iw} y1={Y(v)} y2={Y(v)} />
             ))}
-            {refs.map((r) => (
-              <g key={r.label}>
-                <line x1={m.l} x2={W - m.r} y1={Y(r.value)} y2={Y(r.value)} stroke="var(--chart-ref)" strokeWidth="1.2" strokeDasharray="4 3" />
-                {!zones && <text x={W - m.r + 6} y={Y(r.value) + 3.5} className="chart-axis">{r.label}</text>}
-              </g>
-            ))}
             {!zones?.length && <line x1={m.l} x2={W - m.r} y1={H - m.b} y2={H - m.b} stroke="var(--color-divider)" />}
             {xticks.map((t, i) => (
               <text key={i} x={X(t)} y={H - 7} textAnchor={xticks.length === 1 ? "middle" : i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"} className="chart-axis">{xFmt.format(t)}</text>
@@ -231,7 +225,6 @@ export function TrendChart({ title, sub, points, detail, unit, decimals = 0, ran
           {legendDetail && extra.length > 1 && <span className="legend-key"><span className="key-detail" />{legendDetail}</span>}
           {highlight && <span className="legend-key"><span className="key-span" />{highlight.label}</span>}
           {legendBand && <span className="legend-key"><span className="key-band" />{legendBand}</span>}
-          {legendRefs && <span className="legend-key"><span className="key-dash" />{legendRefs}</span>}
           {legendMarks && marks.length > 0 && <span className="legend-key"><span className="key-mark" />{legendMarks}</span>}
         </div>
       )}

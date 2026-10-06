@@ -220,7 +220,6 @@ export function dayHeading(ms: number, now = Date.now()): string {
   const t = new Date(ms).toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
-export const timeText = (ms: number) => glueTime(new Date(ms).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }));
 export const dateText = (ms: number) => new Date(ms).toLocaleDateString("es-PE", { dateStyle: "medium" });
 
 /** Subtitle of a trend chart: the period asked, or, when its data start well inside it, the stretch that has data

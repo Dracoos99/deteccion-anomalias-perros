@@ -3,49 +3,15 @@
    Two bulk actions act on the dog chosen in the filter: «Marcar todas como revisadas», and «Limpiar lista»,
    which takes the alerts off this list (they stay in the dog's history and in the vet view). Both can be undone. */
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, LevelTag, PageHead, Seg, Skeleton, levelVars, usePageTitle } from "../components/ui";
+import { AlertItem } from "../components/AlertItem";
+import { Callout, EmptyState, Icon, PageHead, Seg, Skeleton, usePageTitle } from "../components/ui";
 import { useAlerts, useClearMarks, useDogs, useOpenAlerts, type Alert } from "../data/hooks";
 import { applyBulk, newAlertIds } from "../lib/alertActions";
 import { NO_MARKS, UNDO_MS, bulkDoneText, bulkUndoneText, onList, type BulkChange, type BulkKind } from "../lib/bulkAlerts";
-import { alertStartMs, alertTitle, dayHeading, durationText, whenText } from "../lib/plain";
+import { alertStartMs, dayHeading } from "../lib/plain";
 
 const PAGE = 50;
-
-/** Review state of an alert: "Nueva" until the owner marks it as reviewed. Not "Sin revisar", which next to the
- * «Revisar» level read as «Revisar · Sin revisar». */
-export function ReviewTag({ open }: { open: boolean }) {
-  return <span className={open ? "tag tag-open" : "tag tag-done"}>{open ? "Nueva" : "Revisada"}</span>;
-}
-
-/** One alert (screen 7): the dog and whether it was reviewed, the title in plain language, when and for how long, its
- * level (colour, icon and text) and the left border in the level colour. `dogName` is the dog's current name (the
- * alert keeps the one it had when it opened). */
-export function AlertItem({ alert, showDog = true, dogName }: { alert: Alert; showDog?: boolean; dogName?: string }) {
-  const open = alert.status === "open";
-  const start = alertStartMs(alert), end = alert.endedAt?.toMillis?.();
-  const when = [start ? whenText(start) : null, end ? `duró ${durationText(end - start)}` : null].filter(Boolean).join(" · ");
-  return (
-    <li>
-      <Link className="panel alert-item" to={`/alertas/${alert.id}`} data-open={open} style={levelVars(alert.severity)}>
-        {showDog && (
-          <div className="alert-item-top">
-            <span className="kicker">{dogName ?? alert.dogName}</span>
-            <ReviewTag open={open} />
-          </div>
-        )}
-        <span className="alert-item-title">{alertTitle(alert.reasons)}</span>
-        <div className="alert-item-meta">
-          <span className="xs muted tabular">{when}</span>
-          <LevelTag level={alert.severity} iconSize={12} />
-          {!showDog && <ReviewTag open={open} />}
-        </div>
-        <span className="alert-item-more">Ver detalle <Icon name="chevron-right" size={13} /></span>
-      </Link>
-    </li>
-  );
-}
 
 type Filter = "open" | "all";
 

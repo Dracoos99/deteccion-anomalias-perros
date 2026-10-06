@@ -1,5 +1,5 @@
 /**
- * Behavioral model runtime: the CNN-LSTM exported by ml/src/train_behavior.py, loaded once per
+ * Behavioral model runtime: the CNN-LSTM exported by ml/src/ensemble_behavior.py (v2), loaded once per
  * instance from functions/models/behavior and run with the TF.js WebAssembly backend. tfjs-node has no prebuilt
  * binary for Windows (the local emulator), and WebAssembly runs the same on Windows and in Cloud Functions.
  */

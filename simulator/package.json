@@ -1,7 +1,7 @@
 {
   "name": "simulator",
   "private": true,
-  "description": "Replays public dog datasets as 10 s blocks into Firestore and injects anomalies.",
+  "description": "Replays public dog datasets into Firestore as reading blocks (2 s up to x2, 10 s above) and injects anomalies.",
   "type": "module",
   "engines": {
     "node": ">=22"

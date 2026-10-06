@@ -11,7 +11,7 @@ import { LivePanel } from "../components/LivePanel";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig, type Dog, type Fusion, type ModelVersion } from "../data/hooks";
 import { RANGES, useDogTrend, type DogTrend, type RangeKey } from "../data/useDogTrend";
 import { BEHAVIOR_LABEL, activityBand, ageText, coverageText, describeDog, endSentence, hrBand, whenPhrase } from "../lib/plain";
-import { AlertItem } from "./AlertsPage";
+import { AlertItem } from "../components/AlertItem";
 import { BaselineProgress } from "../components/BaselineProgress";
 
 type Tab = "resumen" | "actividad" | "corazon" | "temperatura" | "alertas";

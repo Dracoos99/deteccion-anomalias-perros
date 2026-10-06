@@ -20,7 +20,7 @@ const src = (imu, hr) => ({
   temp: { datasetId: "synthetic", subjectId: null },
 });
 // Ten dogs so a single run can reach the maximum. Subjects with the longest recordings (≥ 53 min of IMU,
-// ≥ 2.6 h of heart rate) so a 30-minute run does not loop. No vet accounts or vetIds since.
+// ≥ 2.6 h of heart rate) so a 30-minute run does not loop.
 export const DOGS = [
   { id: "toby", name: "Toby", sex: "male", breed: "Labrador retriever", weightKg: 29.5, birthDate: "2021-03-14", ownerId: "lucia-paredes", source: src("23", "30") },
   { id: "luna", name: "Luna", sex: "female", breed: "Mestiza", weightKg: 14.2, birthDate: "2019-08-02", ownerId: "lucia-paredes", source: src("16", "8") },
@@ -46,7 +46,7 @@ export const FUSION = {
 };
 
 // modelVersions/{version} from the exported bundles, with their real metrics: behavior/ is written by
-// ml/src/train_behavior.py and physio/ by ml/src/train_physio.py and physio_tradeoff.py.
+// ml/src/ensemble_behavior.py and physio/ by ml/src/train_physio.py and physio_tradeoff.py.
 export function modelVersionDocs() {
   return [["behavior", "behavior"], ["physiological", "physio"]].flatMap(([kind, dir]) => {
     const file = new URL(`../functions/models/${dir}/metadata.json`, import.meta.url);

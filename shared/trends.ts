@@ -11,9 +11,6 @@ import { BEHAVIORS, type Behavior, type Level } from "./types";
 export const SLOT_MINUTES = 5;
 export const SLOT_MS = SLOT_MINUTES * 60_000;
 export const DAY_MS = 86_400_000;
-export const SLOTS_PER_DAY = DAY_MS / SLOT_MS;
-/** A slot is written when a block falls into another slot, or after this many blocks (1 min of data). */
-export const FLUSH_EVERY_BLOCKS = 1;
 
 /** Sums, minimums and maximums of the blocks of one slot, so slots can be merged into any coarser bucket. */
 export interface TrendSlot {
@@ -83,7 +80,7 @@ export interface TrendDayDoc<T = unknown> {
   updatedAt: T;
 }
 
-/** What one 10 s block contributes, taken from the engine evaluation. */
+/** What one block (2 to 10 s) contributes, taken from the engine evaluation. */
 export interface BlockSummary {
   healthScore: number;
   level: Level;
@@ -163,13 +160,6 @@ export interface TrendPoint {
   temp: number | null;
   level: Level | null;
   blocks: number;
-}
-
-/** Day documents needed to cover [fromMs, toMs]. */
-export function daysBetween(fromMs: number, toMs: number): string[] {
-  const out: string[] = [];
-  for (let d = Date.parse(`${dayKey(fromMs)}T00:00:00Z`); d <= toMs; d += DAY_MS) out.push(dayKey(d));
-  return out;
 }
 
 /** Slots whose start is inside [fromMs, toMs), in time order. */

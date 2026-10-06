@@ -5,5 +5,6 @@
 !functions/models/
 **/node_modules
 simulator/test/
+simulator/.eval-cache/
 shared/test/
 **/*.md

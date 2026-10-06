@@ -1,7 +1,7 @@
 {
   "name": "functions",
   "private": true,
-  "description": "Cloud Functions (2nd gen): roles, inference pipeline (phases 1-2) and alerts.",
+  "description": "Cloud Functions (2nd gen): roles, inference pipeline (behavioral and heart-rate models), alerts, push notifications, baseline reset and the simulator job launch.",
   "main": "lib/index.js",
   "engines": {
     "node": "22"

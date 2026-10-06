@@ -12,7 +12,7 @@ import { Callout, DataTime, EmptyState, Icon, LEVELS, LevelTag, Notice, PageHead
 import { db } from "../firebase";
 import { useAlert, useDog, useFusionConfig, useTierDocs, useTrendDocs, type Alert, type Viewer } from "../data/hooks";
 import { COMPONENT_LABEL, alertStartMs, alertTitle, describeDog, durationText, endSentence, primaryReason, reasonUnit, whatToDo, whenPhrase } from "../lib/plain";
-import { ReviewTag } from "./AlertsPage";
+import { ReviewTag } from "../components/AlertItem";
 
 const MARGIN_MS = 30 * 60_000;
 

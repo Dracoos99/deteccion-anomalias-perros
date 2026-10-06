@@ -1,9 +1,10 @@
 """Provisional activity rule for phase 1: a 2 s window is "active" when the standard deviation of the
-accelerometer magnitude exceeds a threshold. It stands in for the CNN-LSTM until phase 2 and feeds the per-dog
-active-time ratio. The threshold is fitted on the training dogs (trot, walk, play, sniff = active;
+accelerometer magnitude exceeds a threshold. It is the engine's fallback when a dog's baseline was not learned with
+the behavioral model, and it feeds the per-dog active-time ratio. The threshold is fitted on the training dogs (trot, walk, play, sniff = active;
 sit, stand, lie = inactive) by maximising balanced accuracy, and checked on the validation dogs.
 
-The same intensity is computed in TypeScript by shared/engine.ts (windowIntensity); tests/fixtures keep both equal.
+The same intensity is computed in TypeScript by shared/engine.ts (windowIntensity); shared/fixtures/cross-language.json
+keeps both equal.
 
 Usage (from ml/):.venv/Scripts/python -m src.activity
 Output: data/processed/vehkaoja/neck/activity_threshold.json
@@ -17,7 +18,7 @@ import numpy as np
 from . import config as C
 from .dataset import load_windows
 
-ACTIVE_CLASSES = ("trot", "walk", "play", "sniff")
+ACTIVE_CLASSES = C.ACTIVE_CLASSES
 
 
 def window_intensity(raw: np.ndarray) -> np.ndarray:

@@ -69,7 +69,7 @@ function validate(d: Draft): { errors: string[]; next: (base: Fusion) => Fusion 
 }
 
 /** Human-readable differences between two configurations, for the change log (HU27). */
-export function configChanges(before: Fusion, after: Fusion): { field: string; before: string; after: string }[] {
+function configChanges(before: Fusion, after: Fusion): { field: string; before: string; after: string }[] {
   const show: [string, (c: Fusion) => string][] = [
     ["Pesos (conducta · FC · temperatura)", (c) => `${c.weights.b} · ${c.weights.p} · ${c.weights.t}`],
     ["Niveles (Todo normal · Atención)", (c) => `${c.levels.green} · ${c.levels.amber}`],

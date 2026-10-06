@@ -20,7 +20,7 @@ const DEMO_PASSWORD = "demo-1234";
 const NAME_MAX = 80;   // the limit setInitialRole keeps
 
 /** The network message names the emulators only in local development. */
-export const OFFLINE_TEXT = "No hay conexión con el servidor. Revisa tu conexión e inténtalo de nuevo." +
+const OFFLINE_TEXT = "No hay conexión con el servidor. Revisa tu conexión e inténtalo de nuevo." +
   (usingEmulators ? " Con emuladores: revisa que estén encendidos." : "");
 
 function authErrorText(e: unknown, mode: Mode): string {

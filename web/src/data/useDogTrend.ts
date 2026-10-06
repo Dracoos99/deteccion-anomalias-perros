@@ -28,7 +28,7 @@ export interface DogTrend {
 }
 
 /** The dog's own data time: the latest block processed, not the wall clock. */
-export function dataAnchor(dog: Dog | null | undefined): number | null {
+function dataAnchor(dog: Dog | null | undefined): number | null {
   const s = dog?.status;
   return s?.lastBlockAt?.toMillis?.() ?? s?.updatedAt?.toMillis?.() ?? null;
 }

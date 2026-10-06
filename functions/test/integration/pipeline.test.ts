@@ -10,7 +10,7 @@ import { BUNDLE_DIR, getBehaviorRunner } from "../../src/behavior";
 import { PHYSIO_BUNDLE_DIR, getPhysioRunner } from "../../src/physio";
 import { ENGINE_VERSION } from "../../src/shared/engine";
 import { DEFAULT_FUSION_CONFIG } from "../../src/shared/types";
-import { resetDogBaseline } from "../../src/baseline";
+import { resetDogBaseline } from "../../src/reset-baseline";
 import { notifyAlert, type PushSender } from "../../src/notify";
 
 const PROJECT = "demo-perros-tesis";

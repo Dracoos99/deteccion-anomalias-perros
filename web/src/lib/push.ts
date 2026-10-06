@@ -11,7 +11,7 @@ import { app, db, usingEmulators } from "../firebase";
 const messaging = () => import("firebase/messaging");
 
 const env = import.meta.env;
-const VAPID_KEY = env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+const VAPID_KEY = env.VITE_FIREBASE_VAPID_KEY;
 const TOKEN_KEY = "push-token";
 const SW_SCOPE = "/firebase-cloud-messaging-push-scope";
 

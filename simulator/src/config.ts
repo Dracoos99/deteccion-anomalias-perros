@@ -26,7 +26,6 @@ export const WINDOWS_PER_BLOCK = 5;
 export const WINDOW_SECONDS = 2;
 export const IMU_CHANNELS = 6;
 export const MAX_DOGS_PER_RUN = 10;   //
-export const SPEEDS = [1, 2, 5, 10];  // C13: options of screen 8; any value 1-10 is accepted
 export const STATS_FLUSH_MS = 5000;
 export const READING_TTL_DAYS = 7;    //: TTL on readings.expireAt
 export const SCHEMA_VERSION = 1;

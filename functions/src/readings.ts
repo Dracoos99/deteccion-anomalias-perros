@@ -1,6 +1,7 @@
 /**
- * Inference trigger on each 10 s block. The behavioral CNN-LSTM (TF.js)
- * classifies the 5 windows of 2 s; shared/engine.ts turns its output, the heart rate and the temperature into scores.
+ * Inference trigger on each block of 2 to 10 s. The behavioral CNN-LSTM
+ * (TF.js) classifies its 1 to 5 windows of 2 s; shared/engine.ts turns its output, the heart rate and the temperature
+ * into scores.
  * Without the model or the dog's IMU statistics, the provisional movement rule applies (flagged in the result).
  *
  * One transaction per block keeps it idempotent (RNF-02): if results/{readingId} exists the retry does nothing.

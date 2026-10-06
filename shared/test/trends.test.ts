@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addBlock, collectSlots, dayKey, daysBetween, emptySlot, mergeSlots, movingShare, rebucket, rollingMean, slotIndex, slotStartMs, summarize,
+  addBlock, collectSlots, dayKey, emptySlot, mergeSlots, movingShare, rebucket, rollingMean, slotIndex, slotStartMs, summarize,
   toPoint, windowAlpha, withMovingShare, type BlockSummary, type TimedSlot,
 } from "../trends";
 
@@ -43,7 +43,6 @@ describe("trend slots", () => {
     expect(items.map((i) => new Date(i.t).toISOString())).toEqual(["2026-09-29T00:00:00.000Z", "2026-09-29T23:55:00.000Z", "2026-09-30T00:00:00.000Z"]);
     expect(rebucket(items, 86_400_000).map((i) => i.slot.n)).toEqual([2, 1]);
     expect(toPoint(items[0])).toMatchObject({ healthScore: 90, activity: 0.4, hr: 72, temp: 38.6, level: "green", blocks: 1 });
-    expect(daysBetween(Date.parse("2026-09-29T23:00:00Z"), Date.parse("2026-09-30T01:00:00Z"))).toEqual(["2026-09-29", "2026-09-30"]);
   });
 });
 

@@ -29,6 +29,7 @@ BEHAVIOR_COLUMNS = ("Behavior_1", "Behavior_2", "Behavior_3")
 
 # Same order as shared/types.ts BEHAVIORS and results.behaviorProbs[7].
 CLASSES = ("sit", "stand", "lie", "trot", "walk", "play", "sniff")
+ACTIVE_CLASSES = ("trot", "walk", "play", "sniff")   # counted as movement; the rest are still postures
 # D2: the project class comes from any of the three Behavior columns.
 LABEL_MAP = {
     "Sitting": "sit", "Standing": "stand", "Lying chest": "lie", "Trotting": "trot",

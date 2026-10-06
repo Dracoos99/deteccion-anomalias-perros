@@ -189,13 +189,12 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.log("Comandos: start, serve, job, inject, pause, resume, stop, speed, status, report, subjects, sweep. Ver el encabezado de src/cli.ts.");
+      console.log("Comandos: start, serve, job, inject, pause, resume, stop, speed, status, report, subjects, sweep, evaluate. Ver el encabezado de src/cli.ts.");
       process.exitCode = cmd ? 1 : 0;
   }
 }
 
 main().then(() => {
-  if (!["start", "serve"].includes(positionals[0] ?? "")) process.exit(process.exitCode ?? 0);
   process.exit(process.exitCode ?? 0);
 }).catch((e) => {
   console.error(`Error: ${(e as Error).message}`);

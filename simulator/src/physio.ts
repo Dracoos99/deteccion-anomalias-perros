@@ -1,6 +1,6 @@
 /**
- * The physiological model in the simulator: only for the offline sweep, to compare the heart-rate rule with
- * the rule plus the autoencoder. Loads the TF.js bundle of functions/models/physio with the WebAssembly backend.
+ * The physiological model in the simulator: for the offline sweep, which compares the heart-rate rule with
+ * the rule plus the autoencoder, and for evaluate. Loads the TF.js bundle of functions/models/physio with the WebAssembly backend.
  */
 import fs from "node:fs";
 import path from "node:path";

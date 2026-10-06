@@ -23,7 +23,7 @@ function RunStateTag({ state }: { state: string }) {
 }
 
 /** Magnitude as the person reads it: percentage of movement removed, change of heart rate, degrees. */
-export function magnitudeText(type: AnomalyType, m: number): string {
+function magnitudeText(type: AnomalyType, m: number): string {
   const unit = ANOMALY_CATALOG.types[type].unit;
   if (unit === "fraction") return `${fmtNum(m * 100)} % menos movimiento`;
   if (unit === "relative") return `${type === "tachycardia" ? "+" : "−"}${fmtNum(m * 100)} % de su FC`;

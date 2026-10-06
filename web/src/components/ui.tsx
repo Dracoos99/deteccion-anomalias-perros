@@ -1,7 +1,7 @@
 /* Shared UI ported from the v2 prototype, with the look of the v3 mockups
 . Styles live in styles/app.css. */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import type { Behavior, FusionConfig, Level } from "@shared/types";
+import type { FusionConfig, Level } from "@shared/types";
 import { usingEmulators } from "../firebase";
 import { freshness as freshnessOf, shownDataMs, type Freshness } from "../lib/live";
 import { glueTime, whenPhrase } from "../lib/plain";
@@ -13,7 +13,6 @@ const ICONS: Record<string, ReactNode> = {
   "alert-octagon": <><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z" /><path d="M12 8v4" /><path d="M12 16h.01" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>,
   paw: <><circle cx="6.5" cy="10" r="2" /><circle cx="10" cy="5.5" r="2" /><circle cx="14" cy="5.5" r="2" /><circle cx="17.5" cy="10" r="2" /><path d="M8 17c0-2.8 1.8-5 4-5s4 2.2 4 5c0 1.7-1.2 2.6-2.6 2.6-.7 0-1-.4-1.4-.4s-.7.4-1.4.4C9.2 19.6 8 18.7 8 17z" /></>,
-  lock: <><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /></>,
@@ -21,15 +20,12 @@ const ICONS: Record<string, ReactNode> = {
   stethoscope: <><path d="M5 3v5a5 5 0 0 0 10 0V3" /><path d="M10 13v2a5 5 0 0 0 10 0v-2" /><circle cx="20" cy="11" r="2" /></>,
   flask: <><path d="M9 3h6" /><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3" /><path d="M7 15h10" /></>,
   "log-out": <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>,
-  database: <><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></>,
   heart: <><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z" /></>,
   thermometer: <><path d="M14 4v10.5a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z" /></>,
-  search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></>,
   "chevron-right": <><path d="m9 18 6-6-6-6" /></>,
   "chevron-left": <><path d="m15 18-6-6 6-6" /></>,
   "chevron-down": <><path d="m6 9 6 6 6-6" /></>,
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
-  menu: <><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></>,
   x: <><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>,
   play: <><path d="M7 4l13 8-13 8z" /></>,
   pause: <><path d="M8 4v16" /><path d="M16 4v16" /></>,
@@ -66,10 +62,6 @@ export function levelVars(level: Level | null | undefined): CSSProperties {
   return { ["--level-color" as string]: L ? L.color : "var(--color-divider)", ["--level-bg" as string]: L ? L.bg : "var(--color-surface)" };
 }
 
-export const BEHAVIOR_NOW: Record<Behavior, string> = {
-  sit: "Sentado", stand: "Parado", lie: "Echado", trot: "Trotando", walk: "Caminando", play: "Jugando", sniff: "Olfateando",
-};
-
 export function fmtNum(x: number | null | undefined, d = 0): string {
   return x == null || Number.isNaN(x) ? "—" : x.toLocaleString("es-PE", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
@@ -97,7 +89,7 @@ export function Ago({ t }: { t: Date | null | undefined }) {
 }
 
 /** "En vivo": dot and text, never the color alone. Shown only while the dog's state is live. */
-export function LiveBadge() {
+function LiveBadge() {
   return <span className="live-badge"><span className="live-dot" aria-hidden="true" />En vivo</span>;
 }
 

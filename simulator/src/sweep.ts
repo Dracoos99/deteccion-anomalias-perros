@@ -17,7 +17,7 @@ import { evaluateBlock, initialState, type EngineConfig } from "../../shared/eng
 import type { PhysioScorer } from "../../shared/physio-model";
 import { DEFAULT_FUSION_CONFIG, type AnomalyType } from "../../shared/types";
 
-/** Same subject pairs as scripts/seed-emulator.mjs (Vehkaoja IMU, Invoxia HR). */
+/** Same subject pairs as scripts/demo-data.mjs (Vehkaoja IMU, Invoxia HR). */
 export const SEED_SUBJECTS: [string, string, string][] = [
   ["toby", "23", "30"], ["luna", "16", "8"], ["rocky", "29", "0"], ["bruno", "74", "24"], ["canela", "39", "11"],
   ["max", "47", "10"], ["nala", "26", "9"], ["kira", "30", "12"], ["simba", "41", "18"], ["coco", "27", "13"],

@@ -16,5 +16,5 @@ onInit(() => {
 });
 export { onAlertUpdated } from "./alerts";
 export { onAlertCreated } from "./notify";
-export { resetBaseline } from "./baseline";
+export { resetBaseline } from "./reset-baseline";
 export { onSimulatorRunCreated } from "./simulator";

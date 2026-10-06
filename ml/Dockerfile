@@ -1,7 +1,9 @@
 # Training image for the GPU (RTX 3060 through Docker Desktop + WSL2). Same Python and pinned packages as ml/.venv, with
 # TensorFlow's CUDA libraries from pip. The repository is mounted at /work, never copied: the datasets stay on disk.
 #   docker build -t perros-ml ml
-#   docker run --rm --gpus all -v "<repo>:/work" -w /work/ml perros-ml python -m src.train_behavior
+#   docker run --rm --gpus all -v "<repo>:/work" -w /work/ml perros-ml python -m src.train_behavior --version cnn-lstm-v2 --seed 1 --label-smoothing 0.1 --cosine --epochs 60 --patience 15 --member
+#   (one member per seed, 1 to 5), then the same run with: python -m src.ensemble_behavior
+# Without --member, train_behavior exports a single v1 network over the deployed model in functions/models/behavior.
 FROM python:3.13-slim
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt "tensorflow[and-cuda]==2.21.0" \

@@ -59,9 +59,9 @@ export interface DogStatus<T = unknown> {
   lastHr: number | null;
   lastTemp: number | null;
   openAlerts: number;
-  /** Active-time ratio behind rB while the behavioral model is pending. */
+  /** Active-time ratio behind rB (the engine's moving share of time in movement, from the model or the rule). */
   lastActivityRatio?: number | null;
-  /** Engine that produced the score; "provisional-…" is shown as provisional in the UI (plan, phase 3). */
+  /** Engine that produced the score, kept for traceability; the app does not read it. */
   engineVersion?: string;
   /** Behavioral model used for lastBehavior, or null with the provisional rule. */
   behaviorModel?: string | null;
@@ -99,8 +99,9 @@ export interface InjectedAnomaly {
   offsetS?: number;
 }
 
-/** One 10 s block: 1 000 × 6 IMU samples at 100 Hz, sample-major (imu[i * 6 + c], channels acc_x, acc_y, acc_z
- * in g and gyr_x, gyr_y, gyr_z in °/s), up to 10 HR values at 1 Hz and one temperature. */
+/** One block of 2 to 10 s: 10 s from the CSV, 2 or 10 s from the simulator, which also writes blockSeconds.
+ * 100 IMU samples per second × 6, sample-major (imu[i * 6 + c], channels acc_x, acc_y, acc_z in g and gyr_x, gyr_y,
+ * gyr_z in °/s), one HR value per second at most and one temperature. */
 export interface ReadingDoc<T = unknown> {
   dogId: string;
   ownerId: string;
@@ -129,7 +130,7 @@ export interface ResultDoc<T = unknown> {
   ownerId: string;
   blockStart: T;
   sourceRef?: string;       // runId or uploadId of the reading (to follow a simulator run)
-  predictedBehavior: Behavior | null;  // null until the CNN-LSTM (phase 2)
+  predictedBehavior: Behavior | null;  // null with the provisional rule (no model, IMU rejected or no IMU statistics yet)
   behaviorProbs: number[] | null;      // 7 values, order of BEHAVIORS
   rB: number; rP: number; rT: number;
   healthScore: number;
@@ -207,8 +208,9 @@ export interface FusionConfig<T = unknown> {
   tempMaxDeviation: number;
   baselineSigma: number;
   prefilter: { hrMin: number; hrMax: number; tempMin: number; tempMax: number };
-  /** (provisional rules until the models): a 2 s window is active when the std of |acc| exceeds thresholdG;
-   * the active-time ratio is an exponential average with this time constant. */
+  /** With the provisional rule (a dog whose baseline was not learned with the behavioral model), a 2 s window
+   * is active when the std of |acc| exceeds thresholdG. With the model or the rule, the active-time ratio is an
+   * exponential average with this time constant. */
   activity: { thresholdG: number; timeConstantS: number };
   /** Seconds averaged for the heart rate compared with the baseline. */
   hrAverageS: number;
