@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { useOpenAlerts } from "../data/hooks";
+import { useDogs, useOpenAlerts } from "../data/hooks";
 import { sectionOf } from "../lib/nav";
 import { EmulatorBanner, Icon, NOTICE_TEXT, OfflineBanner } from "./ui";
 
@@ -70,8 +70,8 @@ function NavBadge({ count, end = false }: { count: number; end?: boolean }) {
 }
 
 function NavItems({ linkClass, iconSize, openCount, badgeAtEnd = false }: { linkClass: string; iconSize: number; openCount: number; badgeAtEnd?: boolean }) {
-  const { pathname } = useLocation();
-  const section = sectionOf(pathname);
+  const { pathname, search } = useLocation();
+  const section = sectionOf(pathname, search);
   return (
     <>
       {NAV.map((n) => {
@@ -92,11 +92,15 @@ function NavItems({ linkClass, iconSize, openCount, badgeAtEnd = false }: { link
 }
 
 /** Three layouts of the same navigation: a side column on wide screens, the masthead with its tab row on
- * medium ones and a bottom tab bar on phones. */
+ * medium ones and a bottom tab bar on phones; all three drawn as the dark environment around the content.
+ * The project line goes under the name, not above it. */
 export function Shell() {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
-  const { data: open } = useOpenAlerts({ uid: user!.uid, isAdmin });
+  const { data: openAll } = useOpenAlerts({ uid: user!.uid, isAdmin });
+  // An archived dog («Quitar perro») leaves the count too; its alerts stay in its history.
+  const { data: dogs, loading: dogsLoading } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });
+  const open = dogsLoading ? openAll : openAll.filter((a) => dogs.some((d) => d.id === a.dogId));
   const onLogout = async () => { await logout(); navigate("/acceso", { replace: true }); };
   const name = user?.displayName || user?.email || "";
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -106,8 +110,8 @@ export function Shell() {
       <div className="shell">
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <div className="brand-kicker">Proyecto de tesis · UPC</div>
             <Link className="brand-title" to="/">Detección de anomalías en perros</Link>
+            <div className="brand-kicker">Proyecto de tesis · UPC</div>
           </div>
           <nav className="sidebar-nav" aria-label="Principal">
             <NavItems linkClass="side-link" iconSize={16} openCount={open.length} badgeAtEnd />
@@ -125,8 +129,8 @@ export function Shell() {
           <header className="masthead">
             <div className="masthead-inner">
               <div className="brand">
-                <div className="brand-kicker">Proyecto de tesis · UPC</div>
                 <Link className="brand-title" to="/">Detección de anomalías en perros</Link>
+                <div className="brand-kicker">Proyecto de tesis · UPC</div>
               </div>
               <div className="masthead-actions">
                 <div className="user-chip"><span className="user-chip-name">{name}</span></div>
@@ -141,7 +145,7 @@ export function Shell() {
           <p className="sr-only" role="status">{announce}</p>
           <footer className="footer"><div className="footer-inner">
             <span>Proyecto de tesis · Ingeniería de Sistemas de Información · UPC</span>
-            <span>{NOTICE_TEXT}</span>
+            <span className="footer-notice">{NOTICE_TEXT}</span>
           </div></footer>
         </div>
       </div>

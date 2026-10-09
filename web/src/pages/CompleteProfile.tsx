@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { completeSignUp } from "../auth/signup";
-import { Callout, EmulatorBanner, Icon, usePageTitle } from "../components/ui";
+import { BootFrame, Callout, EmulatorBanner, Icon, usePageTitle } from "../components/ui";
 import { usingEmulators } from "../firebase";
 import { AuthBrand } from "./AuthPage";
 
@@ -23,7 +23,7 @@ export function CompleteProfile() {
   // After a submit with mistakes, the first field to fix gets the focus (its message is read with it).
   useEffect(() => { if (submits) document.querySelector<HTMLElement>("form [aria-invalid=true]")?.focus(); }, [submits]);
 
-  if (loading) return <div className="boot">Cargando…</div>;
+  if (loading) return <BootFrame />;
   if (!user) return <Navigate to="/acceso" replace />;
   if (role) return <Navigate to="/" replace />;
 
@@ -56,8 +56,8 @@ export function CompleteProfile() {
         <section className="auth-form" aria-labelledby="r-title">
           <div className="auth-card">
         <div className="auth-card-title">
-          <div className="kicker">Crear cuenta</div>
           <h2 className="section-title" id="r-title">Completa tu registro</h2>
+          <p className="page-meta">Crear cuenta</p>
           <p className="small muted">Sesión iniciada como {user.email}. Falta un paso para empezar.</p>
         </div>
         <form className="stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>

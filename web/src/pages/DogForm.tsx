@@ -1,21 +1,37 @@
 /* Screen 6 · Registro y edición del perro: name, breed, weight, birth date and sex. No vet assignment (v3).
    The rules keep ownerId, status and baseline out of the owner's reach; "Volver a aprender su patrón normal" goes
-   through the resetBaseline function. */
-import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+   through the resetBaseline function. «Quitar perro» archives the dog (active: false) without
+   deleting its data, and both actions ask on the page, not with a browser dialog. */
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext";
 import { Callout, EmptyState, Icon, PageHead, PageLoading, Seg, usePageTitle } from "../components/ui";
 import { callFunction, db } from "../firebase";
 import { useDog, type Dog } from "../data/hooks";
+import { fromHome } from "../lib/nav";
+
+/** An action that asks first, on the page: the question and two buttons that name what they do. */
+function ConfirmRow({ question, yes, onYes, onNo, busy, danger = false }: { question: string; yes: string; onYes: () => void; onNo: () => void; busy: boolean; danger?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  return (
+    <div className="callout callout-warn stack-sm" role="group" aria-label={question} tabIndex={-1} ref={ref}>
+      <p>{question}</p>
+      <div className="row">
+        <button className={danger ? "btn btn-danger-solid btn-sm" : "btn btn-primary btn-sm"} type="button" onClick={onYes} disabled={busy}>{busy ? "Un momento…" : yes}</button>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={onNo} disabled={busy}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
 
 /** Discards the learned baseline so the next data teach it again. */
 function ResetBaseline({ dog }: { dog: Dog }) {
-  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [state, setState] = useState<"idle" | "confirm" | "busy" | "done" | "error">("idle");
   const learning = !!dog.status?.baselineProgress && dog.status.baselineProgress.stage === "initial" && !dog.baseline;
   if (!dog.baseline && !learning) return null;
   const onReset = async () => {
-    if (!window.confirm(`¿Volver a aprender el patrón normal de ${dog.name}? Se usarán sus próximos datos.`)) return;
     setState("busy");
     try { await callFunction("resetBaseline", { dogId: dog.id }); setState("done"); }
     catch { setState("error"); }
@@ -26,12 +42,50 @@ function ResetBaseline({ dog }: { dog: Dog }) {
       <p className="small muted">
         {learning ? `El sistema está aprendiendo qué es normal para ${dog.name} con sus primeros datos.`
           : `El sistema aprendió qué es normal para ${dog.name} con sus primeros datos.`}
-        {" "}Si en esos días no estuvo bien (por ejemplo, estaba enfermo o recién operado), puedes pedir que lo aprenda de nuevo con sus próximos datos.
+        {/* An example, never a diagnosis. */}
+        {" "}Si en esos días no estuvo en su mejor momento (por ejemplo, tuvo un malestar o una operación reciente), puedes pedir que lo aprenda de nuevo con sus próximos datos.
       </p>
       {state === "done" ? <Callout kind="ok">Listo: su patrón normal se aprenderá de nuevo con los próximos datos.</Callout>
         : state === "error" ? <Callout kind="error">No pudimos hacerlo. Inténtalo de nuevo.</Callout> : null}
-      {state !== "done" && <div><button className="btn btn-secondary btn-sm" type="button" onClick={onReset} disabled={state === "busy"}>
-        {state === "busy" ? "Un momento…" : "Volver a aprender su patrón normal"}</button></div>}
+      {state === "confirm" || state === "busy" ? (
+        <ConfirmRow question={`¿Volver a aprender el patrón normal de ${dog.name}? Se usarán sus próximos datos; mientras tanto, solo se revisan los rangos de referencia.`}
+          yes="Sí, volver a aprender" onYes={onReset} onNo={() => setState("idle")} busy={state === "busy"} />
+      ) : state !== "done" && (
+        <div><button className="btn btn-secondary btn-sm" type="button" onClick={() => setState("confirm")}>Volver a aprender su patrón normal</button></div>
+      )}
+    </section>
+  );
+}
+
+/** «Quitar perro»: the dog is archived (active: false), never deleted. It leaves Inicio, Alertas, the
+ * data upload and the research panel; its data, its alerts and its vet view stay. Perfil offers «Deshacer» right after. */
+function ArchiveDog({ dog }: { dog: Dog }) {
+  const navigate = useNavigate();
+  const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
+  const onArchive = async () => {
+    setState("busy");
+    const write = updateDoc(doc(db, "dogs", dog.id), { active: false, updatedAt: serverTimestamp() });
+    const done = () => navigate("/perfil", { replace: true, state: { archived: { id: dog.id, name: dog.name } } });
+    try {
+      // Offline, Firestore sends the change when the connection returns; the page does not wait for it.
+      const sent = await Promise.race([write.then(() => true), new Promise<false>((r) => window.setTimeout(() => r(false), SAVE_WAIT_MS))]);
+      if (!sent) write.catch(() => undefined);
+      done();
+    } catch {
+      setState("error");
+    }
+  };
+  return (
+    <section className="panel stack-sm" aria-labelledby="d-archive">
+      <h2 className="section-title" id="d-archive">Quitar a {dog.name}</h2>
+      <p className="small muted">Deja de aparecer en Inicio, en Alertas y en la carga de datos. Sus datos y sus alertas no se borran.</p>
+      {state === "error" && <Callout kind="error">No pudimos quitarlo. Revisa tu conexión e inténtalo de nuevo.</Callout>}
+      {state === "confirm" || state === "busy" ? (
+        <ConfirmRow question={`¿Quitar a ${dog.name} de tus perros? Justo después podrás deshacerlo.`} yes={`Sí, quitar a ${dog.name}`}
+          onYes={onArchive} onNo={() => setState("idle")} busy={state === "busy"} danger />
+      ) : (
+        <div><button className="btn btn-danger btn-sm" type="button" onClick={() => setState("confirm")}><Icon name="archive" size={14} />Quitar perro</button></div>
+      )}
     </section>
   );
 }
@@ -51,6 +105,8 @@ export function DogForm() {
   const editing = !!dogId;
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
+  // Opened from the first-use guide of Inicio, the form keeps Inicio in its trail and its «Cancelar».
+  const fromInicio = fromHome(useLocation().search);
   const { data: dog, loading } = useDog(dogId);
   usePageTitle(editing ? (dog ? `Editar a ${dog.name}` : "Editar perro") : "Registrar a tu perro");
   const [f, setF] = useState({ name: "", breed: "", weight: "", birthDate: "", sex: "none" as SexChoice });
@@ -74,11 +130,12 @@ export function DogForm() {
     return <main className="page" id="main"><EmptyState icon="info" title="No encontramos este perro" action={<Link className="btn btn-secondary" to="/perfil">Ir a Perfil</Link>} /></main>;
   }
 
+  const nameLength = f.name.trim().length;
   const weightText = f.weight.trim().replace(/\s*kg\.?$/i, "");
   const weight = weightText ? Number(weightText.replace(",", ".")) : null;
   const errors: Partial<Record<"name" | "breed" | "weight" | "birthDate", string>> = {};
   if (!f.name.trim()) errors.name = "Escribe el nombre de tu perro.";
-  else if (f.name.trim().length > NAME_MAX) errors.name = `Usa como máximo ${NAME_MAX} caracteres.`;
+  else if (nameLength > NAME_MAX) errors.name = `Usa como máximo ${NAME_MAX} caracteres: quita ${nameLength - NAME_MAX}.`;
   if (f.breed.trim().length > BREED_MAX) errors.breed = `Usa como máximo ${BREED_MAX} caracteres.`;
   if (weight != null && (!Number.isFinite(weight) || weight < 0.5 || weight > 100)) errors.weight = "Escribe un peso entre 0.5 y 100 kg.";
   if (f.birthDate && f.birthDate > today()) errors.birthDate = "La fecha de nacimiento no puede ser futura.";
@@ -118,14 +175,17 @@ export function DogForm() {
 
   return (
     <main className="page page-form" id="main">
-      <nav className="crumbs" aria-label="Ruta"><Link to="/perfil">Perfil</Link><span aria-hidden="true">›</span><span>{editing ? dog!.name : "Nuevo perro"}</span></nav>
+      <nav className="crumbs" aria-label="Ruta">{fromInicio && !editing ? <Link to="/">Inicio</Link> : <Link to="/perfil">Perfil</Link>}<span aria-hidden="true">›</span><span>{editing ? dog!.name : "Nuevo perro"}</span></nav>
       <PageHead title={editing ? `Editar a ${dog!.name}` : "Registrar a tu perro"} sub={editing ? undefined : "Con estos datos lo reconocerás en la app y en la Vista para el veterinario."} />
       <div className="stack">
       <form className="panel stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
         {error && <Callout kind="error">{error}</Callout>}
+        {/* A counter instead of cutting the name silently at the limit of firestore.rules. The counter and one message; once the error shows, the counter only counts. */}
         <div className="field"><label htmlFor="d-name">Nombre</label>
-          <input id="d-name" className="input" maxLength={NAME_MAX} aria-required="true" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} {...inv("name", "d-name-hint")} />
-          <div className="field-hint" id="d-name-hint">Hasta {NAME_MAX} caracteres.</div>{err("name")}</div>
+          <input id="d-name" className="input" aria-required="true" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} {...inv("name", "d-name-hint")} />
+          <div className="field-hint" id="d-name-hint">{nameLength > NAME_MAX && !shown("name")
+            ? `${nameLength} de ${NAME_MAX} caracteres: quita ${nameLength - NAME_MAX}.`
+            : `${nameLength} de ${NAME_MAX} caracteres.`}</div>{err("name")}</div>
         <div className="field"><label htmlFor="d-breed">Raza <span className="muted">(opcional)</span></label>
           <input id="d-breed" className="input" maxLength={BREED_MAX} value={f.breed} onChange={(e) => setF({ ...f, breed: e.target.value })} placeholder="Por ejemplo, mestizo" {...inv("breed")} />{err("breed")}</div>
         <div className="field"><label htmlFor="d-weight">Peso en kg <span className="muted">(opcional)</span></label>
@@ -134,12 +194,13 @@ export function DogForm() {
           <input id="d-birth" className="input" type="date" min={oldestBirth()} max={today()} value={f.birthDate} onChange={(e) => setF({ ...f, birthDate: e.target.value })} {...inv("birthDate")} />{err("birthDate")}</div>
         <div className="field"><span className="field-label" id="d-sex">Sexo</span>
           <Seg label="Sexo" options={SEXES} value={f.sex} onChange={(sex) => setF({ ...f, sex })} /></div>
-        <div className="row" style={{ marginTop: 4 }}>
+        <div className="row form-row-actions">
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Guardando…" : editing ? "Guardar cambios" : "Registrar"}</button>
-          <Link className="btn btn-ghost" to={editing ? `/perros/${dogId}` : "/perfil"}>Cancelar</Link>
+          <Link className="btn btn-ghost" to={editing ? `/perros/${dogId}` : fromInicio ? "/" : "/perfil"}>Cancelar</Link>
         </div>
       </form>
       {editing && dog && <ResetBaseline dog={dog} />}
+      {editing && dog && <ArchiveDog dog={dog} />}
       </div>
     </main>
   );

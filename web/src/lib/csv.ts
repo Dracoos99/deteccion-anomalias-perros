@@ -51,8 +51,12 @@ export interface CsvCheck {
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("es-PE")} ${n === 1 ? one : many}`;
 const round = (x: number, d: number) => Math.round(x * 10 ** d) / 10 ** d;
 
+/** Data that start more than this after the current time are «adelantados» (a time zone that is not
+ * UTC, a clock set wrong): they are uploaded as they come, with a warning, because the app would show hours after now. */
+const AHEAD_MS = 5 * 60_000;
+
 export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfig["prefilter"],
-  opts: { notAfterMs?: number | null; dogName?: string } = {}): CsvCheck {
+  opts: { notAfterMs?: number | null; dogName?: string; nowMs?: number } = {}): CsvCheck {
   const res: CsvCheck = {
     header: [], missing: [], rows: 0, valid: 0, rowsDropped: 0, valuesDropped: 0, issues: [], preview: [], dogIds: [], rateHz: null,
     hasHr: false, hasTemp: false, runs: 0, blocks: [], leftoverSamples: 0, blocking: [], warnings: [],
@@ -89,7 +93,7 @@ export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfi
       cellErr["—"] = `Tiene ${cols.length} columnas; se esperan ${res.header.length}.`;
     } else {
       const t = cols[idx.timestamp].trim();
-      if (!ISO_UTC.test(t) || Number.isNaN(Date.parse(t))) cellErr.timestamp = "No es una fecha ISO 8601 en UTC (termina en Z).";
+      if (!ISO_UTC.test(t) || Number.isNaN(Date.parse(t))) cellErr.timestamp = "La fecha no tiene el formato esperado (por ejemplo, 2026-10-01T10:00:00.000Z).";
       for (const c of IMU_COLUMNS) {
         const v = cols[idx[c]].trim();
         if (v === "" || !Number.isFinite(Number(v))) cellErr[c] = "No es un número.";
@@ -153,7 +157,10 @@ export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfi
     diffs.sort((a, b) => a - b);
     const med = diffs[Math.floor(diffs.length / 2)];
     res.rateHz = med > 0 ? Math.round(1000 / med) : null;
-    if (!res.rateHz || Math.abs(res.rateHz - 100) > 5) res.blocking.push(`La frecuencia de muestreo detectada es de ${res.rateHz ?? "—"} Hz; se esperan 100 Hz.`);
+    // In the words of the rest of the page, «lecturas por segundo», not «Hz».
+    if (!res.rateHz || Math.abs(res.rateHz - 100) > 5) {
+      res.blocking.push(res.rateHz ? `El archivo trae ${plural(res.rateHz, "lectura", "lecturas")} por segundo; se esperan 100.` : "No pudimos saber cuántas lecturas por segundo trae el archivo; se esperan 100.");
+    }
   }
 
   // Runs without gaps, and blocks of 1 000 samples inside each run.
@@ -175,7 +182,11 @@ export function checkCsv(text: string, sizeBytes: number, prefilter: FusionConfi
   }
   if (res.rowsDropped) res.warnings.push(`${plural(res.rowsDropped, "fila", "filas")} con la fecha o el movimiento mal escritos no se cargan.`);
   if (res.valuesDropped) res.warnings.push(`${plural(res.valuesDropped, "valor", "valores")} de frecuencia cardiaca o temperatura imposibles o mal escritos no se cargan (el resto de la fila sí).`);
-  if (res.runs > 1) res.warnings.push(`Los datos tienen ${plural(res.runs - 1, "corte", "cortes")} (más de 15 ms sin muestras).`);
+  if (res.runs > 1) res.warnings.push(`Los datos tienen ${plural(res.runs - 1, "corte", "cortes")} (momentos sin lecturas).`);
+  const now = opts.nowMs ?? Date.now();
+  if (res.blocks.length && res.blocks[res.blocks.length - 1].startMs > now + AHEAD_MS) {
+    res.warnings.push(`Las horas del archivo llegan hasta el ${new Date(res.blocks[res.blocks.length - 1].startMs).toLocaleString("es-PE")}, después de la hora actual. Revisa que estén en UTC (terminan en Z): la app las mostrará tal como vienen.`);
+  }
   if (res.leftoverSamples) res.warnings.push(`${plural(Math.round(res.leftoverSamples / 100), "segundo", "segundos")} que no completan un bloque de 10 s no se cargan.`);
   if (!res.hasHr) res.warnings.push("El archivo no trae frecuencia cardiaca: sin ella no se vigila el corazón.");
   if (!res.hasTemp) res.warnings.push("El archivo no trae temperatura: se vigila solo si llega en otra carga.");

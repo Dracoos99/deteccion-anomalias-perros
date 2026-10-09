@@ -33,6 +33,15 @@ describe("checkCsv", () => {
     expect(r.warnings.join(" ")).toMatch(/cortes/);
   });
 
+  it("warns when the hours of the file are after the current time, and still uploads them", () => {
+    const text = csv(rows(1000));
+    expect(check(text, { nowMs: T0 + 60_000 }).warnings.join(" ")).not.toMatch(/después de la hora actual/);
+    const ahead = check(text, { nowMs: T0 - 3_600_000 });
+    expect(ahead.warnings.join(" ")).toMatch(/después de la hora actual/);
+    expect(ahead.blocking).toEqual([]);
+    expect(ahead.blocks).toHaveLength(1);
+  });
+
   it("averages the heart rate of each second and the temperature of the block", () => {
     const lines = rows(1000, { hrEvery: 50, hr: (i) => (i % 100 === 0 ? 80 : 90), temp: "38.4" });
     const r = check(csv(lines));
@@ -63,7 +72,10 @@ describe("checkCsv", () => {
   it("stops files that cannot be analysed", () => {
     expect(check("timestamp,dog_id\n").blocking[0]).toMatch(/Faltan columnas/);
     expect(check(csv([...rows(1000), ...rows(1000, { start: T0 + 20_000, dog: "perro_2" })])).blocking.join(" ")).toMatch(/2 perros/);
-    expect(check(csv(rows(1000, { stepMs: 20 }))).blocking.join(" ")).toMatch(/50 Hz/);
+    // «lecturas por segundo», not «Hz», with the right number.
+    expect(check(csv(rows(1000, { stepMs: 20 }))).blocking.join(" ")).toMatch(/trae 50 lecturas por segundo; se esperan 100/);
+    expect(check(csv(rows(1000, { stepMs: 1000 }))).blocking.join(" ")).toMatch(/trae 1 lectura por segundo/);
+    expect(check(csv(rows(1000, { stepMs: 20 }))).blocking.join(" ")).not.toMatch(/Hz/);
     expect(check(csv(rows(900))).blocking.join(" ")).toMatch(/al menos 10 s/);
     expect(check(csv(rows(1000)), { notAfterMs: T0 + 5_000, dogName: "Toby" }).blocking.join(" ")).toMatch(/antes de los últimos datos de Toby/);
     expect(checkCsv(csv(rows(10)), 70 * 1024 * 1024, pf).blocking.join(" ")).toMatch(/pesa más/);

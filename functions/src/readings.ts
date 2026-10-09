@@ -5,7 +5,8 @@
  * Without the model or the dog's IMU statistics, the provisional movement rule applies (flagged in the result).
  *
  * One transaction per block keeps it idempotent (RNF-02): if results/{readingId} exists the retry does nothing.
- * It writes results/{readingId}, the per-dog engine memory dogState/{dogId}, dogs.status and alerts/{readingId} when an episode opens.
+ * It writes results/{readingId}, the per-dog engine memory dogState/{dogId}, dogs.status and
+ * alerts/{readingId} when an episode opens.
  * A dog without baseline learns it from its first blocks (shared/baseline.ts), and a CSV block counts in
  * its csvUploads document.
  */
@@ -156,14 +157,14 @@ export async function processReading(db: Firestore, readingId: string, reading: 
         tx.create(alertRef, {
           dogId: reading.dogId, resultId: readingId, lastResultId: readingId, ownerId: dog.ownerId,
           dogName: dog.name, healthScore: ev.alert.healthScore, severity: ev.alert.severity, reasons: ev.alert.reasons,
-          status: "open", acknowledgedBy: null, acknowledgedAt: null, notified: false, provisional: true,
+          titleCode: ev.alert.titleCode, status: "open", acknowledgedBy: null, acknowledgedAt: null, notified: false, provisional: true,
           startedAt: Timestamp.fromMillis(ev.alert.startedAtMs ?? blockStartMs), endedAt: null,
           schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
         });
       } else {
         // Merge: never touches status or acknowledgement written by the owner.
         tx.set(alertRef, { healthScore: ev.alert.healthScore, severity: ev.alert.severity, reasons: ev.alert.reasons,
-          lastResultId: readingId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          titleCode: ev.alert.titleCode, lastResultId: readingId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       }
     }
 
@@ -187,7 +188,10 @@ export async function processReading(db: Firestore, readingId: string, reading: 
       const lastHr = ev.result.signals.hr ?? (pre.hr.length ? Math.round(pre.hr.reduce((a, b) => a + b, 0) / pre.hr.length) : dog.status?.lastHr ?? null);
       Object.assign(dogUpdate, {
         status: {
-          healthScore: ev.result.healthScore, level: ev.result.level, lastBehavior: ev.result.predictedBehavior, lastHr,
+          healthScore: ev.result.healthScore, level: ev.result.level,
+          // The stable score and level for the owner screens, and where the block came from.
+          stableHealthScore: ev.result.stableHealthScore, stableLevel: ev.result.stableLevel, lastSource: reading.source,
+          lastBehavior: ev.result.predictedBehavior, lastHr,
           lastTemp: pre.temp ?? dog.status?.lastTemp ?? null, lastActivityRatio: ev.result.signals.activityRatio,
           openAlerts: ev.state.openAlerts, engineVersion: ENGINE_VERSION, behaviorModel: behavior?.meta.version ?? null,
           physioModel: ev.result.signals.hrRatio != null ? physio!.meta.version : null,

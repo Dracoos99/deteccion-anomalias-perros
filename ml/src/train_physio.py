@@ -234,7 +234,8 @@ def main() -> None:
         "normalization": "per-dog z-score: (hr - dogs.baseline.hrMean) / max(hrStd, 1)",
         "threshold": round(threshold, 6), "thresholdQuantile": THRESHOLD_QUANTILE,
         "criticalRatio": round(critical_ratio, 3), "criticalQuantile": CRITICAL_QUANTILE, "fullScaleRatio": round(full_scale_ratio, 3),
-        "trainingData": [f"Invoxia, PhysioZoo y 23 perros: {len(split['train'])} perros de entrenamiento, "
+        # Shown to admins in the web app: the source is named without the company.
+        "trainingData": [f"Dataset público de frecuencia cardiaca (2023), PhysioZoo y 23 perros: {len(split['train'])} perros de entrenamiento, "
                          f"{len(split['val'])} de validación y {len(split['test'])} de prueba (solo FC normal)"],
         "metrics": {"test_normal_flagged": round(metrics["test_normal"]["model_flagged"], 4),
                     "tachycardia_auroc": round(ts["model_auroc"], 4), "tachycardia_f1": round(ts["model_f1"], 4),

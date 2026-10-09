@@ -98,7 +98,10 @@ check("the injected fever opens an alert once it has lasted 5 minutes of data", 
 const latencyText = await text();
 check("latency is measured and labelled as emulator", /Promedio\s+\d+[,.]\d+ s/.test(latencyText) && latencyText.includes("Medida en los emuladores locales"));
 await page.screenshot({ path: path.join(OUT, "08b-simulador-panel-1440.png"), fullPage: true });
+// A run in course asks first, on the page.
 await clickButton("Detener");
+check("stopping a run in course asks first, on the page", await waitText("Una ejecución detenida no se puede reanudar", 5000));
+await clickButton("Sí, detener");
 check("stop is reflected", await waitText("Detenida", 15000));
 
 // Owner screens with the data of this run (phase 3): banner, alert detail, review, charts and vet view.
@@ -127,7 +130,7 @@ if (banner) {
   await page.waitForSelector("#why", { timeout: 10000 }).catch(() => {});
   const alertText = await text();
   check("alert detail names it in plain language, with when and what to do",
-    alertText.includes("Su temperatura estuvo alta") && alertText.includes("Empezó ") && alertText.includes("Qué puedes hacer") && alertText.includes("termómetro"));
+    /Su temperatura (estuvo|está) alta/.test(alertText) && alertText.includes("Empezó ") && alertText.includes("Qué puedes hacer") && alertText.includes("termómetro"));
   await page.screenshot({ path: path.join(OUT, "04-detalle-alerta-1440.png"), fullPage: true });
   await clickButton("Marcar como revisada");
   check("the owner marks it as reviewed", await waitText("Revisada", 10000));

@@ -4,14 +4,41 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Detección temprana de anomalías conductuales y fisiológicas en perros." />
-    <meta name="theme-color" content="#f3f2f2" />
+    <meta name="theme-color" content="#f1f2f4" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="/fonts/SourceSans3-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/SourceSerif4-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>Detección de anomalías en perros</title>
   </head>
   <body>
-    <div id="root"><div class="boot">Cargando…</div></div>
+    <!-- Cold start: the frame of the app from the first frame, before any script runs. Same
+         markup as BootFrame in src/components/ui.tsx, which takes over while the account is resolved: keep them in step. -->
+    <div id="root">
+      <div class="boot" role="status" aria-busy="true">
+        <div class="shell">
+          <aside class="sidebar" aria-hidden="true">
+            <div class="sidebar-brand"><span class="brand-title">Detección de anomalías en perros</span><div class="brand-kicker">Proyecto de tesis · UPC</div></div>
+            <div class="sidebar-nav"><span class="skeleton boot-pill"></span><span class="skeleton boot-pill"></span><span class="skeleton boot-pill"></span></div>
+          </aside>
+          <div class="shell-main">
+            <header class="masthead" aria-hidden="true">
+              <div class="masthead-inner"><div class="brand"><span class="brand-title">Detección de anomalías en perros</span></div></div>
+              <div class="nav"><div class="nav-inner"><span class="skeleton boot-pill"></span><span class="skeleton boot-pill"></span><span class="skeleton boot-pill"></span></div></div>
+            </header>
+            <div class="page-content">
+              <div class="page">
+                <div class="stack">
+                  <p class="small muted">Cargando…</p>
+                  <div class="skeleton skeleton-title" aria-hidden="true"></div>
+                  <div class="panel stack-sm" aria-hidden="true"><div class="skeleton" style="height:14px;width:40%"></div><div class="skeleton" style="height:22px;width:60%"></div><div class="skeleton" style="height:56px;width:100%"></div></div>
+                  <div class="panel stack-sm" aria-hidden="true"><div class="skeleton" style="height:14px;width:35%"></div><div class="skeleton" style="height:22px;width:50%"></div><div class="skeleton" style="height:56px;width:100%"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tabbar" aria-hidden="true"><span class="skeleton boot-pill"></span><span class="skeleton boot-pill"></span><span class="skeleton boot-pill"></span></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

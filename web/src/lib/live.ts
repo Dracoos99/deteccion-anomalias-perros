@@ -86,8 +86,9 @@ export const isLiveBlock = (b: LiveBlock | null, now: number) =>
 /** dogs.status written less than this ago, with data measured in the last LIVE_MAX_AGE_MS: "En vivo". */
 const STATUS_LIVE_MS = 30_000;
 /** Newest data older than this: the card stops presenting them as the dog's current state. A display rule, not a
- * scoring threshold. */
-export const STALE_AFTER_MS = 30 * 60_000;
+ * scoring threshold. 10 minutes (it was 30): with data every 2 or 10 s, ten minutes without
+ * any is not a current state, and the state of Inicio is an average of the last 5. */
+export const STALE_AFTER_MS = 10 * 60_000;
 
 export type Freshness = "live" | "recent" | "stale";
 
@@ -100,10 +101,22 @@ export function shownDataMs(dataMs: number | null, receivedMs: number | null): n
 
 /** How current a dog's state is: "live" while blocks keep arriving, "stale" when its newest data are older than
  * STALE_AFTER_MS (a sensor that stopped, a CSV of yesterday), "recent" in between. dataMs is status.lastBlockAt and
- * receivedMs status.updatedAt. */
-export function freshness(dataMs: number | null, receivedMs: number | null, now: number): Freshness {
+ * receivedMs status.updatedAt. Data from a CSV upload are never "live", even when the file ends now
+ * (the example file does): `source` is status.lastSource. */
+export function freshness(dataMs: number | null, receivedMs: number | null, now: number, source?: "simulator" | "csv" | null): Freshness {
   const shown = shownDataMs(dataMs, receivedMs);
   if (shown == null) return "stale";
-  if (receivedMs != null && now - receivedMs <= STATUS_LIVE_MS && now - (dataMs ?? receivedMs) <= LIVE_MAX_AGE_MS) return "live";
+  if (source !== "csv" && receivedMs != null && now - receivedMs <= STATUS_LIVE_MS && now - (dataMs ?? receivedMs) <= LIVE_MAX_AGE_MS) return "live";
   return now - shown > STALE_AFTER_MS ? "stale" : "recent";
 }
+
+/** Data time this far ahead of the clock means a simulation faster than real time (×2 to ×10), so the
+ * hours of its data and alerts are simulated time. A display rule; the data are not changed. */
+export const SIMULATED_AHEAD_MS = 60_000;
+export const aheadOfClock = (dataMs: number | null | undefined, now: number) => dataMs != null && dataMs - now > SIMULATED_AHEAD_MS;
+
+/** Data in simulated time, ahead of the clock now or ahead of the moment they were
+ * written (dogs.status.updatedAt, alerts.createdAt). The second test keeps saying so after the simulation stopped and
+ * the clock caught up, so a stale card, the alert list and the vet view do not mix both hours without a note. */
+export const simulatedTime = (dataMs: number | null | undefined, writtenMs: number | null | undefined, now: number) =>
+  aheadOfClock(dataMs, now) || (writtenMs != null && aheadOfClock(dataMs, writtenMs));

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  activityBaseline, activityBaselineFromFlags, buildReasons, evaluateBlock, hrBaseline, initialState, windowIntensity, type BaselineStats, type EngineState,
-  type WindowEval,
+  activityBaseline, activityBaselineFromFlags, buildReasons, evaluateBlock, hrBaseline, initialState, mergeReasons, outsideDecimals, reasonsChanged,
+  titleCodeFor, windowIntensity, type BaselineStats, type EngineState, type WindowEval,
 } from "../engine";
-import { DEFAULT_FUSION_CONFIG } from "../types";
+import { DEFAULT_FUSION_CONFIG, type AlertReason } from "../types";
+import { alertTitle, bandWidths } from "../alert-text";
 import { imuStats, normalizeWindows, readWindow, type BehaviorModelMeta } from "../behavior-model";
 import { packSequences, ratioToScore, sequenceZ, type PhysioModelMeta, type PhysioScorer } from "../physio-model";
 
@@ -460,5 +461,166 @@ describe("alert reasons name the dog's normal band, the one the app shows (basel
     expect(rs).toHaveLength(1);
     expect(rs[0]).toMatchObject({ code: "activity_low", normalRange: [24, 56] });
     expect(rs[0].message).toBe("El tiempo en movimiento (28 %) está por debajo de su promedio habitual (40 %).");
+  });
+});
+
+describe("reasons of an episode", () => {
+  // Rocky in the emulator run of (8 Oct): movement 52.81 % ± 3.03 (band 46.75–58.87 %), heart rate 61.8 ± 6.5,
+  // temperature 38.77 °C; config/fusion as deployed.
+  const rocky: BaselineStats = { activeRatioMean: 0.5281, activeRatioStd: 0.0303, hrMean: 61.8, hrStd: 6.5, tempMean: 38.77, tempStd: 0.15 };
+  const deployed = { ...cfg, alertMinDurationS: 300, activityCriticalSigma: 2 };
+  type Plan = (k: number) => { temp: number; active: boolean };
+  function replay(plan: Plan, n: number, c = deployed, base = rocky) {
+    let st = initialState();
+    const out: ReturnType<typeof evaluateBlock>[] = [];
+    for (let k = 0; k < n; k++) {
+      const p = plan(k);
+      const e = evaluateBlock({ imu: imuBlock(p.active), hr: Array(10).fill(62), temp: p.temp, blockStartMs: 1_000_000 + k * 10_000 }, st, base, c, { alertId: `k${k}` });
+      st = e.state;
+      out.push(e);
+    }
+    return out;
+  }
+  /** The reasons the alert document ends with: those of its opening, rewritten by each update. */
+  const written = (res: ReturnType<typeof replay>) => res.reduce<AlertReason[] | null>((acc, e) => (e.alert ? e.alert.reasons : acc), null);
+
+  it("keeps naming a fever that ended while low activity kept the episode open", () => {
+    // A fever of +1.5 °C for 10 minutes; the dog rests from minute 8 on, so its 20-minute movement average leaves its
+    // band only after the fever ended, as Rocky's did at 20:38:54.
+    const plan: Plan = (k) => ({ temp: k >= 6 && k < 66 ? 40.3 : 38.7, active: k < 55 ? k % 2 === 0 : k >= 90 });
+    const res = replay(plan, 130);
+    const open = res.find((e) => e.alert?.action === "open")!;
+    expect(open.alert!.reasons.map((r) => r.code)).toEqual(["temp_high"]);
+    const joined = res.findIndex((e) => !!e.alert?.reasons.some((r) => r.code === "activity_low"));
+    expect(joined).toBeGreaterThan(0);
+    expect(res[joined].windows.at(-1)!.temp).toBeLessThan(39.5);       // the activity joined after the fever ended
+    expect(res[joined].alert!.action).toBe("update");
+    const final = written(res)!;
+    expect(final.map((r) => r.code)).toEqual(["temp_high", "activity_low"]);
+    expect(final[0]).toMatchObject({ value: 40.3, normalRange: [37.7, 39.5] });
+    // Every write of the alert keeps the reason that named it when it opened, also once the 20-minute
+    // movement average is further out of its band (in band widths) than the fever was.
+    expect(res.filter((e) => e.alert).every((e) => e.alert!.titleCode === "temp_high")).toBe(true);
+    expect(alertTitle(final, "temp_high")).toBe("Su temperatura estuvo alta");
+    // The value is printed out of its range: never «47 %» against «47–59 %».
+    const act = final[1];
+    expect(act.value).toBeLessThan(act.normalRange[0]);
+    expect(act.message).toContain(`(${act.value.toLocaleString("es-PE")} %)`);
+  });
+
+  it("names what left its range before the alert opened, with its most extreme value", () => {
+    // The temperature leaves its range for 3 minutes; low activity keeps the trigger alive until the alert opens.
+    const plan: Plan = (k) => ({ temp: k >= 2 && k < 20 ? (k < 10 ? 40.1 : 40.6) : 38.7, active: false });
+    const res = replay(plan, 60);
+    const open = res.find((e) => e.alert?.action === "open")!;
+    expect(open.windows.at(-1)!.temp).toBeLessThan(39.5);
+    expect(open.alert!.reasons.find((r) => r.code === "temp_high")?.value).toBe(40.6);
+    expect(alertTitle(open.alert!.reasons)).toBe("Su temperatura estuvo alta");
+  });
+
+  it("lists only the variables out of their range: a non-critical autoencoder stays out of a fever alert", () => {
+    const meta: PhysioModelMeta = { version: "t", sequenceLength: 60, threshold: 1, criticalRatio: 2.4, fullScaleRatio: 3.8, metrics: {}, architecture: "", trainingData: [], trainedAt: "" };
+    const physio: PhysioScorer = { meta, score: (b) => b.map(() => 1.5) };   // above its threshold, below criticalRatio
+    const st = { ...initialState(), activityEma: 0.4, hrBuffer: Array(60).fill(70), hrRun: 60 };
+    const e = evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(70), temp: 40.3, blockStartMs: 1_000_000, physio }, st, baseline, cfg, { alertId: "f" });
+    expect(e.windows[0].hrRatio).toBe(1.5);
+    expect(e.alert?.reasons.map((r) => r.code)).toEqual(["temp_high"]);
+  });
+
+  it("merges reasons: the most extreme value, real reasons over fallback ones, a level reason over a weaker one", () => {
+    const r = (code: string, component: AlertReason["component"], value: number, range: [number, number]): AlertReason =>
+      ({ code, component, value, normalRange: range, message: code });
+    const a = mergeReasons(null, { reasons: [r("temp_high", "temperature", 40.0, [37.7, 39.5])], fallback: false });
+    const b = mergeReasons(a, { reasons: [r("temp_high", "temperature", 40.4, [37.7, 39.5]), r("hr_pattern", "heart_rate", 70, [60, 80])], fallback: false });
+    expect(b.reasons.map((x) => [x.code, x.value])).toEqual([["temp_high", 40.4], ["hr_pattern", 70]]);
+    expect(reasonsChanged(a, b)).toBe(true);
+    const c = mergeReasons(b, { reasons: [r("hr_high", "heart_rate", 90, [60, 80])], fallback: false });
+    expect(c.reasons.map((x) => x.code)).toEqual(["temp_high", "hr_high"]);
+    const fb = { reasons: [r("activity_low", "behavior", 30, [24, 56])], fallback: true };
+    expect(mergeReasons(c, fb)).toBe(c);
+    expect(mergeReasons(fb, a).reasons.map((x) => x.code)).toEqual(["temp_high"]);
+    // A value a little further out does not rewrite the alert; one a step further does.
+    const near = mergeReasons(a, { reasons: [r("temp_high", "temperature", 40.1, [37.7, 39.5])], fallback: false });
+    expect(reasonsChanged(a, near)).toBe(false);
+  });
+
+  it("orders the reasons by how far out of their band they are, after the one that names the alert", () => {
+    const r = (code: string, component: AlertReason["component"], value: number, range: [number, number]): AlertReason =>
+      ({ code, component, value, normalRange: range, message: code });
+    // A heart rate 0.2 lpm over its band no longer goes before a movement far under its band (it was temperature,
+    // heart rate, movement).
+    const merged = mergeReasons(null, { reasons: [r("hr_high", "heart_rate", 76.7, [54.5, 76.5]), r("activity_low", "behavior", 20, [52, 64])], fallback: false });
+    expect(merged.reasons.map((x) => x.code)).toEqual(["activity_low", "hr_high"]);
+    // The fever of: the movement average ends further out of its band than the fever was, and the alert still
+    // stores the fever first, because it named the alert when it opened.
+    const plan: Plan = (k) => ({ temp: k >= 6 && k < 66 ? 40.3 : 38.7, active: k < 55 ? k % 2 === 0 : k >= 90 });
+    const final = written(replay(plan, 130))!;
+    expect(final.map((x) => x.code)).toEqual(["temp_high", "activity_low"]);
+    expect(bandWidths(final[1])).toBeGreaterThan(bandWidths(final[0]));
+  });
+
+  it("keeps the reason that names an alert while it lasts, unless it rises to «Revisar»", () => {
+    const r = (code: string, component: AlertReason["component"], value: number, range: [number, number]): AlertReason =>
+      ({ code, component, value, normalRange: range, message: code });
+    // Toby in20 % of movement against 52–64 % (2.7 band widths out) and 48 lpm against 49–87 lpm (0.03).
+    const act = r("activity_low", "behavior", 20, [52, 64]), hrLow = r("hr_low", "heart_rate", 48, [49, 87]);
+    expect(titleCodeFor(null, [hrLow, act], false)).toBe("activity_low");
+    // An alert opened by the heart rate keeps its name when the movement, further out of its band, joins later...
+    expect(titleCodeFor("hr_low", [hrLow, act], false)).toBe("hr_low");
+    // ...until it rises to «Revisar»: then the largest deviation names it.
+    expect(titleCodeFor("hr_low", [hrLow, act], true)).toBe("activity_low");
+    // A reason that left the list (the shape of the heart rate replaced by its level) is replaced.
+    expect(titleCodeFor("hr_pattern", [r("hr_high", "heart_rate", 95, [60, 80])], false)).toBe("hr_high");
+    expect(titleCodeFor(null, [], false)).toBeNull();
+  });
+
+  it("prints a value out of its range with the decimals that keep it off the bounds", () => {
+    expect(outsideDecimals(46.7, 46.75, 58.87, 0)).toBe(1);
+    expect(outsideDecimals(40, 46.75, 58.87, 0)).toBe(0);
+    expect(outsideDecimals(39.54, 37.7, 39.5, 1)).toBe(2);
+    const rs = buildReasons({
+      intensity: null, active: null, activityRatio: 0.467, predicted: null, maxProb: null, novel: null, noveltyRatio: null, noveltyExpected: null,
+      rActivity: 0.34, rNovelty: 0, hr: 62, hrRatio: null, temp: null, zActivity: -2.02, zHr: 0, rB: 0.34, rP: 0, rT: 0, healthScore: 86, level: "green",
+      hrCritical: false, tempCritical: false, trigger: true, armed: true, runStartMs: null,
+    }, rocky, deployed);
+    expect(rs[0]).toMatchObject({ code: "activity_low", value: 46.7, normalRange: [46.8, 58.9] });
+    expect(rs[0].message).toBe("El tiempo en movimiento (46.7 %) está por debajo de su rango habitual (46.8–58.9 %).");
+  });
+});
+
+describe("stable Health Score of dogs.status", () => {
+  // With «Todo normal» from 90, a fever alone (Health Score 80) is «Atención» at once.
+  const strict = { ...cfg, levels: { green: 90, amber: 60 } };
+  function feed(temps: number[], c = strict, start: EngineState = initialState()) {
+    let st = start;
+    return temps.map((temp, k) => {
+      const e = evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(70), temp, blockStartMs: 1_000_000 + k * 10_000 }, st, baseline, c, { alertId: `s${k}` });
+      st = e.state;
+      return e;
+    });
+  }
+
+  it("stays at its level through a minute of change and moves when the change lasts minutes", () => {
+    const brief = feed([...Array(6).fill(38.6), ...Array(6).fill(40.3), ...Array(6).fill(38.6)]);
+    expect(brief.slice(6, 12).every((e) => e.result.level === "amber")).toBe(true);
+    expect(brief.every((e) => e.result.stableLevel === "green")).toBe(true);
+    const long = feed([...Array(6).fill(38.6), ...Array(40).fill(40.3)]);
+    const turned = long.findIndex((e) => e.result.stableLevel === "amber");
+    // 100 → 80 with a 300 s time constant crosses 90 after 300 · ln 2 ≈ 208 s.
+    expect(turned).toBeGreaterThanOrEqual(6 + 20);
+    expect(turned).toBeLessThanOrEqual(6 + 22);
+    expect(long[turned].statusDue).toBe(true);
+    expect(long[turned].state.lastStableLevel).toBe("amber");
+    // The alert does not wait for the stable level: the temperature rule opens it in the first hot block.
+    expect(long[6].alert?.action).toBe("open");
+  });
+
+  it("follows the instantaneous score with a time constant of 0, and weighs a gap by the time that passed", () => {
+    const now = feed([38.6, 40.3], { ...strict, stableTimeConstantS: 0 });
+    expect(now[1].result.stableHealthScore).toBe(now[1].result.healthScore);
+    const before = feed(Array(3).fill(40.3))[2].state;
+    const back = evaluateBlock({ imu: imuBlock(false), hr: Array(10).fill(70), temp: 38.6, blockStartMs: 1_000_000 + 3 * 10_000 + 3_600_000 },
+      before, baseline, strict, { alertId: "g" });
+    expect(back.result.stableHealthScore).toBe(100);               // an hour later the old score weighs nothing
   });
 });

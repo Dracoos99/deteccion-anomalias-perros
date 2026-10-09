@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_MARKS, bulkDoneText, bulkUndoneText, clearedUntil, onList, type ClearMarks } from "../src/lib/bulkAlerts";
+import { NO_MARKS, UNDO_MS, bulkDoneText, bulkStorageKey, bulkUndoneText, clearedUntil, onList, restoreBulk, type ClearMarks } from "../src/lib/bulkAlerts";
 
 const T = Date.UTC(2026, 9, 3, 15, 0, 0);
 
@@ -38,5 +38,24 @@ describe("what the owner reads after a bulk action", () => {
     expect(bulkDoneText({ kind: "clear", reviewed: ["a"], mark: { dogId: "toby", previous: null } }, "Toby"))
       .toBe("Quitamos de la lista las alertas de Toby. La nueva quedó revisada.");
     expect(bulkUndoneText({ kind: "clear", reviewed: ["a"], mark })).toBe("Las alertas volvieron a la lista, como estaban.");
+  });
+});
+
+describe("«Deshacer» after leaving Alertas and coming back", () => {
+  const review = { change: { kind: "review" as const, reviewed: ["a", "b"] }, text: "Las 2 alertas nuevas quedaron revisadas.", at: T };
+  const clear = { change: { kind: "clear" as const, reviewed: [], mark: { dogId: "toby", previous: T - 3_600_000 } }, text: "Quitamos de la lista las alertas de Toby.", at: T };
+
+  it("brings back the last action of the person while its «Deshacer» lasts", () => {
+    expect(bulkStorageKey("lucia")).toBe("alerts-bulk:lucia");
+    expect(restoreBulk(JSON.stringify(review), T + 60_000)).toEqual(review);
+    expect(restoreBulk(JSON.stringify(clear), T + UNDO_MS - 1)).toEqual(clear);
+  });
+  it("forgets it once «Deshacer» expired, and anything that is not an action", () => {
+    expect(restoreBulk(JSON.stringify(review), T + UNDO_MS)).toBeNull();
+    expect(restoreBulk(null, T)).toBeNull();
+    expect(restoreBulk("{no es json", T)).toBeNull();
+    expect(restoreBulk(JSON.stringify({ ...review, change: { kind: "delete", reviewed: [] } }), T)).toBeNull();
+    expect(restoreBulk(JSON.stringify({ ...review, change: { kind: "review", reviewed: [] } }), T)).toBeNull();   // nothing to undo
+    expect(restoreBulk(JSON.stringify({ ...clear, change: { ...clear.change, mark: { dogId: 3, previous: null } } }), T)).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ calibrate novelty in phase 2. Values are stored raw; the per-dog z-score is appl
 
 Usage (from ml/):.venv/Scripts/python -m src.preprocess
 Outputs in data/processed/vehkaoja/neck/:
-  recordings/dogNNN_testT.parquet   t_sec, acc_*, gyr_*, label, saturated, task, behavior_1..3
+  recordings/dogNNN_testT.parquet   t_sec, acc_* gyr_* label, saturated, task, behavior_1..3
   recordings.parquet                one row per recording with its metadata and quality counts
   norm_stats.parquet                per-dog, per-channel mean and std for the z-score
 """

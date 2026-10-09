@@ -23,7 +23,7 @@ export interface PushResult { sent: number; failed: number; invalidTokens: strin
 
 export interface PushSender { send(tokens: string[], message: PushMessage): Promise<PushResult> }
 
-type AlertLike = Pick<AlertDoc, "dogId" | "dogName" | "severity" | "reasons" | "status">;
+type AlertLike = Pick<AlertDoc, "dogId" | "dogName" | "severity" | "reasons" | "status" | "titleCode">;
 type UserLike = Pick<UserDoc, "fcmTokens" | "notificationPrefs">;
 
 /** Who gets what, or why nothing is sent. Pure. */
@@ -36,7 +36,7 @@ export function planPush(alertId: string, alert: AlertLike, user: UserLike | nul
   if (prefs[severity] === false) return { skipped: "prefs" };
   const tokens = [...new Set(user.fcmTokens ?? [])];
   if (!tokens.length) return { skipped: "no_tokens" };
-  const { title, body } = pushText(alert.dogName, alert.reasons, kind);
+  const { title, body } = pushText(alert.dogName, alert.reasons, kind, alert.titleCode);
   return { tokens, message: { title, body, link: `${appUrl.replace(/\/$/, "")}/alertas/${alertId}`, alertId, dogId: alert.dogId, kind } };
 }
 

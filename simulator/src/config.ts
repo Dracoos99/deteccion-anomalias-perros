@@ -27,7 +27,7 @@ export const WINDOW_SECONDS = 2;
 export const IMU_CHANNELS = 6;
 export const MAX_DOGS_PER_RUN = 10;   //
 export const STATS_FLUSH_MS = 5000;
-export const READING_TTL_DAYS = 7;    //: TTL on readings.expireAt
+export const READING_TTL_DAYS = 7;    // TTL on readings.expireAt
 export const SCHEMA_VERSION = 1;
 
 /** Deterministic id of a block: retries write the same document instead of a duplicate (RNF-02). `block` counts 2 s

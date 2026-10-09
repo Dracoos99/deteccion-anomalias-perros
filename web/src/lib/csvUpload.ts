@@ -8,7 +8,7 @@ import { Timestamp, collection, doc, onSnapshot, serverTimestamp, setDoc } from 
 import { db } from "../firebase";
 import type { CsvCheck } from "./csv";
 
-const READING_TTL_MS = 7 * 86_400_000;     //: readings expire after 7 days
+const READING_TTL_MS = 7 * 86_400_000;     // readings expire after 7 days
 const FIRST_BLOCK_WAIT_MS = 90_000;        // the first block may meet a cold start of the Function with the models
 const BLOCK_WAIT_MS = 30_000;
 

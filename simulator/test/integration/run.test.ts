@@ -72,6 +72,8 @@ describe.skipIf(!hasData)("simulator end to end", () => {
     expect(result.prefilterFlags).not.toContain("activity_rules");
     const stats = (await db.doc(`simulatorRuns/${runId}`).get()).get("stats");
     expect(stats).toMatchObject({ blocksWritten: 12, resultsSeen: 12 });
+    // A run that reached its duration says so, so the panel shows «Terminada».
+    expect((await db.doc(`simulatorRuns/${runId}`).get()).get("endedBy")).toBe("duration");
     // Each dog's next block waits for the previous result, so the Function never sees them out of order.
     const flags = (await db.collection("results").where("sourceRef", "==", runId).get()).docs.flatMap((r) => r.get("prefilterFlags") as string[]);
     expect(flags.filter((f) => f === "out_of_order" || f.startsWith("gap"))).toEqual([]);

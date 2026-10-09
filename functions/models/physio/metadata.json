@@ -11,7 +11,7 @@
  "criticalQuantile": 0.999,
  "fullScaleRatio": 12.793,
  "trainingData": [
-  "Invoxia, PhysioZoo y 23 perros: 56 perros de entrenamiento, 12 de validación y 12 de prueba (solo FC normal)"
+  "Dataset público de frecuencia cardiaca (2023), PhysioZoo y 23 perros: 56 perros de entrenamiento, 12 de validación y 12 de prueba (solo FC normal)"
  ],
  "metrics": {
   "test_normal_flagged": 0.0501,

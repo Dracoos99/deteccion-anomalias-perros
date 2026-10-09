@@ -13,7 +13,7 @@ describe("planPush", () => {
     const plan = planPush("a1", alert, { fcmTokens: ["t1", "t2", "t1"] }, "new", APP);
     expect(plan).toEqual({
       tokens: ["t1", "t2"],
-      message: { title: "Toby: su frecuencia cardiaca estuvo alta", body: expect.stringContaining("patrón normal"),
+      message: { title: "Toby: su frecuencia cardiaca está alta", body: expect.stringContaining("patrón normal"),
         link: "https://example.web.app/alertas/a1", alertId: "a1", dogId: "toby", kind: "new" },
     });
   });
@@ -28,5 +28,12 @@ describe("planPush", () => {
     expect(planPush("a1", alert, { fcmTokens: [] }, "new", APP)).toEqual({ skipped: "no_tokens" });
     expect(planPush("a1", alert, {}, "new", APP)).toEqual({ skipped: "no_tokens" });
     expect(planPush("a1", alert, null, "new", APP)).toEqual({ skipped: "no_user" });
+  });
+  it("names the alert by the reason the engine fixed for it", () => {
+    const fever = { component: "temperature" as const, code: "temp_high", value: 39.6, normalRange: [37.7, 39.5] as [number, number], message: "" };
+    const both = { ...alert, reasons: [fever, ...alert.reasons] };
+    // Without titleCode, the largest deviation in band widths: 118 lpm against 65–75 lpm (4.3 widths) over 39.6 °C (0.06).
+    expect(planPush("a1", both, { fcmTokens: ["t1"] }, "new", APP)).toMatchObject({ message: { title: "Toby: su frecuencia cardiaca está alta" } });
+    expect(planPush("a1", { ...both, titleCode: "temp_high" }, { fcmTokens: ["t1"] }, "escalated", APP)).toMatchObject({ message: { title: "Toby: su temperatura está alta" } });
   });
 });

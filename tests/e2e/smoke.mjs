@@ -193,7 +193,8 @@ try {
     && vetText.includes("Sin diagnóstico") && vetText.includes("Descargar PDF"));
   await spaGo("/");
   await page.waitForSelector(".dog-card", { timeout: 10000 }).catch(() => {});
-  check("the new dog appears on Inicio with a plain phrase", (await text()).includes("Mora Luna") && (await text()).includes("Todavía no hay datos."));
+  // A dog without data says it once, in its well.
+  check("the new dog appears on Inicio with a plain phrase", (await text()).includes("Mora Luna") && (await text()).includes("Sus datos aparecerán cuando lleguen sus primeras lecturas"));
 
   // 7b. Phase 5: first-use guide, CSV upload of the example file, and the notifications section.
   check("Inicio guides the owner to load the dog's data (screen 9)", (await text()).includes("Conecta sus datos") && !!(await page.$("a[href^='/perfil/datos']")));
@@ -208,7 +209,8 @@ try {
   check("the example file is checked: problems listed, 4 blocks", checkText.includes("Revisión de ejemplo_60s.csv") && checkText.includes("se crearán 4 bloques de 10 s")
     && checkText.includes("Fila 2712") && checkText.includes("cortes"));
   await shot("07-carga-csv-revision-1440");
-  await clickText("button", "Confirmar y cargar 4 bloques");
+  // The button names the dog the data go to.
+  await clickText("button", "Cargar 4 bloques para Mora Luna");
   const analysed = await page.waitForFunction(() => document.body.innerText.includes("Listo: 4 bloques analizados"), { timeout: 180000 }).then(() => true, () => false);
   check("the 4 blocks are written in order and scored by the Function", analysed, analysed ? "" : (await text()).replace(/\s+/g, " ").slice(0, 600));
   await shot("07b-carga-csv-lista-1440");

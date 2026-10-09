@@ -19,7 +19,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage").then((m) => ({ defa
 const VetView = lazy(() => import("./pages/VetView").then((m) => ({ default: m.VetView })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((m) => ({ default: m.SimulatorPage })));
 const ConfigPage = lazy(() => import("./pages/ConfigPage").then((m) => ({ default: m.ConfigPage })));
-const page = (el: ReactNode) => <Suspense fallback={<PageLoading />}>{el}</Suspense>;
+const page = (el: ReactNode, shape?: "detail" | "sheet") => <Suspense fallback={<PageLoading shape={shape} />}>{el}</Suspense>;
 const adminPage = (el: ReactNode) => <RequireAdmin>{page(el)}</RequireAdmin>;
 
 function NotFound() {
@@ -46,9 +46,9 @@ export function App() {
             <Route path="/alertas" element={page(<AlertsPage />)} />
             <Route path="/alertas/:alertId" element={page(<AlertDetail />)} />
             <Route path="/perros/nuevo" element={page(<DogForm />)} />
-            <Route path="/perros/:dogId" element={page(<DogDetail />)} />
+            <Route path="/perros/:dogId" element={page(<DogDetail />, "detail")} />
             <Route path="/perros/:dogId/editar" element={page(<DogForm />)} />
-            <Route path="/perros/:dogId/veterinario" element={page(<VetView />)} />
+            <Route path="/perros/:dogId/veterinario" element={page(<VetView />, "sheet")} />
             <Route path="/perfil" element={page(<ProfilePage />)} />
             <Route path="/perfil/datos" element={page(<CsvUploadPage />)} />
             <Route path="/admin" element={adminPage(<SimulatorPage />)} />

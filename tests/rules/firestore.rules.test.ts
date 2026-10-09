@@ -1,12 +1,14 @@
 // Security rules tests (run with: npm run test:rules). Cover the access matrix,,
-// (owners and a script-assigned admin; no vet role), (CSV uploads, notification tokens)
-// (clearing the Alertas list and undoing a review).
+// (owners and a script-assigned admin; no vet role), (CSV uploads, notification tokens),
+// (clearing the Alertas list and undoing a review) (archiving a dog).
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 import {
   assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { Timestamp, deleteDoc, deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import {
+  Timestamp, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where,
+} from "firebase/firestore";
 
 let env: RulesTestEnvironment;
 const owner = () => env.authenticatedContext("owner1", { role: "owner" }).firestore();
@@ -76,6 +78,17 @@ describe("dogs", () => {
   it("only the owner (or admin) deletes", async () => {
     await assertFails(deleteDoc(doc(otherOwner(), "dogs/dog1")));
     await assertSucceeds(deleteDoc(doc(owner(), "dogs/dog1")));
+  });
+  it("the owner archives its dog («Quitar perro») and brings it back; nobody else can", async () => {
+    await assertFails(updateDoc(doc(otherOwner(), "dogs/dog1"), { active: false }));
+    await assertFails(updateDoc(doc(owner(), "dogs/dog1"), { active: "no" }));
+    await assertFails(updateDoc(doc(owner(), "dogs/dog1"), { active: false, status: { healthScore: 100 } }));
+    await assertSucceeds(updateDoc(doc(owner(), "dogs/dog1"), { active: false, updatedAt: serverTimestamp() }));
+    // The owner's lists ask only for its active dogs; the archived dog and its alerts stay readable (history, vet view).
+    await assertSucceeds(getDocs(query(collection(owner(), "dogs"), where("ownerId", "==", "owner1"), where("active", "==", true))));
+    await assertSucceeds(getDoc(doc(owner(), "dogs/dog1")));
+    await assertSucceeds(getDoc(doc(owner(), "alerts/a1")));
+    await assertSucceeds(updateDoc(doc(owner(), "dogs/dog1"), { active: true, updatedAt: serverTimestamp() }));
   });
 });
 

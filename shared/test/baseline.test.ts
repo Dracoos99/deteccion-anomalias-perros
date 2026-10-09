@@ -82,7 +82,7 @@ describe("push text", () => {
   it("names the dog and the variable in plain language, without alarm", () => {
     const reasons = [{ component: "temperature" as const, code: "temp_high", value: 40.1, normalRange: [37.7, 39.5] as [number, number], message: "" }];
     expect(pushText("Toby", reasons, "new")).toEqual({
-      title: "Toby: su temperatura estuvo alta",
+      title: "Toby: su temperatura está alta",
       body: "Se alejó de su patrón normal. Abre la app para ver qué pasó y qué puedes hacer.",
     });
     expect(pushText("Luna", [], "escalated").body).toContain("«Revisar»");

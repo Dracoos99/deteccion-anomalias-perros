@@ -14,6 +14,13 @@ describe("sectionOf", () => {
     expect(sectionOf("/perros/rocky/editar")).toBe("/perfil");
   });
 
+  it("keeps Inicio marked for the dog form and the upload opened from the first-use guide", () => {
+    expect(sectionOf("/perros/nuevo", "?desde=inicio")).toBe("/");
+    expect(sectionOf("/perfil/datos", "?perro=nina&desde=inicio")).toBe("/");
+    expect(sectionOf("/perfil/datos", "?perro=nina")).toBe("/perfil");
+    expect(sectionOf("/perros/rocky/editar", "?desde=inicio")).toBe("/perfil");
+  });
+
   it("marks no section for the research tools or unknown pages", () => {
     expect(sectionOf("/admin")).toBeNull();
     expect(sectionOf("/admin/configuracion")).toBeNull();

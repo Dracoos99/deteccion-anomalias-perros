@@ -57,7 +57,7 @@ HR_OUT = PROCESSED_DIR / "hr"
 HR_RR_RANGE_S = (60 / 300, 60 / 20)  # prefilter: 20-300 bpm
 HR_WINDOW_S = 5.0                    # centred window for 60 / mean(R-R)
 HR_MIN_INTERVALS = 3
-HR_SEQUENCE_S = 60                   #: 60 s sequences for the autoencoder
+HR_SEQUENCE_S = 60                   # 60 s sequences for the autoencoder
 HR_SEQUENCE_HOP_S = 10
 # --- Physiological model ---------------------------------------------------------------
 AAA4_DIR = RAW_DIR / "aaa4dogs" / "Repository" / "Repository"   # Shimamura et al. (2026): 4 dogs, activity study

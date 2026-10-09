@@ -38,9 +38,11 @@ function authErrorText(e: unknown, mode: Mode): string {
 export function AuthBrand() {
   return (
     <section className="auth-brand" aria-label="Presentación">
-      <div className="kicker">Proyecto de tesis · UPC</div>
-      <h1 className="auth-title">Detección temprana de anomalías en perros</h1>
-      <p className="auth-lead">Sigue la actividad, la frecuencia cardiaca y la temperatura de tus perros, y recibe un aviso cuando algo se aleje de su patrón normal.</p>
+      <p className="brand-line">Proyecto de tesis · UPC</p>
+      <div className="auth-intro">
+        <h1 className="auth-title">Detección temprana de anomalías en perros</h1>
+        <p className="auth-lead">Sigue la actividad, la frecuencia cardiaca y la temperatura de tus perros, y recibe un aviso cuando algo se aleje de su patrón normal.</p>
+      </div>
       <ul className="auth-points">
         <li><Icon name="check-circle" size={16} /><span>Un estado claro para cada perro: <strong>Todo normal</strong>, <strong>Atención</strong> o <strong>Revisar</strong>.</span></li>
         <li><Icon name="info" size={16} /><span>Cada alerta explica qué cambió y qué puedes hacer.</span></li>
@@ -146,9 +148,10 @@ export function AuthPage({ mode }: { mode: Mode }) {
                 <input id="a-email" className="input" type="email" autoComplete="email" aria-required="true" value={f.email} onChange={set("email")} {...inv("email")} />{err("email")}</div>
               {mode !== "recuperar" && (
                 <div className="field"><label htmlFor="a-pass">Contraseña</label>
+                  {/* One message about the length: the hint, or the error in its place. */}
                   <input id="a-pass" className="input" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    aria-required="true" value={f.password} onChange={set("password")} {...inv("password", mode === "registro" ? "a-password-hint" : undefined)} />
-                  {mode === "registro" && <div className="field-hint" id="a-password-hint">Al menos 8 caracteres.</div>}{err("password")}</div>
+                    aria-required="true" value={f.password} onChange={set("password")} {...inv("password", mode === "registro" && !shown("password") ? "a-password-hint" : undefined)} />
+                  {mode === "registro" && !shown("password") && <div className="field-hint" id="a-password-hint">Usa al menos 8 caracteres.</div>}{err("password")}</div>
               )}
               {mode === "registro" && (
                 <div><label className="check"><input type="checkbox" checked={f.consent} onChange={set("consent")} {...inv("consent")} />
@@ -162,15 +165,15 @@ export function AuthPage({ mode }: { mode: Mode }) {
             </form>
             <Notice />
             {usingEmulators && mode === "login" && (
-              <div className="well" style={{ marginTop: 20 }}>
-                <div className="kicker" style={{ marginBottom: 8 }}>Emuladores · cuentas de demostración</div>
+              <div className="well auth-demo">
+                <div className="kicker">Emuladores · cuentas de demostración</div>
                 <div className="row">
                   {DEMO_ACCOUNTS.map((a) => (
                     <button key={a.email} className="btn btn-secondary btn-sm" type="button"
                       onClick={() => setF({ ...f, email: a.email, password: DEMO_PASSWORD })}>{a.label}</button>
                   ))}
                 </div>
-                <p className="xs muted" style={{ margin: "8px 0 0" }}>Completa el formulario con una cuenta creada por <code>npm run emulators:seed</code>.</p>
+                <p className="xs muted">Completa el formulario con una cuenta creada por <code>npm run emulators:seed</code>.</p>
               </div>
             )}
           </div>

@@ -1,10 +1,10 @@
 /* Shared UI ported from the v2 prototype, with the look of the v3 mockups
 . Styles live in styles/app.css. */
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { FusionConfig, Level } from "@shared/types";
 import { usingEmulators } from "../firebase";
 import { freshness as freshnessOf, shownDataMs, type Freshness } from "../lib/live";
-import { glueTime, whenPhrase } from "../lib/plain";
+import { LEARNING_TEXT, glueTime, steadyScore, whenPhrase, type Steady } from "../lib/plain";
 
 /* Line icons on a 24 px grid, 2 px stroke: the set of the v3 mockups, plus a few more for the research tools. */
 const ICONS: Record<string, ReactNode> = {
@@ -97,17 +97,41 @@ type Millis = { toMillis?: () => number } | null | undefined;
 
 /** How current a dog's state is, refreshed every 5 s: live, recent or stale (old data are not its current state), and
  * the time to show the owner. */
-export function useFreshness(status: { lastBlockAt?: Millis; updatedAt?: Millis } | null | undefined): { freshness: Freshness | null; shownMs: number | null } {
+export function useFreshness(status: { lastBlockAt?: Millis; updatedAt?: Millis; lastSource?: "simulator" | "csv" } | null | undefined): { freshness: Freshness | null; shownMs: number | null } {
   const now = useNow(5000);
   if (!status) return { freshness: null, shownMs: null };
   const dataMs = status.lastBlockAt?.toMillis?.() ?? null, receivedMs = status.updatedAt?.toMillis?.() ?? null;
-  return { freshness: freshnessOf(dataMs, receivedMs, now), shownMs: shownDataMs(dataMs, receivedMs) };
+  return { freshness: freshnessOf(dataMs, receivedMs, now, status.lastSource), shownMs: shownDataMs(dataMs, receivedMs) };
 }
 
-/** "Actualizado hace 12 s · En vivo", or, for old data, "Últimos datos: el 1 oct. 2026, 5:43 p. m.". */
+/** Whether the browser is online, kept up to date. The «Sin conexión» banner and the time of each dog's data read the
+ * same state. */
+export function useOnline(): boolean {
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const up = () => setOnline(true), down = () => setOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []);
+  return online;
+}
+
+/** "Actualizado hace 12 s · En vivo", or, for old data, "Últimos datos: el 1 oct. 2026, 5:43 p. m.". Offline, never
+ * «En vivo»: "Sin conexión · último dato hace 28 s", like the banner at the top. */
 export function DataTime({ freshness, shownMs }: { freshness: Freshness; shownMs: number | null }) {
-  if (freshness === "stale") return <>Últimos datos: {shownMs != null ? whenPhrase(shownMs) : "—"}</>;
+  const online = useOnline();
+  if (freshness === "stale") return <>Últimos datos: {shownMs != null ? whenPhrase(shownMs) : "sin dato"}</>;
+  if (!online) return <>Sin conexión · último dato <Ago t={shownMs != null ? new Date(shownMs) : null} /></>;
   return <>Actualizado <Ago t={shownMs != null ? new Date(shownMs) : null} />{freshness === "live" && <LiveBadge />}</>;
+}
+
+/** The Health Score a screen shows, held while the stable score drifts by a point or two
+ * (lib/plain.ts, steadyScore). */
+export function useSteadyScore(score: number | null, levels: FusionConfig["levels"]): number | null {
+  const held = useRef<Steady | null>(null);
+  held.current = steadyScore(held.current, score, Date.now(), levels);
+  return held.current?.score ?? null;
 }
 
 export function fmtAgo(t: Date | null | undefined, now = Date.now()): string {
@@ -139,13 +163,13 @@ export function HealthGauge({ score, level, levels, size = 150 }: { score: numbe
   const label = score == null || !L ? "Health Score sin datos" : `Health Score ${score} de 100: ${L.text}`;
   // A three-digit score (100) gets a smaller figure so it stays inside the arc.
   const k = score != null && score >= 100 ? 0.235 : 0.285;
-  // The cut numbers are only legible on a large gauge (10 px rendered); smaller ones keep the white cut marks.
-  const labelPx = size >= 120 ? (10 * 132) / size : null;
+  // The cut numbers are only legible on a large gauge (12 px rendered); smaller ones keep the white cut marks.
+  const labelPx = size >= 120 ? (12 * 132) / size : null;
   return (
     <div className="gauge" style={{ width: size, maxWidth: "100%", containerType: "inline-size" }} role="img" aria-label={label}>
       <svg viewBox="-6 -4 132 106">
         <path d={arcPath(cx, cy, r, A0, A0 + SWEEP)} fill="none" stroke={L ? L.bg : "var(--color-surface)"} strokeWidth="11" />
-        {score != null && L && <path d={arcPath(cx, cy, r, A0, Math.max(A0 + 0.5, valA))} fill="none" stroke={L.color} strokeWidth="11" />}
+        {score != null && L && <path className="gauge-arc" d={arcPath(cx, cy, r, A0, Math.max(A0 + 0.5, valA))} fill="none" stroke={L.color} strokeWidth="11" />}
         {cuts.map((v) => { const a = A0 + (SWEEP * v) / 100; const [x0, y0] = polar(cx, cy, r - 8, a), [x1, y1] = polar(cx, cy, r + 8, a); return <line key={v} className="gauge-cut" x1={x0} y1={y0} x2={x1} y2={y1} />; })}
         {labelPx != null && cuts.map((v) => {
           const a = A0 + (SWEEP * v) / 100; const [x, y] = polar(cx, cy, r + 13, a);
@@ -162,13 +186,7 @@ export function HealthGauge({ score, level, levels, size = 150 }: { score: numbe
 
 /** "Sin conexión": Firestore keeps the last data and syncs when the connection returns. */
 export function OfflineBanner() {
-  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
-  useEffect(() => {
-    const up = () => setOnline(true), down = () => setOnline(false);
-    window.addEventListener("online", up);
-    window.addEventListener("offline", down);
-    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
-  }, []);
+  const online = useOnline();
   if (online) return null;
   return (
     <div className="offline" role="status"><div className="offline-inner">
@@ -198,10 +216,39 @@ export function Callout({ kind, children }: { kind: "error" | "ok"; children: Re
   );
 }
 
-/** Level of the Health Score: always color + icon + text, never color alone. */
-export function LevelTag({ level, iconSize = 14 }: { level: Level | null | undefined; iconSize?: number }) {
+/** Level of the Health Score: always color + icon + text, never color alone. `prefix` names which level it is
+ *. */
+export function LevelTag({ level, iconSize = 14, prefix }: { level: Level | null | undefined; iconSize?: number; prefix?: string }) {
   if (!level) return <span className="tag tag-outline"><Icon name="clock" size={iconSize} />Sin datos</span>;
-  return <span className={`tag tag-${level}`}><Icon name={LEVELS[level].icon} size={iconSize} />{LEVELS[level].text}</span>;
+  return <span className={`tag tag-${level}`}><Icon name={LEVELS[level].icon} size={iconSize} />{prefix ? `${prefix}: ` : ""}{LEVELS[level].text}</span>;
+}
+
+/** The state of a dog on Inicio and in its detail: «Sin datos recientes» for old data, the neutral «Aprendiendo su
+ * patrón normal» while it has no normal pattern, otherwise its level. */
+export function StateTag({ level, learning = false, stale = false, iconSize = 14 }: { level: Level | null | undefined; learning?: boolean; stale?: boolean; iconSize?: number }) {
+  if (stale) return <span className="tag tag-outline"><Icon name="clock" size={iconSize} />Sin datos recientes</span>;
+  if (learning) return <span className="tag tag-outline"><Icon name="info" size={iconSize} />{LEARNING_TEXT}</span>;
+  return <LevelTag level={level} iconSize={iconSize} />;
+}
+
+/** The Health Score as secondary data: the figure, «de 100» and its name, on a quiet well. The `glass`
+ * variant is the large one of the protagonist (the dog's state, the featured card of Inicio, the summary band): the
+ * figure over a hairline with its explanation under it, on a translucent pane, as in the PO's references 04 and 05. */
+export function ScoreTile({ score, variant = "quiet", name = "Health Score", average = null }: { score: number | null; variant?: "quiet" | "glass"; name?: string; average?: number | null }) {
+  return (
+    <p className={variant === "glass" ? "score-tile score-tile-glass" : "score-tile"}>
+      <span className="score-name">{name}</span>
+      <span className="score-value">{score ?? "—"}</span>
+      <span className="score-of">de 100</span>
+      {/* Which number it is, inside the pane: the average of the last minutes (the one the state uses), not the «ahora». */}
+      {variant === "glass" && average != null && average > 0 && <span className="score-avg">promedio de {average} min</span>}
+    </p>
+  );
+}
+
+/** The minutes of the stable Health Score (config/fusion.stableTimeConstantS, 300 s by default), for the label of its pane. */
+export function averageMinutes(cfg: Pick<FusionConfig, "stableTimeConstantS">): number {
+  return Math.round((cfg.stableTimeConstantS ?? 300) / 60);
 }
 
 /** Fixed notice required wherever the Health Score appears: a quiet line between two rules. */
@@ -216,12 +263,15 @@ export function Notice() {
   );
 }
 
-export function PageHead({ kicker, title, sub, actions }: { kicker?: string; title: string; sub?: string; actions?: ReactNode }) {
+/** The head of a page: the title in display type, what the page is about under it (`kicker`: the dog of an alert, the
+ * research tools; with its icon) and a line of explanation. Never a label above the title. `hero` is the title
+ * of a page whose protagonist is the screen itself (Alertas, Perfil, Cargar datos): the scale of the PO's references. */
+export function PageHead({ kicker, kickerIcon, title, sub, actions, hero = false }: { kicker?: string; kickerIcon?: string; title: string; sub?: string; actions?: ReactNode; hero?: boolean }) {
   return (
-    <div className="page-head">
+    <div className={hero ? "page-head page-head-hero" : "page-head"}>
       <div className="page-head-main">
-        {kicker && <div className="kicker">{kicker}</div>}
         <h1 className="page-title">{title}</h1>
+        {kicker && <p className="page-meta">{kickerIcon && <Icon name={kickerIcon} size={16} />}{kicker}</p>}
         {sub && <p className="page-sub">{sub}</p>}
       </div>
       {actions && <div className="row">{actions}</div>}
@@ -250,17 +300,73 @@ export function Skeleton({ lines = [40, 60, 100], className }: { lines?: number[
   );
 }
 
-/** A whole page while its first snapshot arrives: the frame (main, title) with placeholder panels, not a blank screen. */
-export function PageLoading({ title, text = "Cargando…", className }: { title?: string; text?: string; className?: string }) {
+/** A whole page while its first snapshot arrives: the frame (main, title) with placeholders, not a blank screen. With
+ * `shape="detail"` the placeholders have the shape of the dog's page (title, state card, controls, chart), and with
+ * `shape="sheet"` that of the Vista para el veterinario (title and a sheet), so the page does not jump when it arrives. */
+export function PageLoading({ title, text = "Cargando…", className, shape }: { title?: string; text?: string; className?: string; shape?: "detail" | "sheet" }) {
   return (
     <main className={className ? `page ${className}` : "page"} id="main" aria-busy="true">
       {title && <PageHead title={title} />}
-      <div className="stack">
-        <p className="small muted">{text}</p>
-        <Skeleton />
-        <Skeleton lines={[35, 50, 100]} />
-      </div>
+      {shape === "detail" ? (
+        <div className="loading-shape">
+          <p className="small muted">{text}</p>
+          <div className="skeleton skeleton-title" aria-hidden="true" />
+          <div className="skeleton skeleton-hero" aria-hidden="true" />
+          <div className="skeleton skeleton-tabs" aria-hidden="true" />
+          <div className="skeleton skeleton-chart" aria-hidden="true" />
+        </div>
+      ) : shape === "sheet" ? (
+        <div className="loading-shape">
+          <p className="small muted">{text}</p>
+          <div className="skeleton skeleton-title" aria-hidden="true" />
+          <div className="skeleton skeleton-sheet" aria-hidden="true" />
+        </div>
+      ) : (
+        <div className="stack">
+          <p className="small muted">{text}</p>
+          {!title && <div className="skeleton skeleton-title" aria-hidden="true" />}
+          <Skeleton />
+          <Skeleton lines={[35, 50, 100]} />
+        </div>
+      )}
     </main>
+  );
+}
+
+/** The cold start: from the first frame, before the account is known, the frame of the app
+ * (the dark side column or tab bar, a title and placeholder cards), so the screen never reads as broken. The same markup
+ * is in web/index.html, shown before any script runs: keep the two in step. The account is unknown here, so it does not
+ * say whose page it is; the pages that load after it have their own placeholders (PageLoading). */
+export function BootFrame() {
+  return (
+    <div className="boot" role="status" aria-busy="true">
+      <div className="shell">
+        <aside className="sidebar" aria-hidden="true">
+          <div className="sidebar-brand">
+            <span className="brand-title">Detección de anomalías en perros</span>
+            <div className="brand-kicker">Proyecto de tesis · UPC</div>
+          </div>
+          <div className="sidebar-nav"><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /></div>
+        </aside>
+        <div className="shell-main">
+          <header className="masthead" aria-hidden="true">
+            <div className="masthead-inner"><div className="brand"><span className="brand-title">Detección de anomalías en perros</span></div></div>
+            <div className="nav"><div className="nav-inner"><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /></div></div>
+          </header>
+          <div className="page-content">
+            <div className="page">
+              <div className="stack">
+                <p className="small muted">Cargando…</p>
+                <div className="skeleton skeleton-title" aria-hidden="true" />
+                <div className="panel stack-sm" aria-hidden="true"><div className="skeleton" style={{ height: 14, width: "40%" }} /><div className="skeleton" style={{ height: 22, width: "60%" }} /><div className="skeleton" style={{ height: 56, width: "100%" }} /></div>
+                <div className="panel stack-sm" aria-hidden="true"><div className="skeleton" style={{ height: 14, width: "35%" }} /><div className="skeleton" style={{ height: 22, width: "50%" }} /><div className="skeleton" style={{ height: 56, width: "100%" }} /></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="tabbar" aria-hidden="true"><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /></div>
+    </div>
   );
 }
 

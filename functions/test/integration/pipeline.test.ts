@@ -65,6 +65,18 @@ describe("processReading", () => {
     expect(status).toMatchObject({ level: "green", lastBehavior: null, lastTemp: 38.6, openAlerts: 0 });
   });
 
+  it("writes the stable Health Score, its level and the source of the block in dogs.status", async () => {
+    await db.doc("config/fusion").set({ ...DEFAULT_FUSION_CONFIG, levels: { green: 90, amber: 60 }, updatedBy: "test", updatedAt: Timestamp.now() });
+    resetConfigCache();
+    await processReading(db, "b0", reading(0));
+    // A fever alone scores 80: «Atención» at once with «Todo normal» from 90, but the stable level waits.
+    await processReading(db, "b1", reading(1, { temp: 40.3, source: "csv", sourceRef: "up1" }));
+    const status = (await db.doc("dogs/toby").get()).get("status");
+    expect(status).toMatchObject({ healthScore: 80, level: "amber", stableLevel: "green", lastSource: "csv" });
+    expect(status.stableHealthScore).toBeGreaterThan(90);
+    expect((await db.doc("dogState/toby").get()).get("stableScore")).toBeGreaterThan(90);
+  });
+
   it("is idempotent: a retried delivery writes nothing twice (RNF-02)", async () => {
     expect(await processReading(db, "b0", reading(0))).toBe("written");
     const first = (await db.doc("results/b0").get()).get("createdAt");
@@ -92,7 +104,7 @@ describe("processReading", () => {
     const a = alerts.docs[0];
     expect(a.id).toBe("b0");
     expect(a.data()).toMatchObject({ dogId: "toby", dogName: "Toby", ownerId: "lucia", status: "open",
-      severity: "amber", provisional: true, resultId: "b0" });
+      severity: "amber", provisional: true, resultId: "b0", titleCode: "temp_high" });
     expect(a.get("reasons")[0]).toMatchObject({ component: "temperature", code: "temp_high", value: 40.3 });
     expect(await countOpenAlerts(db, "toby")).toBe(1);
     expect((await db.doc("dogs/toby").get()).get("status.openAlerts")).toBe(1);
@@ -308,7 +320,7 @@ describe("phase 5", () => {
     const reasons = [{ component: "temperature", code: "temp_high", value: 40.2, normalRange: [37.7, 39.5], message: "" }];
     await db.doc("alerts/a1").set({ dogId: "toby", ownerId: "lucia", dogName: "Toby", severity: "amber", status: "open", reasons, notified: false });
     const sent: string[][] = [];
-    const sender: PushSender = { send: async (tokens, m) => { sent.push(tokens); expect(m.title).toBe("Toby: su temperatura estuvo alta"); return { sent: 1, failed: 1, invalidTokens: ["gone"] }; } };
+    const sender: PushSender = { send: async (tokens, m) => { sent.push(tokens); expect(m.title).toBe("Toby: su temperatura está alta"); return { sent: 1, failed: 1, invalidTokens: ["gone"] }; } };
     expect(await notifyAlert(db, "a1", "new", sender, "https://x.web.app")).toEqual({ sent: 1, failed: 1, skipped: null });
     expect(await notifyAlert(db, "a1", "new", sender, "https://x.web.app")).toBeNull();
     expect(sent).toEqual([["good", "gone"]]);

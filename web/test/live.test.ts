@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STALE_AFTER_MS, freshness, isLive, isLiveBlock, liveSeries, shownDataMs, type LiveBlock } from "../src/lib/live";
+import { STALE_AFTER_MS, aheadOfClock, freshness, isLive, isLiveBlock, liveSeries, shownDataMs, simulatedTime, type LiveBlock } from "../src/lib/live";
 
 const T0 = Date.UTC(2026, 9, 1, 10, 0, 0);
 const block = (k: number, over: Partial<LiveBlock> = {}): LiveBlock => ({
@@ -68,12 +68,31 @@ describe("freshness of a dog's state", () => {
   it("is stale for data measured long ago, even if they were just loaded", () => {
     expect(freshness(now - 86_400_000, now - 5_000, now)).toBe("stale");
     expect(freshness(now - STALE_AFTER_MS - 1, now - STALE_AFTER_MS - 1, now)).toBe("stale");
-    expect(freshness(now - 10 * 60_000, now - 10 * 60_000, now)).toBe("recent");
+    expect(freshness(now - 5 * 60_000, now - 5 * 60_000, now)).toBe("recent");
+    // Ten minutes without data is no longer the current state (it was 30).
+    expect(STALE_AFTER_MS).toBe(10 * 60_000);
+    expect(freshness(now - 11 * 60_000, now - 11 * 60_000, now)).toBe("stale");
     expect(freshness(null, null, now)).toBe("stale");
   });
   it("shows the time of the data, never later than when they arrived", () => {
     expect(shownDataMs(now - 86_400_000, now)).toBe(now - 86_400_000);
     expect(shownDataMs(now + 3_600_000, now - 1_000)).toBe(now - 1_000);
     expect(shownDataMs(null, now)).toBe(now);
+  });
+  it("is never live for a CSV upload, even one that ends now", () => {
+    expect(freshness(now - 4_000, now - 2_000, now, "csv")).toBe("recent");
+    expect(freshness(now - 4_000, now - 2_000, now, "simulator")).toBe("live");
+  });
+  it("says data ahead of the clock are simulated time", () => {
+    expect(aheadOfClock(now + 3_600_000, now)).toBe(true);
+    expect(aheadOfClock(now + 30_000, now)).toBe(false);
+    expect(aheadOfClock(null, now)).toBe(false);
+  });
+  it("keeps calling data written ahead of their write time simulated once the clock caught up", () => {
+    // A ×10 run that stopped 40 minutes ago: its last block is dated 20 minutes ago, but it was written 40 minutes ago.
+    expect(simulatedTime(now - 20 * 60_000, now - 40 * 60_000, now)).toBe(true);
+    expect(simulatedTime(now - 40 * 60_000, now - 40 * 60_000 + 2_000, now)).toBe(false);
+    expect(simulatedTime(now + 3_600_000, null, now)).toBe(true);
+    expect(simulatedTime(null, now, now)).toBe(false);
   });
 });

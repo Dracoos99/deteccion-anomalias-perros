@@ -43,7 +43,8 @@ service cloud.firestore {
           && d.active is bool;
       }
       allow read: if canReadDogData(resource.data);
-      // Owners manage their dogs except ownerId, status and baseline (written by Functions).
+      // Owners manage their dogs except ownerId, status and baseline (written by Functions). «Quitar perro»
+      // archives a dog (active: false) instead of deleting it; the app lists only active dogs.
       allow create: if isAdmin()
         || (isOwner() && validDog(request.resource.data)
             && request.resource.data.ownerId == request.auth.uid

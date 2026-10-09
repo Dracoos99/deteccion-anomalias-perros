@@ -50,6 +50,32 @@ export function bulkDoneText(change: BulkChange, dogName?: string | null): strin
   return (dogName ? `Quitamos de la lista las alertas de ${dogName}.` : "Quitamos las alertas de la lista.") + reviewed;
 }
 
+/** The last bulk action, kept in sessionStorage while its «Deshacer» lasts, so it survives
+ * leaving Alertas and coming back (the person who marked everything by mistake often notices it on Inicio). */
+export interface StoredBulk { change: BulkChange; text: string; at: number }
+
+/** The sessionStorage key of a person's last bulk action. */
+export const bulkStorageKey = (uid: string) => `alerts-bulk:${uid}`;
+
+const isStringArray = (x: unknown): x is string[] => Array.isArray(x) && x.every((v) => typeof v === "string");
+
+/** The stored action back, if it is well formed, it changed something and its «Deshacer» has not expired; else null
+ * (the caller then clears the key). */
+export function restoreBulk(raw: string | null, now: number): StoredBulk | null {
+  if (!raw) return null;
+  let v: unknown;
+  try { v = JSON.parse(raw); } catch { return null; }
+  if (!v || typeof v !== "object") return null;
+  const { change, text, at } = v as Partial<StoredBulk>;
+  if (typeof at !== "number" || typeof text !== "string" || !change || (change.kind !== "review" && change.kind !== "clear")) return null;
+  if (!isStringArray(change.reviewed)) return null;
+  const mark = change.mark;
+  if (mark != null && (typeof mark !== "object" || (mark.dogId !== null && typeof mark.dogId !== "string") || (mark.previous !== null && typeof mark.previous !== "number"))) return null;
+  if (!change.reviewed.length && !mark) return null;
+  if (now - at >= UNDO_MS || at - now > 60_000) return null;
+  return { change: { kind: change.kind, reviewed: change.reviewed, ...(mark ? { mark } : {}) }, text, at };
+}
+
 /** What the owner reads after «Deshacer». */
 export function bulkUndoneText(change: BulkChange): string {
   const k = change.reviewed.length;

@@ -134,7 +134,7 @@ export class SimulatorRun {
       const dog = dogSnap.data() as DogDoc<Timestamp>;
       const imuSrc = dog.source?.imu, hrSrc = dog.source?.hr;
       if (!imuSrc?.subjectId || !IMU_DATASETS.includes(imuSrc.datasetId!)) throw new Error(`${dog.name}: source.imu debe apuntar a un sujeto de Vehkaoja.`);
-      if (!hrSrc?.subjectId || !HR_DATASETS.includes(hrSrc.datasetId!)) throw new Error(`${dog.name}: source.hr debe apuntar a Invoxia, PhysioZoo o los 23 perros.`);
+      if (!hrSrc?.subjectId || !HR_DATASETS.includes(hrSrc.datasetId!)) throw new Error(`${dog.name}: source.hr debe apuntar al dataset público de frecuencia cardiaca (2023), a PhysioZoo o a los 23 perros.`);
       const imu = loadImu(imuSrc.datasetId!, imuSrc.subjectId, this.opts.dataDir);
       const hr = loadHr(hrSrc.datasetId!, hrSrc.subjectId, this.opts.dataDir);
       const stream = new DogStream(dogId, imu, hr.values, { hrBreaks: hr.breaks });
@@ -245,7 +245,8 @@ export class SimulatorRun {
     if (this.state === "running") {
       await Promise.all([...this.dogs.entries()].map(([id, d]) => this.writeBlock(id, d)));
       if (this.durationS != null && [...this.dogs.values()].every((d) => d.next * BLOCK_SECONDS >= this.durationS!)) {
-        await this.ref.update({ state: "stopped" });
+        // The panel says «Terminada» for a run that reached its duration, «Detenida» otherwise.
+        await this.ref.update({ state: "stopped", endedBy: "duration" });
         return this.finish("se cumplió la duración");
       }
     }

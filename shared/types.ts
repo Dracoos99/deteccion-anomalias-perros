@@ -71,6 +71,13 @@ export interface DogStatus<T = unknown> {
   lastBlockAt?: T;
   /** Progress of the baseline being learned, or null. */
   baselineProgress?: BaselineProgress | null;
+  /** Exponential average of the Health Score with config/fusion.stableTimeConstantS (5 minutes by default) and
+   * its level. Inicio and the dog's seal show these, so a dog that plays for a minute does not flip to «Atención»; the
+   * live panel and the alerts keep the instantaneous healthScore and level. Missing in status docs written before. */
+  stableHealthScore?: number;
+  stableLevel?: Level;
+  /** Where the latest block came from. A CSV upload is never shown as «En vivo». */
+  lastSource?: "simulator" | "csv";
   updatedAt: T;
 }
 
@@ -166,6 +173,10 @@ export interface AlertDoc<T = unknown> {
   healthScore: number;
   severity: "amber" | "red";
   reasons: AlertReason[];
+  /** Code of the reason that names the alert (its title and first cause), chosen by the
+   * engine when it opens (the largest deviation in band widths) and kept while it lasts unless it rises to red.
+   * Absent in older alerts: the app computes it. */
+  titleCode?: string | null;
   status: "open" | "acknowledged";
   acknowledgedBy?: string | null;
   acknowledgedAt?: T | null;
@@ -232,6 +243,9 @@ export interface FusionConfig<T = unknown> {
    * (null: off). Without it a drop of activity alone can never open an alert: behavior weighs 0.4, so the Health
    * Score stays at 60 or above. */
   activityCriticalSigma?: number | null;
+  /** Time constant of the stable Health Score of dogs.status (exponential average per 2 s window; 0: none).
+   * Display only: the alerts and their trigger use the instantaneous score. Optional so older config docs still read. */
+  stableTimeConstantS?: number;
   updatedBy: string;
   updatedAt: T;
 }
@@ -255,6 +269,7 @@ export const DEFAULT_FUSION_CONFIG: Omit<FusionConfig, "updatedBy" | "updatedAt"
   statusMinIntervalS: 2,   // Blocks of 2 s refresh the card one by one
   alertMinDurationS: 0,
   activityCriticalSigma: null,
+  stableTimeConstantS: 300, // 5 minutes, the alertMinDurationS deployed
 };
 
 export interface InjectionRequest { dogId: string; type: AnomalyType; magnitude: number; durationS: number }
@@ -266,6 +281,9 @@ export interface SimulatorRunDoc<T = unknown> {
   state: "running" | "paused" | "stopped";
   /** Optional automatic stop after this much simulated time. */
   durationS?: number | null;
+  /** "duration" when the simulator stopped the run because it reached durationS, so the
+   * panel says «Terminada» and not «Detenida». Absent for runs stopped by hand and for older runs. */
+  endedBy?: "duration" | null;
   seed?: number;
   pendingInjection?: InjectionRequest | null;
   injectionsLog: (InjectionRequest & { id: string; startBlock: number; endBlock: number; at: T })[];

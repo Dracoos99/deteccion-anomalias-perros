@@ -21,7 +21,7 @@ export interface TrendSlot {
   hrSum: number; hrN: number; hrMin: number | null; hrMax: number | null;  // 1 Hz heart-rate values
   tSum: number; tN: number; tMin: number | null; tMax: number | null;      // temperature per block
   beh: number[];                // windows per behavior, order of BEHAVIORS
-  /**, 10 s tier only: the 1 Hz heart-rate values of the slot, in time order. */
+  /** 10 s tier only: the 1 Hz heart-rate values of the slot, in time order. */
   hrv?: number[];
   /** The engine's moving share of time in movement (its 20-minute exponential average) after each 2 s window,
    * as sum and count. The dog's normal band refers to this average, not to the share of a single slot. Slots written
