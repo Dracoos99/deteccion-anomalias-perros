@@ -216,12 +216,14 @@ try {
   await shot("07b-carga-csv-lista-1440");
   check("the upload is listed as analysed", (await text()).includes("Cargas recientes") && (await text()).includes("Analizada"));
   await spaGo(dogPath);
-  const learning = await page.waitForFunction(() => document.body.innerText.includes("Aprendiendo qué es normal para Mora Luna"), { timeout: 15000 }).then(() => true, () => false);
+  // The learning period of the dog, with its stage, under its state.
+  const learning = await page.waitForFunction(() => document.body.innerText.includes("Período de aprendizaje") && document.body.innerText.includes("qué es normal para Mora Luna"), { timeout: 15000 }).then(() => true, () => false);
   check("the dog now has data and is learning its normal pattern", learning && (await text()).includes("Estamos aprendiendo su patrón normal"),
     learning ? "" : (await text()).replace(/\s+/g, " ").slice(0, 500));
   if (!learning) await shot("03b-detalle-aprendiendo-fallo-1440");
   await page.waitForSelector("#tabbtn-resumen", { timeout: 10000 }).catch(() => {});
-  await page.focus("#tabbtn-resumen"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight");
+  // Resumen, Su día, Actividad, Corazón…
+  await page.focus("#tabbtn-resumen"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight");
   check("the detail tabs move with the arrow keys", await page.evaluate(() => document.activeElement?.id === "tabbtn-corazon"
     && document.getElementById("tabbtn-corazon")?.getAttribute("aria-selected") === "true"));
   check("the browser tab is named after the dog", (await page.title()).startsWith("Mora Luna · "));

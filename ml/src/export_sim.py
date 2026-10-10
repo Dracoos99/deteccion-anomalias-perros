@@ -6,7 +6,10 @@ heart-rate series, but the IMU goes as raw Float32 (a JSON of every 10 s block w
   sim/hr/<source>/<dog>.json       1 Hz heart rate of the dog: valid seconds of its sessions, chained in order, and
                                    "breaks": the index where every later contiguous stretch starts (a gap or a new
                                    session), so the simulator can show the gap instead of joining the stretches
-  sim/manifest.json                subjects with length and metadata, and the fitted activity threshold
+  sim/labels/vehkaoja2022/<dog>.i8 the behavior annotated from video for every 2 s window of that IMU (int8: the index in
+                                   CLASSES when all 200 samples carry the same class, -1 otherwise), so the admin panel can
+                                   set the model's prediction beside the annotation; never read by the engine
+  sim/manifest.json                subjects with length, metadata and split (train, val or test), and the activity threshold
 
 Requires src.preprocess, src.hr_series and src.activity to have run. Usage (from ml/):
 .venv/Scripts/python -m src.export_sim            # everything
@@ -25,6 +28,8 @@ import pandas as pd
 
 from . import config as C
 from .hr_series import SOURCES
+
+WINDOW_SAMPLES = 2 * C.IMU_HZ   # the 2 s window of the models
 
 
 def contiguous_breaks(t_s: np.ndarray, session: np.ndarray) -> list[int]:
@@ -66,12 +71,27 @@ def export(out_dir=C.SIM_OUT, hr_only: bool = False) -> dict:
     imu_dir = out_dir / "imu" / "vehkaoja2022"
     imu_dir.mkdir(parents=True, exist_ok=True)
     subjects = []
+    label_dir = out_dir / "labels" / "vehkaoja2022"
+    label_dir.mkdir(parents=True, exist_ok=True)
+    split_of = {}
+    splits_path = C.VEHKAOJA_OUT / "splits.json"
+    if splits_path.exists():
+        splits = json.loads(splits_path.read_text(encoding="utf-8"))
+        split_of = {int(d): name for name in ("train", "val", "test") for d in splits[name]}
     for dog, g in recs.sort_values(["dog_id", "test_num"]).groupby("dog_id"):
-        x = np.concatenate([pd.read_parquet(C.VEHKAOJA_OUT / f, columns=list(C.IMU_CHANNELS)).to_numpy(np.float32) for f in g["file"]])
+        frames = [pd.read_parquet(C.VEHKAOJA_OUT / f, columns=[*C.IMU_CHANNELS, "label"]) for f in g["file"]]
+        x = np.concatenate([fr[list(C.IMU_CHANNELS)].to_numpy(np.float32) for fr in frames])
         x.astype("<f4").tofile(imu_dir / f"{dog}.f32")
+        # One annotated class per 2 s window of the same samples, only where the whole window has one class.
+        labels = np.concatenate([fr["label"].to_numpy(np.int16) for fr in frames])
+        n_win = len(labels) // WINDOW_SAMPLES
+        win = labels[: n_win * WINDOW_SAMPLES].reshape(n_win, WINDOW_SAMPLES)
+        clean = (win == win[:, :1]).all(axis=1) & (win[:, 0] >= 0)
+        np.where(clean, win[:, 0], -1).astype(np.int8).tofile(label_dir / f"{dog}.i8")
         r = g.iloc[0]
         subjects.append({"subjectId": str(dog), "samples": int(len(x)), "minutes": round(len(x) / C.IMU_HZ / 60, 1),
                          "tests": int(len(g)), "breed": r["breed"], "weightKg": float(r["weight_kg"]),
+                         "split": split_of.get(int(dog)), "labeledWindows": int(clean.sum()),
                          "imuMean": [round(float(stats.loc[dog, ("mean", ch)]), 6) for ch in C.IMU_CHANNELS],
                          "imuStd": [round(float(stats.loc[dog, ("std", ch)]), 6) for ch in C.IMU_CHANNELS]})
     manifest["imu"]["vehkaoja2022"] = subjects

@@ -56,7 +56,9 @@ function validate(d: Draft): { errors: FormError[]; next: (base: Fusion) => Fusi
   const critical = optional("critical", (x) => x > 1 && x <= 50, "El umbral crítico del autoencoder debe estar entre 1 y 50 veces su umbral (o vacío para usar el del modelo).");
   const fullScale = optional("fullScale", (x) => x > 1 && x <= 100, "La escala del autoencoder debe estar entre 1 y 100 (o vacía para usar la del modelo).");
   const levelSigma = optional("levelSigma", (x) => x >= 1 && x <= 5, "La regla del promedio de FC debe estar entre 1 y 5 σ (o vacía para usar la de la línea base).");
-  if (!(Number.isInteger(n("minBlocks")) && n("minBlocks") >= 30 && n("minBlocks") <= 1080)) add("minBlocks", ["minBlocks"], "Los bloques para aprender el patrón normal deben ser un entero entre 30 (5 min) y 1 080 (3 h).");
+  // With less than 20 minutes of data per stage the normal pattern is too narrow and the dog reads
+  // «se mueve menos» right after learning.
+  if (!(Number.isInteger(n("minBlocks")) && n("minBlocks") >= 120 && n("minBlocks") <= 1080)) add("minBlocks", ["minBlocks"], "Los bloques para aprender el patrón normal deben ser un entero entre 120 (20 min) y 1 080 (3 h).");
   if (!(Number.isInteger(n("minDuration")) && n("minDuration") >= 0 && n("minDuration") <= 1800)) add("minDuration", ["minDuration"], "La duración mínima de una alerta debe ser un entero entre 0 y 1 800 s.");
   const actSigma = optional("actSigma", (x) => x >= 1 && x <= 5, "La regla de actividad baja debe estar entre 1 y 5 σ (o vacía para no usarla).");
   if (!(Number.isInteger(n("stable")) && n("stable") >= 0 && n("stable") <= 3600)) add("stable", ["stable"], "El promedio del estado de Inicio debe ser un entero entre 0 (sin promedio) y 3 600 s.");

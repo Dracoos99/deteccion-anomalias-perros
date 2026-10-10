@@ -15,7 +15,7 @@ import { computeBaseline } from "./baseline";
 import { ANOMALY_CATALOG, schedule } from "../../shared/anomalies";
 import { evaluateBlock, initialState, type EngineConfig } from "../../shared/engine";
 import type { PhysioScorer } from "../../shared/physio-model";
-import { DEFAULT_FUSION_CONFIG, type AnomalyType } from "../../shared/types";
+import { DEFAULT_FUSION_CONFIG, type DogAnomalyType } from "../../shared/types";
 
 /** Same subject pairs as scripts/demo-data.mjs (Vehkaoja IMU, Invoxia HR). */
 export const SEED_SUBJECTS: [string, string, string][] = [
@@ -25,7 +25,7 @@ export const SEED_SUBJECTS: [string, string, string][] = [
 
 interface Variant { name: string; cfg: EngineConfig }
 
-function replay(dog: [string, string, string], cfg: EngineConfig, blocks: number, injection?: { type: AnomalyType; startBlock: number; durationS: number },
+function replay(dog: [string, string, string], cfg: EngineConfig, blocks: number, injection?: { type: DogAnomalyType; startBlock: number; durationS: number },
   physio: PhysioScorer | null = null) {
   const [id, imuId, hrId] = dog;
   const imu = loadImu("vehkaoja2022", imuId), hr = loadHr("invoxia2023", hrId);
@@ -51,9 +51,9 @@ function replay(dog: [string, string, string], cfg: EngineConfig, blocks: number
   return { opened, flagged, hrOpened };
 }
 
-const COMPONENT = { imu: "behavior", hr: "heart_rate", temp: "temperature" } as const;
+const COMPONENT = { imu: "behavior", hr: "heart_rate", temp: "temperature", sensor: null } as const;
 
-const DEFAULT_MAGNITUDE: Record<AnomalyType, number> = {
+const DEFAULT_MAGNITUDE: Record<DogAnomalyType, number> = {
   activity_drop: 0.6, immobility: 0.97, tachycardia: 0.4, bradycardia: 0.3, fever: 1.5, hypothermia: 1.5,
 };
 
@@ -67,7 +67,7 @@ export function runSweep(hours = 2, log: (s: string) => void = console.log): voi
   }
   const blocks = Math.round((hours * 3600) / BLOCK_SECONDS);
   const start = 90, durationS = 600;  // injection at minute 15, for 10 minutes
-  const types: AnomalyType[] = ["tachycardia", "bradycardia", "fever", "hypothermia", "activity_drop", "immobility"];
+  const types: DogAnomalyType[] = ["tachycardia", "bradycardia", "fever", "hypothermia", "activity_drop", "immobility"];
   log(`Perros: ${SEED_SUBJECTS.length} · ${hours} h sin anomalías por perro · inyecciones de 10 min (magnitud por defecto) desde el minuto 15\n`);
   log(["Configuración", "Alertas/perro-h sin anomalía", ...types.map((t) => `${t} (detectadas, retardo medio)`)].join(" | "));
   for (const v of variants) {
@@ -109,7 +109,7 @@ export function runPhysioSweep(model: PhysioScorer, hours = 2, pairs: [number, n
   const base = DEFAULT_FUSION_CONFIG as EngineConfig;
   const blocks = Math.round((hours * 3600) / BLOCK_SECONDS);
   const start = 90, durationS = 600;
-  const types: AnomalyType[] = ["tachycardia", "bradycardia"];
+  const types: DogAnomalyType[] = ["tachycardia", "bradycardia"];
   const fmtRatio = (r: number) => (Number.isFinite(r) ? String(r) : "sin regla crítica");
   log(`Perros: ${SEED_SUBJECTS.length} · ${hours} h sin anomalías por perro · taquicardia y bradicardia de 10 min (magnitud por defecto) desde el minuto 15`);
   log(`Modelo: ${physio.meta.version} (umbral p95 ${physio.meta.threshold}; del modelo: criticalRatio ${physio.meta.criticalRatio}, fullScaleRatio ${physio.meta.fullScaleRatio})\n`);

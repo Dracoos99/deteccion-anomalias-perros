@@ -1,6 +1,7 @@
 /**
  * Simulator CLI. Examples (from simulator/, with the emulators running):
  *   npm run sim -- start --dogs toby,luna,rocky --speed 10 --minutes 30
+ *   npm run sim -- start --dogs nala --speed 10 --learn   # a «new dog»: the Function learns its baseline
  *   npm run sim -- inject --run <runId> --dog rocky --type fever --magnitude 1.5 --duration 600
  *   npm run sim -- pause|resume|stop --run <runId>
  *   npm run sim -- speed --run <runId> --value 5
@@ -10,6 +11,7 @@
  *   npm run sim -- report --run <runId> [--json]
  *   npm run sim -- subjects         # subjects available in the exported data
  *   npm run sim -- sweep [--hours 2] # offline sweep of the alert rules (no Firestore)
+ *   npm run sim -- validation-report # from
  *   npm run sim -- sweep --physio [--ratios inf:3.81,6.9:12.8] [--cache f.json] # HR rule alone vs rule + autoencoder
  *   npm run sim -- evaluate [--split val|test] [--hours 3] [--search] [--config '{...}'] [--out f.json] # rules with both models
  */
@@ -28,17 +30,17 @@ import { loadSimBehaviorModel } from "./behavior";
 import fs from "node:fs";
 import type { FusionConfig } from "../../shared/types";
 import { loadSimPhysioModel } from "./physio";
-import { ANOMALY_CATALOG, validateInjection } from "../../shared/anomalies";
-import type { SimulatorRunDoc } from "../../shared/types";
+import { ANOMALY_CATALOG, ANOMALY_TYPES, validateInjection } from "../../shared/anomalies";
+import type { AnomalyType, SimulatorRunDoc } from "../../shared/types";
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
     dogs: { type: "string" }, speed: { type: "string" }, minutes: { type: "string" }, run: { type: "string" },
     dog: { type: "string" }, type: { type: "string" }, magnitude: { type: "string" }, duration: { type: "string" },
-    value: { type: "string" }, json: { type: "boolean" }, rebaseline: { type: "boolean" }, "run-id": { type: "string" },
+    value: { type: "string" }, json: { type: "boolean" }, rebaseline: { type: "boolean" }, "run-id": { type: "string" }, learn: { type: "boolean" }, truth: { type: "boolean" },
     hours: { type: "string" }, physio: { type: "boolean" }, ratios: { type: "string" }, cache: { type: "string" },
-    split: { type: "string" }, search: { type: "boolean" }, config: { type: "string" }, out: { type: "string" },
+    split: { type: "string" }, search: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, val: { type: "string" }, test: { type: "string" }, magnitudes: { type: "string" },
   },
 });
 
@@ -67,7 +69,7 @@ async function main(): Promise<void> {
       const dogIds = need("dogs", values.dogs).split(",").map((s) => s.trim()).filter(Boolean);
       const speed = Number(values.speed ?? 1);
       const durationS = values.minutes ? Math.round(Number(values.minutes) * 60) : null;
-      const runId = await createRun(firestore, { dogIds, speed, durationS, createdBy: "cli", runId: values["run-id"], worker: workerId });
+      const runId = await createRun(firestore, { dogIds, speed, durationS, createdBy: "cli", runId: values["run-id"], worker: workerId, learnBaseline: values.learn, recordTruth: values.truth });
       console.log(`Ejecución ${runId}. Detén con Ctrl+C o: npm run sim -- stop --run ${runId}`);
       const run = new SimulatorRun(firestore, runId, { workerId, rebaseline: values.rebaseline });
       process.once("SIGINT", () => void run.stop("Ctrl+C"));
@@ -153,16 +155,19 @@ async function main(): Promise<void> {
       if (split !== "val" && split !== "test") throw new Error("--split debe ser val o test.");
       const hours = Number(values.hours ?? 3);
       const ev = new Evaluator(split, model, physio, hours);
+      // «--magnitudes min» injects each anomaly at the smallest magnitude of the catalog (the hardest case).
+      const magnitudes: Partial<Record<AnomalyType, number>> = values.magnitudes === "min"
+        ? Object.fromEntries(ANOMALY_TYPES.filter((t) => t !== "collar_off").map((t) => [t, ANOMALY_CATALOG.types[t].min])) : {};
       console.log(`Modelos: ${model.meta.version} y ${physio.meta.version} · ${ev.description} · ${hours} h normales por perro\n`);
       // JSON has no Infinity: "inf" turns the autoencoder's critical rule off.
       const parse = (text: string): Partial<FusionConfig> => JSON.parse(text, (k, v) => (v === "inf" ? Number.POSITIVE_INFINITY : v));
       const results: { config: Partial<FusionConfig>; outcome: Outcome }[] = [];
-      const current = ev.run({});
+      const current = ev.run({}, magnitudes);
       console.log(formatOutcome("Configuración actual", current));
       results.push({ config: {}, outcome: current });
       const candidates = values.search ? searchGrid() : values.config ? [parse(values.config)] : [];
       candidates.forEach((c, i) => {
-        const o = ev.run(c);
+        const o = ev.run(c, magnitudes);
         results.push({ config: c, outcome: o });
         if (!values.search) console.log(formatOutcome(describeConfig(c), o));
         else if ((i + 1) % 20 === 0) console.log(`  … ${i + 1}/${candidates.length} configuraciones`);
@@ -176,10 +181,18 @@ async function main(): Promise<void> {
         for (const r of ranked.slice(0, 12)) console.log(formatOutcome(describeConfig(r.config), r.outcome));
       }
       if (values.out) {
-        fs.writeFileSync(values.out, JSON.stringify({ split, hours, models: [model.meta.version, physio.meta.version], results },
+        fs.writeFileSync(values.out, JSON.stringify({ split, hours, models: [model.meta.version, physio.meta.version], magnitudes, results },
           (k, v) => (v === Number.POSITIVE_INFINITY ? "inf" : v), 1));
         console.log(`\nResultados en ${values.out}`);
       }
+      break;
+    }
+    case "validation-report": {
+      // from the two outputs of `evaluate --out` (validation and test dogs).
+      // A report generator, like ml/src/report.py: loaded only when this command runs.
+      const generator = "./validation-report";
+      const { writeValidationReport } = await import(generator);
+      writeValidationReport(values.val, values.test, values.out);
       break;
     }
     case "subjects": {

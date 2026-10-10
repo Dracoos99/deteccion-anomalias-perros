@@ -71,6 +71,16 @@
       "default": 1.5,
       "rampS": 120,
       "rule": "temp' = temp - m * ramp (°C)."
+    },
+    "collar_off": {
+      "signal": "sensor",
+      "label": "Collar quitado o sin señal",
+      "unit": "celsius",
+      "min": 18,
+      "max": 30,
+      "default": 24,
+      "rampS": 0,
+      "rule": "Not an anomaly of the dog: each IMU channel stays at its block mean (no movement at all), the heart rate is lost and the temperature reads the ambient value m (°C), outside the prefilter. The system must say «Revisa el collar» and open no alert."
     }
   }
 }

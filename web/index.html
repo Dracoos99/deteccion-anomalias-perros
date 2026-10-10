@@ -4,7 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Detección temprana de anomalías conductuales y fisiológicas en perros." />
-    <meta name="theme-color" content="#f1f2f4" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f1f2f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#141519" media="(prefers-color-scheme: dark)" />
+    <!-- the appearance chosen in Perfil (src/lib/theme.ts, same key), applied before the first frame, so a dark
+         choice never flashes the light boot frame. -->
+    <script>try { var t = localStorage.getItem("appearance"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preload" href="/fonts/SourceSans3-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>Detección de anomalías en perros</title>

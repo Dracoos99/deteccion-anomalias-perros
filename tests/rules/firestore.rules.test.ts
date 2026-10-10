@@ -46,6 +46,8 @@ beforeEach(async () => {
     await setDoc(doc(db, "alerts/a2"), { dogId: "dog1", ownerId: "owner1", severity: "amber", status: "open" });
     await setDoc(doc(db, "config/fusion"), { alertThreshold: 60 });
     await setDoc(doc(db, "simulatorRuns/run1"), { state: "paused" });
+    await setDoc(doc(db, "simulatorTruth/run1_dog1_000000"), { runId: "run1", dogId: "dog1", behavior: "lie" });
+    await setDoc(doc(db, "expertReviews/item1"), { kind: "alert", dogId: "dog1", systemFlagged: true, order: 0, review: null });
     await setDoc(doc(db, "csvUploads/up1"), { dogId: "dog1", ownerId: "owner1", uploadedBy: "owner1", status: "processing", blocksExpected: 6, blocksProcessed: 0 });
     await setDoc(doc(db, "csvUploads/up2"), { dogId: "dog2", ownerId: "owner2", uploadedBy: "owner2", status: "processing", blocksExpected: 6, blocksProcessed: 0 });
   });
@@ -189,6 +191,17 @@ describe("config, modelVersions and simulatorRuns", () => {
   it("simulator runs are admin only", async () => {
     await assertFails(getDoc(doc(owner(), "simulatorRuns/run1")));
     await assertSucceeds(getDoc(doc(admin(), "simulatorRuns/run1")));
+  });
+  it("the blind expert review is admin only", async () => {
+    await assertFails(getDoc(doc(owner(), "expertReviews/item1")));
+    await assertFails(updateDoc(doc(owner(), "expertReviews/item1"), { review: { verdict: "relevant" } }));
+    await assertSucceeds(getDoc(doc(admin(), "expertReviews/item1")));
+    await assertSucceeds(updateDoc(doc(admin(), "expertReviews/item1"), { review: { reviewerId: "admin1", verdict: "relevant", notes: "" } }));
+  });
+  it("the annotated behavior of simulated blocks is read by an admin only and written by the simulator only", async () => {
+    await assertFails(getDoc(doc(owner(), "simulatorTruth/run1_dog1_000000")));
+    await assertSucceeds(getDoc(doc(admin(), "simulatorTruth/run1_dog1_000000")));
+    await assertFails(setDoc(doc(admin(), "simulatorTruth/run1_dog1_000001"), { runId: "run1", dogId: "dog1", behavior: "sit" }));
   });
 });
 

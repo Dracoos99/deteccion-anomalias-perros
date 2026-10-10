@@ -102,6 +102,8 @@ export function Home() {
     const sum = describeDog(d.status, d.baseline, cfg, undefined, !!a && !a.endedAt, { key: d.id });
     return {
       name: d.name, level: sum.level, slight: sum.slight, learning: isLearning(d.status, d.baseline), stale: isStale(d),
+      // «Revisa el collar» goes first and is said apart in the summary.
+      sensorOff: !isStale(d) && d.status?.sensor === "no_wear",
       // An alert that already ended is said apart from the dogs «como de costumbre».
       openAlert: !!a, alertEnded: !!a?.endedAt,
     };

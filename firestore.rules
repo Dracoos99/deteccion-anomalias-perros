@@ -158,6 +158,17 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // The queue of the blind expert review (A3) and its answers: admin only (the thesis reviewer).
+    match /expertReviews/{itemId} {
+      allow read, write: if isAdmin();
+    }
+
+    // The behavior annotated from video for each simulated block: research ground truth, admin only.
+    match /simulatorTruth/{readingId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /csvUploads/{uploadId} {
       allow read: if canReadDogData(resource.data);
       // Status transitions (processing, done) and the processed count are written by Functions.

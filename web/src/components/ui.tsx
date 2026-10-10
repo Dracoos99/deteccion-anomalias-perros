@@ -225,8 +225,10 @@ export function LevelTag({ level, iconSize = 14, prefix }: { level: Level | null
 
 /** The state of a dog on Inicio and in its detail: «Sin datos recientes» for old data, the neutral «Aprendiendo su
  * patrón normal» while it has no normal pattern, otherwise its level. */
-export function StateTag({ level, learning = false, stale = false, iconSize = 14 }: { level: Level | null | undefined; learning?: boolean; stale?: boolean; iconSize?: number }) {
+export function StateTag({ level, learning = false, stale = false, sensorOff = false, iconSize = 14 }: { level: Level | null | undefined; learning?: boolean; stale?: boolean; sensorOff?: boolean; iconSize?: number }) {
   if (stale) return <span className="tag tag-outline"><Icon name="clock" size={iconSize} />Sin datos recientes</span>;
+  // The collar seems off the dog: a state of the sensor, not a level of the dog.
+  if (sensorOff) return <span className="tag tag-outline tag-sensor"><Icon name="alert-triangle" size={iconSize} />Revisa el collar</span>;
   if (learning) return <span className="tag tag-outline"><Icon name="info" size={iconSize} />{LEARNING_TEXT}</span>;
   return <LevelTag level={level} iconSize={iconSize} />;
 }

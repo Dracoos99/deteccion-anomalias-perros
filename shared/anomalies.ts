@@ -7,7 +7,8 @@ import catalogJson from "./anomaly-catalog.json";
 import type { AnomalyType, InjectedAnomaly } from "./types";
 
 export interface AnomalySpec {
-  signal: "imu" | "hr" | "temp";
+  /** "sensor": a problem of the collar, not of the dog. */
+  signal: "imu" | "hr" | "temp" | "sensor";
   label: string;
   unit: "fraction" | "relative" | "celsius";
   min: number;
@@ -94,6 +95,19 @@ export function applyTemp(value: number, inj: Pick<ActiveInjection, "type" | "ma
   return value + sign * inj.magnitude * ramp(offsetS, spec.rampS);
 }
 
+/** A collar taken off: every channel at its block mean (no movement at all). */
+export function flatImu(imu: ArrayLike<number>): number[] {
+  const out = Array.from(imu);
+  const n = out.length / 6;
+  for (let c = 0; c < 6; c++) {
+    let mean = 0;
+    for (let i = 0; i < n; i++) mean += out[i * 6 + c];
+    mean /= n;
+    for (let i = 0; i < n; i++) out[i * 6 + c] = mean;
+  }
+  return out;
+}
+
 export interface BlockSignals { imu: number[]; hr: number[]; temp: number | null }
 
 /** Applies every injection active in `block` (in start order) and returns the altered signals and their ground truth. */
@@ -106,6 +120,8 @@ export function applyInjections(signals: BlockSignals, injections: ActiveInjecti
     const signal = ANOMALY_CATALOG.types[j.type].signal;
     if (signal === "imu") imu = applyImu(imu, j, offsetS);
     else if (signal === "hr") hr = applyHr(hr, j, offsetS);
+    // The collar off the dog: no movement, no heart rate, and the ambient temperature (magnitude, °C).
+    else if (signal === "sensor") { imu = flatImu(imu); hr = []; temp = j.magnitude; }
     else if (temp != null) temp = applyTemp(temp, j, offsetS);
     truth.push({ type: j.type, magnitude: j.magnitude, durationS: j.durationS, injectionId: j.id, offsetS });
   }

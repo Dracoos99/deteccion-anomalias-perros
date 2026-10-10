@@ -19,6 +19,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage").then((m) => ({ defa
 const VetView = lazy(() => import("./pages/VetView").then((m) => ({ default: m.VetView })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((m) => ({ default: m.SimulatorPage })));
 const ConfigPage = lazy(() => import("./pages/ConfigPage").then((m) => ({ default: m.ConfigPage })));
+const ReviewPage = lazy(() => import("./pages/ReviewPage").then((m) => ({ default: m.ReviewPage })));
 const page = (el: ReactNode, shape?: "detail" | "sheet") => <Suspense fallback={<PageLoading shape={shape} />}>{el}</Suspense>;
 const adminPage = (el: ReactNode) => <RequireAdmin>{page(el)}</RequireAdmin>;
 
@@ -53,6 +54,7 @@ export function App() {
             <Route path="/perfil/datos" element={page(<CsvUploadPage />)} />
             <Route path="/admin" element={adminPage(<SimulatorPage />)} />
             <Route path="/admin/configuracion" element={adminPage(<ConfigPage />)} />
+            <Route path="/admin/revision" element={adminPage(<ReviewPage />)} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

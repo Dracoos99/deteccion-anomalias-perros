@@ -24,7 +24,7 @@ import { imuStats } from "../../shared/behavior-model";
 import { ANOMALY_CATALOG, schedule } from "../../shared/anomalies";
 import { evaluateBlock, initialState, type EngineConfig } from "../../shared/engine";
 import type { PhysioScorer } from "../../shared/physio-model";
-import { DEFAULT_FUSION_CONFIG, type AnomalyType, type FusionConfig } from "../../shared/types";
+import { DEFAULT_FUSION_CONFIG, type AnomalyType, type DogAnomalyType, type FusionConfig } from "../../shared/types";
 import type { SimBehaviorModel } from "./behavior";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -37,9 +37,9 @@ export const SPLIT_DOGS = {
 } as const;
 export type Split = keyof typeof SPLIT_DOGS;
 
-const TYPES: AnomalyType[] = ["tachycardia", "bradycardia", "fever", "hypothermia", "activity_drop", "immobility"];
-const COMPONENT = { imu: "behavior", hr: "heart_rate", temp: "temperature" } as const;
-const DURATION_S: Record<AnomalyType, number> = {
+const TYPES: DogAnomalyType[] = ["tachycardia", "bradycardia", "fever", "hypothermia", "activity_drop", "immobility"];
+const COMPONENT = { imu: "behavior", hr: "heart_rate", temp: "temperature", sensor: null } as const;
+const DURATION_S: Record<DogAnomalyType, number> = {
   tachycardia: 600, bradycardia: 600, fever: 600, hypothermia: 600, activity_drop: 3600, immobility: 3600,
 };
 const START_BLOCK = 90;   // minute 15: the engine has settled

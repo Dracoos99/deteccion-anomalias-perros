@@ -22,13 +22,15 @@ const physioModule = () => import("./physio");
 import { ENGINE_VERSION, evaluateBlock, initialState, type EngineConfig, type EngineState } from "./shared/engine";
 import { DEFAULT_BASELINE_BLOCKS, baselineShare, learnBaseline, type BaselineAcc } from "./shared/baseline";
 import { readWindow } from "./shared/behavior-model";
-import { DEFAULT_FUSION_CONFIG, type CsvUploadDoc, type DogDoc, type FusionConfig, type ReadingDoc } from "./shared/types";
+import { BEHAVIORS, DEFAULT_FUSION_CONFIG, type Behavior, type CsvUploadDoc, type DogDoc, type FusionConfig, type ReadingDoc } from "./shared/types";
 import {
   MINUTE_TIER, SLOT_MINUTES, TEN_SEC_TIER, addBlock, dayKey, emptySlot, slotIndex, tierDocId, tierDocStart, tierSlotIndex, trendDocId,
   type BlockSummary, type TrendSlot, type TrendTier,
 } from "./shared/trends";
 
 const CONFIG_TTL_MS = 15_000;
+/** Data seconds the collar must seem off before the app says «Revisa el collar» (a short pause is not). */
+export const SENSOR_OFF_MIN_S = 60;
 let configCache: { value: EngineConfig; at: number } | null = null;
 
 export function resetConfigCache(): void {
@@ -47,6 +49,13 @@ export async function getConfig(db: Firestore, now = Date.now()): Promise<Engine
 export async function countOpenAlerts(db: Firestore, dogId: string): Promise<number> {
   const agg = await db.collection("alerts").where("dogId", "==", dogId).where("status", "==", "open").count().get();
   return agg.data().count;
+}
+
+/** The probability of the shown behavior among the block's probabilities (order of BEHAVIORS), rounded. */
+export function behaviorProb(b: Behavior | null, probs: number[] | null): number | null {
+  if (!b || !probs) return null;
+  const p = probs[BEHAVIORS.indexOf(b)];
+  return typeof p === "number" ? Math.round(p * 100) / 100 : null;
 }
 
 const toMillis = (t: unknown, fallback: number) => (t instanceof Timestamp ? t.toMillis() : typeof t === "number" ? t : fallback);
@@ -86,8 +95,13 @@ export async function processReading(db: Firestore, readingId: string, reading: 
     const imu = reading.imu ?? [];
     const imuOk = !pre.flags.some((f) => f.startsWith("imu_"));
     const behavior = runner && imuOk ? runner.run(imu, dog.baseline?.imuMean, dog.baseline?.imuStd) : null;
-    const ev = evaluateBlock({ imu, hr: pre.hr, temp: pre.temp, blockStartMs, behavior, physio }, prev, dog.baseline ?? null, cfg,
+    const sensorOff = pre.flags.includes("imu_no_wear");
+    const ev = evaluateBlock({ imu, hr: pre.hr, temp: pre.temp, blockStartMs, behavior, physio, sensorOff }, prev, dog.baseline ?? null, cfg,
       { alertId: readingId });
+    // Since when (data time) the collar seems off; «Revisa el collar» after SENSOR_OFF_MIN_S of it.
+    const offSince = sensorOff ? ((stateSnap.exists ? stateSnap.get("sensorOffSinceMs") : null) as number | null) ?? blockStartMs : null;
+    const sensor = offSince != null && blockStartMs + ev.windows.length * 2000 - offSince >= SENSOR_OFF_MIN_S * 1000 ? "no_wear" : null;
+    const sensorChanged = (dog.status?.sensor ?? null) !== sensor;
     const flags = [...pre.flags, ...ev.flags];
 
     tx.set(resultRef, {
@@ -114,6 +128,15 @@ export async function processReading(db: Firestore, readingId: string, reading: 
         imu, hr: pre.hr, temp: pre.temp, ruleFlags: ev.windows.map((w) => !!w.active),
         model: behavior ? { version: behavior.meta.version, flags: behavior.probs.map((p) => readWindow(p, behavior.meta).active) } : null,
       }, cfg, minBlocks));
+    }
+    // When a stage of the learning period ends, the 20-minute movement average starts again from the
+    // dog's learned mean and the trigger run from zero. Before, it carried the warm-up of the first minutes (from 0 % or
+    // with the other definition of activity) and, with a short stage, opened a false low-activity alert at once.
+    if (learned && ev.state !== prev) {
+      ev.state.activityEma = learned.activeRatioMean;
+      ev.state.triggerRun = 0;
+      ev.state.triggerRunStartMs = null;
+      ev.state.runReasons = null;
     }
     if (ev.state !== prev) {
       const writeSlot = (t: TrendState) => tx.set(db.doc(`trends/${trendDocId(reading.dogId, t.day)}`), {
@@ -148,7 +171,7 @@ export async function processReading(db: Firestore, readingId: string, reading: 
           ...(tier.hrValues ? { expireAt: Timestamp.fromMillis(docStart + tier.docMs + TEN_SEC_TTL_MS) } : {}),
         }, { merge: true });
       }
-      tx.set(stateRef, { ...ev.state, trend, ...tiers, baselineAcc: acc, updatedAt: FieldValue.serverTimestamp() });
+      tx.set(stateRef, { ...ev.state, trend, ...tiers, baselineAcc: acc, sensorOffSinceMs: offSince, updatedAt: FieldValue.serverTimestamp() });
     }
 
     if (ev.alert) {
@@ -184,14 +207,16 @@ export async function processReading(db: Firestore, readingId: string, reading: 
     const dogUpdate: Record<string, unknown> = {};
     if (learned) dogUpdate.baseline = { ...learned, computedAt: FieldValue.serverTimestamp() };
     // Also at the end of a CSV upload, so the app shows the state after its last block (dogs.status is throttled).
-    if (ev.statusDue || learned || uploadDone) {
+    if (ev.statusDue || learned || uploadDone || sensorChanged) {
       const lastHr = ev.result.signals.hr ?? (pre.hr.length ? Math.round(pre.hr.reduce((a, b) => a + b, 0) / pre.hr.length) : dog.status?.lastHr ?? null);
       Object.assign(dogUpdate, {
         status: {
           healthScore: ev.result.healthScore, level: ev.result.level,
           // The stable score and level for the owner screens, and where the block came from.
           stableHealthScore: ev.result.stableHealthScore, stableLevel: ev.result.stableLevel, lastSource: reading.source,
-          lastBehavior: ev.result.predictedBehavior, lastHr,
+          lastBehavior: ev.result.predictedBehavior, lastHr, sensor,
+          // How sure the model was of that behavior, so the app can say «en reposo» instead of a posture it doubts.
+          lastBehaviorProb: behaviorProb(ev.result.predictedBehavior, ev.result.behaviorProbs),
           lastTemp: pre.temp ?? dog.status?.lastTemp ?? null, lastActivityRatio: ev.result.signals.activityRatio,
           openAlerts: ev.state.openAlerts, engineVersion: ENGINE_VERSION, behaviorModel: behavior?.meta.version ?? null,
           physioModel: ev.result.signals.hrRatio != null ? physio!.meta.version : null,

@@ -12,7 +12,9 @@ export type Behavior = "sit" | "stand" | "lie" | "trot" | "walk" | "play" | "sni
 export const BEHAVIORS: readonly Behavior[] = ["sit", "stand", "lie", "trot", "walk", "play", "sniff"] as const;
 
 export type DatasetId = "vehkaoja2022" | "invoxia2023" | "physiozoo2018" | "rri23dogs" | "uwbdvs2024" | "synthetic" | "csv";
-export type AnomalyType = "activity_drop" | "immobility" | "tachycardia" | "bradycardia" | "fever" | "hypothermia";
+export type AnomalyType = "activity_drop" | "immobility" | "tachycardia" | "bradycardia" | "fever" | "hypothermia" | "collar_off";
+/** The anomalies of the dog itself, the ones the system must detect. */
+export type DogAnomalyType = Exclude<AnomalyType, "collar_off">;
 
 export interface SourceRef { datasetId: DatasetId | null; subjectId: string | null }
 
@@ -56,6 +58,11 @@ export interface DogStatus<T = unknown> {
   healthScore: number;
   level: Level;
   lastBehavior: Behavior | null;
+  /** «no_wear» when the collar seems off (no movement at all, no heart rate and no temperature) for at least
+   * a minute of data; null otherwise. */
+  sensor?: "no_wear" | null;
+  /** The probability the behavioral model gave to lastBehavior in that block (0–1), or null with the rule. */
+  lastBehaviorProb?: number | null;
   lastHr: number | null;
   lastTemp: number | null;
   openAlerts: number;
@@ -284,6 +291,12 @@ export interface SimulatorRunDoc<T = unknown> {
   /** "duration" when the simulator stopped the run because it reached durationS, so the
    * panel says «Terminada» and not «Detenida». Absent for runs stopped by hand and for older runs. */
   endedBy?: "duration" | null;
+  /** A «new dog» run: the simulator discards the dogs' baselines instead of computing them, so the Function
+   * learns each one from the stream, as it would for a dog an owner registers. */
+  learnBaseline?: boolean;
+  /** The simulator also writes the behavior annotated from video for each block (simulatorTruth/{readingId}),
+   * to set the model's prediction beside it in the panel. Off by default: it doubles the writes of a run. */
+  recordTruth?: boolean;
   seed?: number;
   pendingInjection?: InjectionRequest | null;
   injectionsLog: (InjectionRequest & { id: string; startBlock: number; endBlock: number; at: T })[];
@@ -297,6 +310,39 @@ export interface SimulatorRunDoc<T = unknown> {
   };
   error?: string | null;
   schemaVersion?: number;
+  createdAt?: T;
+}
+
+/** expertReviews/{itemId}: one stretch of the blind expert review: an alert episode («alert», the system
+ * said yes) or a control stretch of the same dogs without alert («control», the system said no), in a shuffled order.
+ * Admin only (the thesis reviewer gets the admin role). Times are epoch milliseconds. */
+export interface ExpertReviewItem<T = unknown> {
+  kind: "alert" | "control";
+  dogId: string;
+  dogName: string;
+  alertId: string | null;
+  fromMs: number;
+  toMs: number;
+  systemFlagged: boolean;
+  order: number;
+  review?: { reviewerId: string; verdict: "relevant" | "not_relevant" | "unsure"; notes: string; reviewedAt: T } | null;
+  createdBy?: string;
+  schemaVersion?: number;
+  createdAt?: T;
+}
+
+/** simulatorTruth/{readingId}: the behavior annotated from video for the windows of one simulated block, written
+ * by the simulator when its run has recordTruth. Ground truth for the research panel only: the Function never reads it,
+ * like readings.injectedAnomaly. `split` says whether the behavioral model saw the subject when it was trained. */
+export interface SimulatorTruthDoc<T = unknown> {
+  runId: string;
+  dogId: string;
+  blockStart: T;
+  behaviors: (Behavior | null)[];
+  /** The class of most of the block's annotated windows, or null without any. */
+  behavior: Behavior | null;
+  subject: { datasetId: string; subjectId: string; split: "train" | "val" | "test" | null };
+  schemaVersion: number;
   createdAt?: T;
 }
 

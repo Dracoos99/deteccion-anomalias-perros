@@ -206,7 +206,7 @@ describe("Inicio summary and order", () => {
 describe(" of the alert's name, the phrase and what to do", () => {
   const r = (component: AlertReason["component"], code: string, value: number, normalRange: [number, number]): AlertReason =>
     ({ component, code, value, normalRange, message: "" });
-  // Toby in20 % of movement against 52–64 % and 48 lpm against 49–87 lpm.
+  // Toby in: 20 % of movement against 52–64 % and 48 lpm against 49–87 lpm.
   const act = r("behavior", "activity_low", 20, [52, 64]), hrLow = r("heart_rate", "hr_low", 48, [49, 87]);
   const unusual = r("behavior", "behavior_unusual", 31, [0, 5]);
 
@@ -239,7 +239,7 @@ describe(" of the alert's name, the phrase and what to do", () => {
     // While an alert goes on, its main reason, in the present while it is still out of its band...
     const alert = { reasons: [hrLow, act], titleCode: "activity_low" };
     expect(describeDog(status({ lastHr: 58, lastActivityRatio: 0.05, level: "red" }), baseline, cfg, alert, true).phrase).toBe("Se está moviendo menos de lo habitual.");
-    //...when it is back, the other reason of the alert that still is out of its band ( : what holds the level
+    //...when it is back, the other reason of the alert that still is out of its band, what holds the level
     // now, not a variable that already calmed); and in the past only when none is.
     expect(describeDog(status({ lastHr: 58, level: "amber" }), baseline, cfg, alert, true).phrase).toBe("Su corazón late más lento de lo habitual.");
     expect(describeDog(status({ lastHr: 70, level: "amber" }), baseline, cfg, alert, true).phrase).toBe("Se movió menos de lo habitual en los últimos minutos.");
@@ -344,7 +344,7 @@ describe(" of the heart rate in the level shown and what to do", () => {
     expect(describeDog(status({ ...green, lastHr: 29 }), baseline, cfg).levelNote).toMatch(/mucho más lento/);
     expect(heartFar(130, null, cfg)).toBeNull();
     expect(heartFar(130, { ...baseline, hrMean: null, hrStd: null }, cfg)).toBeNull();
-    // Rocky in132 lpm against 49–75.
+    // Rocky in: 132 lpm against 49–75.
     expect(heartFar(132, { ...baseline, hrMean: 62, hrStd: 6.5 }, cfg)).toBe("high");
     // A red level stays red.
     expect(describeDog(status({ level: "red", healthScore: 40, stableLevel: "red", stableHealthScore: 40, lastHr: 130 }), baseline, cfg).level).toBe("red");
@@ -418,7 +418,7 @@ describe(" of causes, sources and times", () => {
   const r = (component: AlertReason["component"], code: string, value: number, normalRange: [number, number]): AlertReason =>
     ({ component, code, value, normalRange, message: "" });
   it("shows as causes the one that names the alert and the variables clearly out of their band; the rest in one line", () => {
-    // Luna's fever in40.7 °C, and movement and heart rate 0.2 over their bands.
+    // Luna's fever in: 40.7 °C, and movement and heart rate 0.2 over their bands.
     const luna = [r("heart_rate", "hr_high", 76.7, [54.5, 76.5]), r("behavior", "activity_high", 58.8, [47, 58.6]),
       r("temperature", "temp_high", 40.7, [37.7, 39.5]), r("behavior", "behavior_unusual", 10, [0, 5])];
     expect(orderReasons(luna, "temp_high").map((x) => x.code)).toEqual(["temp_high", "activity_high", "hr_high", "behavior_unusual"]);
@@ -431,7 +431,7 @@ describe(" of causes, sources and times", () => {
     expect(splitReasons([r("behavior", "activity_low", 46.7, [46.8, 58.9])], "activity_low").causes).toHaveLength(1);
   });
   it("lists a variable once when the episode left its band on both sides", () => {
-    // Toby's vet view in66 % against 52–64 % and 51.9 % against 52.1–63.8 % in the same event.
+    // Toby's vet view in: 66 % against 52–64 % and 51.9 % against 52.1–63.8 % in the same event.
     const both = [r("behavior", "activity_high", 66, [52, 64]), r("behavior", "activity_low", 51.9, [52.1, 63.8]), r("temperature", "temp_high", 40.3, [37.7, 39.5])];
     expect(orderReasons(both, "temp_high").map((x) => x.code)).toEqual(["temp_high", "activity_high"]);
     // The one that names the alert stays.

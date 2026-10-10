@@ -6,14 +6,28 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, Icon, LevelTag, PageHead, StateTag, useNow, usePageTitle } from "../components/ui";
+import { Callout, Icon, LevelTag, PageHead, Seg, StateTag, useNow, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useDogs, useFusionConfig, useOpenAlerts, useUserProfile, type Alert, type Dog, type Fusion } from "../data/hooks";
 import { freshness } from "../lib/live";
 import { ageText, describeDog, isLearning } from "../lib/plain";
 import { disablePush, enablePush, permission, pushOnHere, pushSupport, type PushSupport } from "../lib/push";
+import { applyTheme, storedTheme, type Theme } from "../lib/theme";
 
 /** Avisos: browser notifications of new alerts and which ones to receive. */
+/** Automatic, light or dark, kept in this browser. */
+function AppearancePanel() {
+  const [theme, setTheme] = useState<Theme>(storedTheme);
+  const choose = (t: Theme) => { applyTheme(t); setTheme(t); };
+  return (
+    <section className="profile-section" aria-labelledby="p-appearance">
+      <h2 className="section-title" id="p-appearance">Apariencia</h2>
+      <p className="small muted">Automática sigue el modo claro u oscuro de tu equipo. Se guarda en este navegador.</p>
+      <Seg label="Apariencia" value={theme} onChange={choose} options={[{ value: "auto", label: "Automática" }, { value: "light", label: "Clara" }, { value: "dark", label: "Oscura" }]} />
+    </section>
+  );
+}
+
 function NotificationsPanel({ uid }: { uid: string }) {
   const { data: profile } = useUserProfile(uid);
   const [support, setSupport] = useState<PushSupport | null>(null);
@@ -81,7 +95,7 @@ function DogState({ dog, cfg, alert, now }: { dog: Dog; cfg: Fusion; alert?: Ale
   const stale = freshness(s.lastBlockAt?.toMillis?.() ?? null, s.updatedAt?.toMillis?.() ?? null, now, s.lastSource) === "stale";
   const learning = !stale && isLearning(s, dog.baseline);
   const level = describeDog(s, dog.baseline, cfg, undefined, !!alert && !alert.endedAt, { key: dog.id }).level;
-  return <StateTag level={level} learning={learning} stale={stale} iconSize={12} />;
+  return <StateTag level={level} learning={learning} stale={stale} sensorOff={!stale && s.sensor === "no_wear"} iconSize={12} />;
 }
 
 /** «Deshacer» right after «Quitar perro»: the dog was archived, so it comes back with active: true. */
@@ -174,13 +188,15 @@ export function ProfilePage() {
               <div><Link className="btn btn-primary" to="/perfil/datos"><Icon name="upload" />Cargar datos</Link></div>
             </section>
             <NotificationsPanel uid={user!.uid} />
+            <AppearancePanel />
             {isAdmin && (
               <section className="profile-section" aria-labelledby="p-research">
                 <h2 className="section-title" id="p-research">Herramientas de investigación</h2>
-                <p className="small muted">Simulador, modelos y configuración de la fusión.</p>
+                <p className="small muted">Simulador, modelos y configuración de la fusión, y la revisión experta a ciegas.</p>
                 <div className="row">
                   <Link className="btn btn-secondary btn-sm" to="/admin"><Icon name="flask" size={14} />Abrir herramientas</Link>
                   <Link className="btn btn-ghost btn-sm" to="/admin/configuracion"><Icon name="sliders" size={14} />Modelos y configuración</Link>
+                  <Link className="btn btn-ghost btn-sm" to="/admin/revision"><Icon name="check" size={14} />Revisión experta</Link>
                 </div>
               </section>
             )}

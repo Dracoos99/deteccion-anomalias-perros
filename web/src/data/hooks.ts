@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Timestamp, collection, doc, limit, onSnapshot, orderBy, query, where, type Query } from "firebase/firestore";
 import {
-  DEFAULT_FUSION_CONFIG, type AlertDoc, type CsvUploadDoc, type DogDoc, type FusionConfig, type ModelVersionDoc, type ResultDoc, type SimulatorRunDoc,
+  DEFAULT_FUSION_CONFIG, type AlertDoc, type CsvUploadDoc, type DogDoc, type FusionConfig, type ModelVersionDoc, type ResultDoc, type SimulatorRunDoc, type SimulatorTruthDoc, type ExpertReviewItem,
   type UserDoc,
 } from "@shared/types";
 import type { TrendDayDoc, TrendTier, TrendTierDoc } from "@shared/trends";
@@ -173,6 +173,49 @@ export function useLiveResults(dogId: string | undefined, viewer: Viewer, max = 
       (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as ResultDoc<Timestamp>) })), loading: false, error: null }),
       (err) => setState({ data: [], loading: false, error: err.message }));
   }, [dogId, viewer.uid, viewer.isAdmin, max]);
+  return state;
+}
+
+/** The latest results of a simulator run (all its dogs, or one), newest first, live: the run's pipeline and the
+ * annotated-versus-predicted panel of /admin (indexes results: sourceRef, [dogId,] blockStart). Admin only. */
+export function useRunResults(runId: string | undefined, dogId: string | null = null, max = 12): Live<Result[]> {
+  const [state, setState] = useState<Live<Result[]>>({ data: [], loading: true, error: null });
+  useEffect(() => {
+    if (!runId) { setState({ data: [], loading: false, error: null }); return; }
+    const results = collection(db, "results");
+    const q = dogId
+      ? query(results, where("sourceRef", "==", runId), where("dogId", "==", dogId), orderBy("blockStart", "desc"), limit(max))
+      : query(results, where("sourceRef", "==", runId), orderBy("blockStart", "desc"), limit(max));
+    return onSnapshot(q,
+      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as ResultDoc<Timestamp>) })), loading: false, error: null }),
+      (err) => setState({ data: [], loading: false, error: err.message }));
+  }, [runId, dogId, max]);
+  return state;
+}
+
+export type Truth = SimulatorTruthDoc<Timestamp> & { id: string };
+
+/** The behavior annotated from video for the latest blocks of one dog of a run, newest first, live. */
+export function useRunTruth(runId: string | undefined, dogId: string | null, max = 120): Live<Truth[]> {
+  const [state, setState] = useState<Live<Truth[]>>({ data: [], loading: true, error: null });
+  useEffect(() => {
+    if (!runId || !dogId) { setState({ data: [], loading: false, error: null }); return; }
+    const q = query(collection(db, "simulatorTruth"), where("runId", "==", runId), where("dogId", "==", dogId), orderBy("blockStart", "desc"), limit(max));
+    return onSnapshot(q,
+      (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as SimulatorTruthDoc<Timestamp>) })), loading: false, error: null }),
+      (err) => setState({ data: [], loading: false, error: err.message }));
+  }, [runId, dogId, max]);
+  return state;
+}
+
+export type ReviewItem = ExpertReviewItem<Timestamp> & { id: string };
+
+/** A3: every stretch of the blind expert review, live. Admin only. */
+export function useReviewItems(): Live<ReviewItem[]> {
+  const [state, setState] = useState<Live<ReviewItem[]>>({ data: [], loading: true, error: null });
+  useEffect(() => onSnapshot(collection(db, "expertReviews"),
+    (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as ExpertReviewItem<Timestamp>) })), loading: false, error: null }),
+    (err) => setState({ data: [], loading: false, error: err.message })), []);
   return state;
 }
 

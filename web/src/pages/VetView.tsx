@@ -14,6 +14,7 @@ import { Link, useParams } from "react-router-dom";
 import { summarize, type TimedSlot } from "@shared/trends";
 import { useAuth } from "../auth/AuthContext";
 import { BarList } from "../components/charts";
+import { WeekHeatmap } from "../components/WeekHeatmap";
 import { EmptyState, Icon, PageLoading, Seg, Skeleton, fmtNum, usePageTitle } from "../components/ui";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
 import { useDogTrend } from "../data/useDogTrend";
@@ -28,10 +29,10 @@ const PERIODS = [{ value: 7, label: "7 días" }, { value: 30, label: "30 días" 
  * than a value (a regular muted word), so the figures of the table are what the eye finds. */
 const NO_DATA = <span className="vet-missing">Sin dato</span>, NOT_APPLICABLE = <span className="vet-missing">No aplica</span>;
 const pm = (mean: number | null, sd: number | null, d = 0) => (mean == null ? NO_DATA : `${fmtNum(mean, d)} ± ${fmtNum(sd ?? 0, d)}`);
-/** a share that is not zero is never printed as «0 %». */
+/** A share that is not zero is never printed as «0 %». */
 const share = (x: number) => (x > 0 && x < 0.005 ? "menos de 1 %" : `${fmtNum(100 * x)} %`);
 
-/** the calendar days of the period that have data, and the first one. */
+/** The calendar days of the period that have data, and the first one. */
 function daysWithData(items: TimedSlot[]): { days: number; first: number | null } {
   const days = new Set<string>();
   for (const { t } of items) { const d = new Date(t); days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`); }
@@ -219,6 +220,13 @@ export function VetView() {
             </section>
           )}
           </div>
+          {/* When in the day the dog moves, over the last 7 days, the whole width of the sheet. */}
+          {trend.end != null && trend.items.length > 0 && (
+            <section className="vet-section" aria-labelledby="v-week">
+              <h2 className="section-title" id="v-week">Movimiento por hora, últimos 7 días</h2>
+              <WeekHeatmap slots={trend.items} endMs={trend.end} name={dog.name} />
+            </section>
+          )}
         </>
       )}
 

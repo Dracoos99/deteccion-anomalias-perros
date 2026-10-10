@@ -11,7 +11,9 @@ from src.inject import FIXTURE_PATH, Injection, apply_hr, apply_imu, apply_temp,
 
 
 def test_catalog_covers_the_anomaly_types_of_section_10():
-    assert set(catalog()["types"]) == {"activity_drop", "immobility", "tachycardia", "bradycardia", "fever", "hypothermia"}
+    # The six anomalies of the dog and the collar taken off, a problem of the sensor.
+    assert set(catalog()["types"]) == {"activity_drop", "immobility", "tachycardia", "bradycardia", "fever", "hypothermia", "collar_off"}
+    assert catalog()["types"]["collar_off"]["signal"] == "sensor"
     assert catalog()["types"]["activity_drop"]["min"] == 0.4 and catalog()["types"]["activity_drop"]["max"] == 0.7  #
 
 

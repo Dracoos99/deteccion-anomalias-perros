@@ -26,7 +26,7 @@ export function finishedByDuration(r: RunLike): boolean {
   return !!r.durationS && r.speed >= 5 && perDog * 10 >= r.durationS;
 }
 
-/** «Reproduciendo» only while a simulator process executes the run;«Iniciando» until
+/** «Reproduciendo» only while a simulator process executes the run;: «Iniciando» until
  * its first block, and «Terminada» (its duration) apart from «Detenida» (by hand). «Iniciando» has a
  * limit, counted from the latest of its creation and the process's last sign of life (`worker.heartbeatAt`); past it,
  * «No arrancó». */
@@ -43,3 +43,11 @@ export function runPhase(r: RunLike, now: number): Phase {
 
 /** A latency over the goal says so in words, not only in colour. */
 export const overGoal = (ms: number | null | undefined) => ms != null && ms > LATENCY_GOAL_MS;
+
+/** How long one of the two stages of a dog's learning period takes (shared/baseline.ts): minBlocks blocks of
+ * 10 s of data, which a run at ×speed sends in about that time divided by the speed (a little more: each block waits
+ * for the result of the one before). */
+export function learningStageMs(minBlocks: number, speed = 1): { dataMs: number; clockMs: number } {
+  const dataMs = minBlocks * 10_000;
+  return { dataMs, clockMs: dataMs / Math.max(1, speed) };
+}

@@ -114,7 +114,7 @@ export function AlertDetail() {
   // «Deshacer» leaves a minute before firestore.rules stop accepting it.
   const now = useNow(15_000);
   const { data: cfg } = useFusionConfig();
-  // The dog now, as Inicio and its detail show it; while this
+  // The dog now, as Inicio and its detail show it (the level of describeDog); while this
   // alert goes on, its phrase names what holds the level.
   const dogNow = alert ? describeDog(dog?.status, dog?.baseline, cfg, alert, !alert.endedAt, { key: alert.dogId }) : null;
   // The title is in the present while the episode goes on. And while the variable that

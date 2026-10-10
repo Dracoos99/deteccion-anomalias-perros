@@ -36,14 +36,21 @@ export function runDataFiles(dogs: Pick<DogDoc, "source">[]): string[] {
   return [...files];
 }
 
-/** Downloads `files` from gs://bucket/prefix into `dir`, keeping their relative paths. */
+/** The annotated behavior of the IMU subjects of a run that records it (optional: an older bucket does not
+ * have it, and the run then goes on without the comparison). */
+export function runLabelFiles(dogs: Pick<DogDoc, "source">[]): string[] {
+  return [...new Set(dogs.flatMap((d) => (d.source?.imu?.datasetId && d.source.imu.subjectId ? [`labels/${d.source.imu.datasetId}/${d.source.imu.subjectId}.i8`] : [])))];
+}
+
+/** Downloads `files` from gs://bucket/prefix into `dir`, keeping their relative paths. `optional` files may be missing. */
 export async function downloadFiles(uri: string, files: string[], dir: string, token: TokenFn = metadataToken,
-  fetchImpl: typeof fetch = fetch): Promise<void> {
+  fetchImpl: typeof fetch = fetch, optional: ReadonlySet<string> = new Set()): Promise<void> {
   const { bucket, prefix } = parseGsUri(uri);
   const auth = `Bearer ${await token()}`;
   for (const f of files) {
     const url = `https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(prefix + f)}?alt=media`;
     const res = await fetchImpl(url, { headers: { Authorization: auth } });
+    if (!res.ok && optional.has(f)) continue;
     if (!res.ok) throw new Error(`No se pudo descargar gs://${bucket}/${prefix}${f} (${res.status}).`);
     const out = path.join(dir, ...f.split("/"));
     fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -56,7 +63,8 @@ export async function fetchRunData(db: Firestore, runId: string, uri: string, di
   const run = (await db.doc(`simulatorRuns/${runId}`).get()).data() as SimulatorRunDoc | undefined;
   if (!run) throw new Error(`No existe la ejecución ${runId}.`);
   const dogs = await Promise.all(run.dogIds.map(async (id) => ((await db.doc(`dogs/${id}`).get()).data() ?? {}) as Pick<DogDoc, "source">));
-  await downloadFiles(uri, runDataFiles(dogs), dir);
+  const labels = run.recordTruth ? runLabelFiles(dogs) : [];
+  await downloadFiles(uri, [...runDataFiles(dogs), ...labels], dir, metadataToken, fetch, new Set(labels));
   return dir;
 }
 

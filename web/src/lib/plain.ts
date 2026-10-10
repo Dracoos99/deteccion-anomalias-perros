@@ -3,7 +3,7 @@
  * and "Qué puedes hacer". Wording rules: no diagnosis, no alarm, "se desvía de su patrón normal", and no
  * gendered adjectives about the dog unless its sex is known. The thresholds are those of the engine and config/fusion.
  */
-import { ACTIVITY_SD_FLOOR, HR_SD_FLOOR, levelOf, normalBand, type AlertReason, type Baseline, type Behavior, type DogStatus, type FusionConfig, type Level } from "@shared/types";
+import { ACTIVITY_SD_FLOOR, BEHAVIORS as BEHAVIOR_ORDER, HR_SD_FLOOR, levelOf, normalBand, type AlertReason, type Baseline, type Behavior, type DogStatus, type FusionConfig, type Level } from "@shared/types";
 import { orderReasons, titleReason } from "@shared/alert-text";
 import { STALE_AFTER_MS } from "./live";
 
@@ -127,7 +127,9 @@ export interface DogSummary { phrase: string; activity: Friendly; heart: Friendl
   slight: boolean;
   /** While the alert goes on, whether the variable that names it is still out of its band (so its title
    * may be in the present); null without an alert in course. */
-  titleStill: boolean | null }
+  titleStill: boolean | null;
+  /** The collar seems off the dog (dogs.status.sensor «no_wear»). */
+  sensorOff: boolean }
 
 /** The level and the Health Score the owner screens show: the stable ones (a 5-minute average) when the
  * Function wrote them, the instantaneous ones in status docs from before. The «En vivo» panel keeps the instantaneous. */
@@ -255,12 +257,16 @@ export function describeDog(status: DogStatus<unknown> | null | undefined, b: Ba
   const main = status && ongoingAlert && reasons?.length
     ? orderReasons(reasons, titleCode).find((r) => reasonStill(r, vitals)) ?? titleReason(reasons, titleCode) : null;
   let phrase: string;
+  // The collar seems off the dog: what arrives is not the dog's, so nothing about the dog is said.
+  const sensorOff = status?.sensor === "no_wear";
   if (!status) phrase = "Todavía no hay datos.";
+  else if (sensorOff) phrase = "Parece que no lleva puesto el collar: no llegan su ritmo cardiaco ni su temperatura, y el sensor no registra ningún movimiento.";
   else if (main) phrase = alertPhrase(main, vitals);
   else if (temp.dev === "high") phrase = "Su temperatura está más alta de lo normal.";
   else if (temp.dev === "low") phrase = "Su temperatura está más baja de lo normal.";
   // Without a baseline nothing is "habitual" yet; only the reference ranges apply.
-  else if (!b) phrase = "Estamos aprendiendo su patrón normal. Mientras tanto, solo se revisan los rangos de referencia.";
+  // In plain words what the learning period checks (the temperature only), as its panel says.
+  else if (!b) phrase = "Estamos aprendiendo su patrón normal. Mientras tanto, solo revisamos su temperatura.";
   // A heart rate far from its band goes before the movement: it is what changed the level, and
   // it stays far while the change lasts, so the phrase does not alternate with the movement of the moment.
   else if (far) phrase = `${farText.charAt(0).toUpperCase()}${farText.slice(1)}.`;
@@ -279,8 +285,8 @@ export function describeDog(status: DogStatus<unknown> | null | undefined, b: Ba
   // «Atención» or «Revisar» without an alert still says what to do, in one line. What to look at
   // follows the cause, never «no hace falta hacer nada» with a fever or a racing heart; and the alert is promised only
   // when a rule would open one if the change lasts.
-  let todo: string | null = null;
-  if (status && !reasons && (level === "amber" || level === "red")) {
+  let todo: string | null = sensorOff ? "Revisa que el collar esté bien puesto y encendido. Mientras no llegan sus datos, no podemos avisarte de cambios." : null;
+  if (!sensorOff && status && !reasons && (level === "amber" || level === "red")) {
     const step = tempOut ? "Mide su temperatura cuando esté en reposo y fíjate cómo está."
       : far ? "Deja que descanse unos minutos, cuenta sus latidos con la mano sobre su pecho y fíjate cómo está."
         : lowMovement ? "Fíjate cómo está y si come, bebe y juega como siempre."
@@ -294,7 +300,7 @@ export function describeDog(status: DogStatus<unknown> | null | undefined, b: Ba
   // heart-rate pattern, unusual movements) have no band to look at and hold with the episode. Null without an alert.
   const named = status && ongoingAlert && reasons?.length ? titleReason(reasons, titleCode) : null;
   const titleStill = named ? (named.code === "hr_pattern" || named.code === "behavior_unusual" ? true : reasonStill(named, vitals)) : null;
-  return { phrase, activity, heart, temp, todo, level, levelNote, slight, titleStill };
+  return { phrase, activity, heart, temp, todo, level, levelNote: sensorOff ? null : levelNote, slight: sensorOff ? false : slight, titleStill, sensorOff };
 }
 
 /** The explanation of a cause of an alert that already ended, in the past («estuvo por encima»);
@@ -328,13 +334,17 @@ export function namesText(names: string[]): string {
  * an alert still to review, `alertEnded` when that alert's episode already ended (its banner says «ya pasó»). */
 type DogLevel = { name: string; level: DogStatus<unknown>["level"] | null; learning?: boolean; stale?: boolean; openAlert?: boolean; alertEnded?: boolean;
   /** «Todo normal» with the movement or the heart rate just out of its band (DogSummary.slight). */
-  slight?: boolean };
+  slight?: boolean;
+  /** The collar seems off: «Revisa el collar». */
+  sensorOff?: boolean };
 
 /** Place of a dog in the Inicio order (lower first): «Revisar», «Atención», a new alert, the rest, those still learning
  * their pattern or whose data stopped (an old level is not a reason to go first), and those without data. */
 export function attentionRank(d: DogLevel): number {
   if (!d.level) return 5;
-  if (d.stale || d.learning) return 4;
+  // A dog still learning (or with old data) that has an alert waiting goes with the new alerts, not at the end.
+  if (d.stale || d.learning) return d.openAlert ? 2 : 4;
+  if (d.sensorOff) return 1;
   return d.level === "red" ? 0 : d.level === "amber" ? 1 : d.openAlert ? 2 : 3;
 }
 
@@ -379,11 +389,13 @@ export function homeSummary(dogs: DogLevel[], opts: { all?: boolean } = {}): str
   const withData = byName.filter((d) => d.level);
   if (!withData.length) return null;
   const noData = byName.filter((d) => !d.level).map((d) => d.name);
-  const current = withData.filter((d) => !d.stale);
+  // A collar that seems off is said apart, before anything about the dogs whose data do arrive.
+  const collar = withData.filter((d) => !d.stale && d.sensorOff).map((d) => d.name);
+  const current = withData.filter((d) => !d.stale && !d.sensorOff);
   const of = (l: string) => current.filter((d) => d.level === l && !(l === "green" && d.learning)).map((d) => d.name);
   const red = of("red"), amber = of("amber");
-  // back to its usual after an alert that already ended: one sentence says both.
-  // a dog in «Todo normal» whose card shows a vital in amber is not said to be «dentro de su patrón normal» nor
+  // Back to its usual after an alert that already ended: one sentence says both.
+  // A dog in «Todo normal» whose card shows a vital in amber is not said to be «dentro de su patrón normal» nor
   // «como de costumbre» (also when its alert already ended); its alert, if any, gets its own sentence below.
   const slight = current.filter((d) => d.level === "green" && !d.learning && d.slight).map((d) => d.name);
   const passed = current.filter((d) => d.level === "green" && !d.learning && d.openAlert && d.alertEnded && !slight.includes(d.name)).map((d) => d.name);
@@ -394,9 +406,10 @@ export function homeSummary(dogs: DogLevel[], opts: { all?: boolean } = {}): str
   const flagged = red.length + amber.length;
   // A dog already named above for its level needs no second sentence for its alert (its card shows the banner).
   const alertOnly = withAlert.filter((n) => !red.includes(n) && !amber.includes(n) && !passed.includes(n));
-  const named = flagged + passed.length + slight.length > 0;
+  const named = flagged + passed.length + slight.length + collar.length > 0;
   const yours = opts.all ? "los" : "tus";
   const parts: string[] = [];
+  if (collar.length) parts.push(`Revisa el collar de ${namesText(collar)}: no llegan su movimiento, su ritmo cardiaco ni su temperatura.`);
   if (red.length) parts.push(`${namesText(red)} ${red.length > 1 ? "se alejaron" : "se alejó"} de su patrón normal; revisa cómo ${red.length > 1 ? "están" : "está"}.`);
   if (amber.length) parts.push(`${namesText(amber)} ${amber.length > 1 ? "tienen" : "tiene"} un cambio leve.`);
   if (slight.length) parts.push(`${namesText(slight)} ${slight.length > 1 ? "tienen" : "tiene"} un dato un poco fuera de lo habitual.`);
@@ -421,6 +434,29 @@ const NOW_TEXT: Record<Behavior, [string, string]> = {
 };
 /** Current behavior, agreeing with the dog's sex when it is known. */
 export const behaviorNow = (b: Behavior, sex: Sex) => NOW_TEXT[b][sex === "female" ? 1 : 0];
+
+/** Below this probability the shown behavior is not stated as sure. A display rule, not a calibration: the
+ * quiet postures are the model's weak spot (F1 of 0.67 to 0.76), its novelty threshold is 0.41, and the line is meant to
+ * be reviewed with the expert reviewer of the thesis. */
+export const BEHAVIOR_SURE = 0.6;
+const QUIET: readonly Behavior[] = ["sit", "stand", "lie"];
+
+/** The current behavior as the owner reads it, with the model's confidence (status.lastBehaviorProb): a quiet posture
+ * it doubts is «En reposo» (all three are rest, and that it tells apart almost perfectly); a moving behavior it doubts is
+ * «Probablemente caminando»; without a probability, the behavior as before. */
+/** The confidence of what is shown: for «En reposo», the three quiet postures together; otherwise the behavior's. */
+export function shownConfidence(b: Behavior, probs: readonly number[] | null | undefined): number | null {
+  if (!probs) return null;
+  const p = probs[BEHAVIOR_ORDER.indexOf(b)];
+  if (p == null) return null;
+  if (p >= BEHAVIOR_SURE || !QUIET.includes(b)) return p;
+  return QUIET.reduce((a, q) => a + (probs[BEHAVIOR_ORDER.indexOf(q)] ?? 0), 0);
+}
+
+export function behaviorShown(b: Behavior, p: number | null | undefined, sex: Sex): string {
+  if (p == null || p >= BEHAVIOR_SURE) return behaviorNow(b, sex);
+  return QUIET.includes(b) ? "En reposo" : `Probablemente ${behaviorNow(b, sex).toLowerCase()}`;
+}
 
 export const BEHAVIOR_LABEL: Record<Behavior, string> = {
   sit: "Sentarse", stand: "Pararse", lie: "Echarse", trot: "Trotar", walk: "Caminar", play: "Jugar", sniff: "Olfatear",
@@ -510,14 +546,14 @@ export function contextLine(reasons: AlertReason[]): string | null {
 
 // ── Notes shared by the owner screens ───────────────────────────────────────────────────────────
 
-/** what an amber point on a chart means. */
+/** What an amber point on a chart means. */
 export const marksNote = (dogName: string) =>
   `Un punto «Fuera de lo normal» marca un momento en que la línea oscura salió de lo normal para ${dogName}. Si dura poco, no genera una alerta.`;
 
-/** the owner's note on the demonstration temperature; the full method goes in the vet view. */
+/** The owner's note on the demonstration temperature; the full method goes in the vet view. */
 export const DEMO_TEMP_NOTE = "Temperatura de demostración: los datos de temperatura de esta etapa no son de sensores reales.";
 
-/** data of a simulation faster than real time carry hours later than now. A CSV with hours ahead
+/** Data of a simulation faster than real time carry hours later than now. A CSV with hours ahead
  * of the clock is the owner's file, not a demonstration, so the note and the tag follow the dog's source
  * (dogs.status.lastSource). */
 export type DataSource = "simulator" | "csv" | null | undefined;
@@ -529,7 +565,7 @@ export const aheadTag = (source: DataSource) => (source === "csv" ? "hora del ar
 
 // ── Data sources (Vista para el veterinario and research tools) ───────────────────────────────────────────
 
-/** every source by its citation, never by a company's name. */
+/** Every source by its citation, never by a company's name. */
 export const DATASET_TEXT: Record<string, string> = {
   vehkaoja2022: "Vehkaoja et al. (2022)", invoxia2023: "dataset público de frecuencia cardiaca (2023)", physiozoo2018: "PhysioZoo",
   rri23dogs: "23 perros (intervalos RR)", uwbdvs2024: "UWB-DVS", synthetic: "serie sintética de demostración", csv: "carga de CSV",
@@ -632,4 +668,31 @@ export function ageText(birthDate: string | null | undefined, now = new Date()):
   let y = now.getFullYear() - b.getFullYear();
   if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) y--;
   return y <= 0 ? "menos de 1 año" : y === 1 ? "1 año" : `${y} años`;
+}
+
+// ── Learning period of a new dog ──────────────────────────────────────────────────────
+
+/** Where a dog is in its learning period: stage 1 (what is normal: heart, temperature and movement by rule) or 2 (how it
+ * moves, with the behavioral model), the share of the stage, the data time left and the whole stage. Null when the
+ * Function is not learning its baseline. `minBlocks` is config/fusion.baseline.minBlocks (blocks of 10 s per stage). */
+export interface LearningInfo { stage: 1 | 2; pct: number; leftMs: number; stageMs: number }
+export function learningInfo(progress: { stage: "initial" | "model"; share: number } | null | undefined, minBlocks: number): LearningInfo | null {
+  if (!progress) return null;
+  const share = Math.min(1, Math.max(0, progress.share));
+  const stageMs = minBlocks * 10_000;
+  return { stage: progress.stage === "initial" ? 1 : 2, pct: share > 0 ? Math.max(1, Math.round(100 * share)) : 0, leftMs: Math.round((1 - share) * stageMs), stageMs };
+}
+
+/** How long a «learned» notice stays on the dog's card and detail after the Function wrote its baseline. */
+export const LEARNED_NOTICE_MS = 24 * 3_600_000;
+
+/** The notice when the Function finished learning a dog's baseline, for
+ * LEARNED_NOTICE_MS: «basic» after stage 1 (its activity is still the rule's: from then on the dog is compared with its
+ * own normal pattern while stage 2 refines its movement), «final» after stage 2 (the activity of the behavioral model).
+ * Never for a baseline the simulator computed. */
+export function learnedNotice(baseline: { origin?: string; activitySource?: string; computedAt?: { toMillis?: () => number } | null } | null | undefined,
+  now = Date.now()): "basic" | "final" | null {
+  const at = baseline?.computedAt?.toMillis?.();
+  if (baseline?.origin !== "function" || at == null || now - at > LEARNED_NOTICE_MS || now < at - 60_000) return null;
+  return (baseline.activitySource ?? "rules") === "rules" ? "basic" : "final";
 }

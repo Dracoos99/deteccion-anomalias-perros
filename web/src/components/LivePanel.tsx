@@ -4,11 +4,12 @@
    tabs above cover that. The detail renders it only while the dog's state is live, which a CSV upload
    never is. It goes after the trends, open on wide screens and folded into one line on phones, so the owner's state,
    tabs and «Qué es normal» come first. Its Health Score is the instantaneous one (the state above is the stable one).
-   The detail shows it under the «Resumen» tab only. ofits Health Score says it is the one of this moment, apart from the average of the state above. */
+   The detail shows it under the «Resumen» tab only. of: its Health Score says it is the one of this moment, apart from the average of the state above. */
 import { useState } from "react";
 import { useLiveResults, type Dog, type Fusion, type Viewer } from "../data/hooks";
 import { isLiveBlock, liveSeries, type LiveBlock } from "../lib/live";
-import { behaviorNow, hrBand } from "../lib/plain";
+import { behaviorShown, hrBand, shownConfidence } from "../lib/plain";
+import { BEHAVIORS } from "@shared/types";
 import { TrendChart, healthDomain, healthZones } from "./charts";
 import { Icon, fmtNum, useNow } from "./ui";
 
@@ -37,12 +38,20 @@ export function LivePanel({ dog, cfg, viewer, live: dogLive }: { dog: Dog; cfg: 
   const live = liveSeries(blocks);
   if (!live.latest || !isLiveBlock(live.latest, now)) return null;
   const band = hrBand(dog.baseline, cfg);
-  const behavior = live.latest.behavior ? behaviorNow(live.latest.behavior, dog.sex) : null;
+  // The model's confidence in the behavior of the latest block.
+  const latestResult = data[0] ?? null;
+  const rawProb = live.latest.behavior && latestResult?.behaviorProbs ? latestResult.behaviorProbs[BEHAVIORS.indexOf(live.latest.behavior)] ?? null : null;
+  const behavior = live.latest.behavior ? behaviorShown(live.latest.behavior, rawProb, dog.sex) : null;
+  // «En reposo» shows the confidence of the three quiet postures together, not the one of the posture it doubts.
+  const prob = live.latest.behavior ? shownConfidence(live.latest.behavior, latestResult?.behaviorProbs) : null;
   const heart = live.lastHr != null ? `${fmtNum(live.lastHr)} lpm` : null;
   const every = live.latest.blockSeconds ?? 10;
   const stableMin = Math.round((cfg.stableTimeConstantS ?? 300) / 60);
   // A dog replayed by the simulator: its movement and heart rate come from different dogs of the datasets.
   const simulated = !!dog.source?.imu?.datasetId && !!dog.source?.hr?.datasetId && dog.source.imu.datasetId !== dog.source.hr.datasetId;
+  // While it learns its normal pattern the dog has no Health Score, not even the one of this moment, and
+  // its behavior is known only once the model can read its sensor (stage 2 of the learning period).
+  const learning = !dog.baseline;
   return (
     <details className="panel live-panel" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="live-summary">
@@ -53,10 +62,10 @@ export function LivePanel({ dog, cfg, viewer, live: dogLive }: { dog: Dog; cfg: 
       <div className="stack-sm live-body">
         <p className="chart-note">Últimos 10 minutos de {dog.name}. Se actualiza cada {every} s.</p>
         <dl className="live-now">
-          <div><dt>Ahora</dt><dd>{behavior ?? "—"}</dd></div>
+          <div><dt>Ahora</dt><dd>{behavior ?? <span className="muted">{learning ? "Se conocerá al aprender su patrón" : "Sin dato"}</span>}{behavior && prob != null && <span className="live-now-note">{prob >= 0.5 ? `${Math.round(prob * 100)} % de confianza del modelo` : "el modelo duda entre conductas"}</span>}</dd></div>
           <div><dt>Corazón</dt><dd>{heart ? <>{heart}{live.latest.hr != null && <span className="live-now-note">promedio del último minuto</span>}</> : "Sin datos"}</dd></div>
-          <div><dt>Movimiento</dt><dd>{live.lastActivity != null ? <>{fmtNum(live.lastActivity)} %<span className="live-now-note">del último minuto</span></> : "—"}</dd></div>
-          <div><dt>Health Score ahora</dt><dd>{fmtNum(live.latest.healthScore)}<span className="live-now-note">{stableMin > 0 ? `de 100; el estado de arriba usa el promedio de ${stableMin} min` : "de 100"}</span></dd></div>
+          <div><dt>Movimiento</dt><dd>{live.lastActivity != null ? <>{fmtNum(live.lastActivity)} %<span className="live-now-note">del último minuto</span></> : <span className="muted">Sin dato</span>}</dd></div>
+          {!learning && <div><dt>Health Score ahora</dt><dd>{fmtNum(live.latest.healthScore)}<span className="live-now-note">{stableMin > 0 ? `de 100; el estado de arriba usa el promedio de ${stableMin} min` : "de 100"}</span></dd></div>}
         </dl>
         {/* The three charts side by side on wide screens, so the panel is one band and not a
             column that doubles the page. */}
@@ -69,8 +78,8 @@ export function LivePanel({ dog, cfg, viewer, live: dogLive }: { dog: Dog; cfg: 
               legendBand={band ? `Lo normal para ${dog.name}` : undefined} legendMarks="Fuera de lo normal" />
           )}
           <TrendChart title="Tiempo en movimiento en el último minuto" rangeKey="10m" unit="%" domain={[0, 100]} points={live.activity} height={150} gapMs={30_000} showLast />
-          <TrendChart title="Health Score de cada momento, últimos 10 minutos" rangeKey="10m" unit="puntos" domain={healthDomain(cfg.levels, live.health.map((p) => p.v))} points={live.health} height={150} gapMs={30_000}
-            zones={healthZones(cfg.levels)} showLast />
+          {!learning && <TrendChart title="Health Score de cada momento, últimos 10 minutos" rangeKey="10m" unit="puntos" domain={healthDomain(cfg.levels, live.health.map((p) => p.v))} points={live.health} height={150} gapMs={30_000}
+            zones={healthZones(cfg.levels)} showLast />}
         </div>
         <details className="disclosure">
           <summary><Icon name="chevron-right" size={14} />¿Qué muestran estos gráficos?</summary>

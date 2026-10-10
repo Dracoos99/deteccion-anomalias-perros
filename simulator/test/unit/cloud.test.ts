@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { downloadFiles, metadataToken, parseGsUri, runDataFiles } from "../../src/cloud";
+import { downloadFiles, metadataToken, parseGsUri, runDataFiles, runLabelFiles } from "../../src/cloud";
 
 describe("simulator data in Cloud Storage", () => {
   it("reads the bucket and folder of SIM_DATA_URI", () => {
@@ -36,6 +36,11 @@ describe("simulator data in Cloud Storage", () => {
     expect(fs.readFileSync(path.join(dir, "hr", "invoxia2023", "30.json"), "utf8")).toBe("abc");
     const failing = (async () => new Response("no", { status: 403 })) as typeof fetch;
     await expect(downloadFiles("gs://b/sim", ["manifest.json"], dir, async () => "tok", failing)).rejects.toThrow(/403/);
+    // An optional file (the annotations, missing in a bucket synced before) does not stop the run.
+    const missing = (async () => new Response("no", { status: 404 })) as typeof fetch;
+    await expect(downloadFiles("gs://b/sim", ["labels/vehkaoja2022/23.i8"], dir, async () => "tok", missing, new Set(["labels/vehkaoja2022/23.i8"]))).resolves.toBeUndefined();
+    const withImu = (imu: string) => ({ source: { imu: { datasetId: "vehkaoja2022" as const, subjectId: imu } } }) as Parameters<typeof runLabelFiles>[0][number];
+    expect(runLabelFiles([withImu("23"), withImu("23"), {}])).toEqual(["labels/vehkaoja2022/23.i8"]);
   });
   it("asks the metadata server for the token of the service account", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];

@@ -7,10 +7,11 @@ import { ANOMALY_CATALOG, ANOMALY_TYPES, blocksFor, validateInjection } from "@s
 import type { AnomalyType } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { db, usingEmulators } from "../firebase";
-import { Ago, Callout, EmptyState, Icon, LevelTag, PageHead, Seg, fmtNum, useNow, usePageTitle } from "../components/ui";
+import { Ago, Callout, EmptyState, Icon, LevelTag, PageHead, Seg, StateTag, fmtNum, useNow, usePageTitle } from "../components/ui";
 import { useActiveModels, useDogs, useFusionConfig, useRuns, type Dog, type Run } from "../data/hooks";
-import { datasetText } from "../lib/plain";
-import { overGoal, runPhase, type Phase, type RunLike } from "../lib/simRun";
+import { datasetText, durationText } from "../lib/plain";
+import { learningStageMs, overGoal, runPhase, type Phase, type RunLike } from "../lib/simRun";
+import { BehaviorCompare, RunPipeline } from "../components/RunInsights";
 
 const SPEEDS = [1, 2, 5, 10];
 const MAX_DOGS = 10;
@@ -39,6 +40,8 @@ function magnitudeText(type: AnomalyType, m: number, short = false): string {
   const unit = ANOMALY_CATALOG.types[type].unit;
   if (unit === "fraction") return short ? `−${fmtNum(m * 100)} % de movimiento` : `${fmtNum(m * 100)} % menos movimiento`;
   if (unit === "relative") return `${type === "tachycardia" ? "+" : "−"}${fmtNum(m * 100)} % de ${short ? "FC" : "su FC"}`;
+  // The collar off the dog reads the room's temperature.
+  if (type === "collar_off") return `${short ? "" : "temperatura ambiente "}${fmtNum(m, 0)} °C`;
   return `${type === "fever" ? "+" : "−"}${fmtNum(m, 1)} °C`;
 }
 
@@ -55,11 +58,16 @@ function injectionsText(inj: { type: AnomalyType; magnitude: number }[]): string
 const simulable = (d: Dog) => d.source?.imu?.datasetId === "vehkaoja2022" && !!d.source?.hr?.subjectId;
 
 /** A dog in another active run cannot be chosen (the simulator refuses a dog in two active runs). */
-function NewRun({ dogs, uid, busyDogs, onCreated }: { dogs: Dog[]; uid: string; busyDogs: Set<string>; onCreated: (runId: string) => void }) {
+function NewRun({ dogs, uid, busyDogs, onCreated, minBlocks }: { dogs: Dog[]; uid: string; busyDogs: Set<string>; onCreated: (runId: string) => void; minBlocks: number }) {
   const [picked, setSelected] = useState<string[]>(() => dogs.filter(simulable).filter((d) => !busyDogs.has(d.id)).slice(0, 3).map((d) => d.id));
   const selected = picked.filter((id) => !busyDogs.has(id));
   const [speed, setSpeed] = useState(10);
   const [limit, setLimit] = useState(0);
+  // A «new dog» run: the Function learns the dogs' baselines from the stream, as for a dog an owner registers.
+  const [learn, setLearn] = useState(false);
+  // Also write the behavior annotated from video, for «Conducta anotada frente a la del modelo».
+  const [truth, setTruth] = useState(false);
+  const stage = learningStageMs(minBlocks, speed);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length < MAX_DOGS ? [...s, id] : s));
@@ -67,12 +75,12 @@ function NewRun({ dogs, uid, busyDogs, onCreated }: { dogs: Dog[]; uid: string; 
     setBusy(true); setError(null);
     try {
       const ref = await addDoc(collection(db, "simulatorRuns"), {
-        createdBy: uid, dogIds: selected, speed, state: "running", durationS: limit || null, seed: 0,
+        createdBy: uid, dogIds: selected, speed, state: "running", durationS: limit || null, seed: 0, learnBaseline: learn, recordTruth: truth,
         pendingInjection: null, injectionsLog: [], worker: null, error: null,
         stats: { blocksWritten: 0, avgLatencyMs: null, p95LatencyMs: null, maxLatencyMs: null, resultsSeen: 0, startedAt: null, stoppedAt: null, lastBlockAt: null },
         schemaVersion: 1, createdAt: serverTimestamp(),
       });
-      // the new run takes the panel at the top, in view, and its dogs leave this form.
+      // The new run takes the panel at the top, in view, and its dogs leave this form.
       onCreated(ref.id);
       setSelected([]);
     } catch {
@@ -106,6 +114,15 @@ function NewRun({ dogs, uid, busyDogs, onCreated }: { dogs: Dog[]; uid: string; 
         <div className="stack-sm field-stack"><span className="xs muted">Duración simulada</span>
           <Seg label="Duración simulada" value={limit} onChange={setLimit} options={RUN_LIMITS} /></div>
       </div>
+      <label className="check">
+        <input type="checkbox" checked={learn} onChange={(e) => setLearn(e.target.checked)} />
+        <span><strong>Perro nuevo</strong> <span className="xs muted">El sistema aprende su patrón normal con sus primeros datos, como con un perro recién registrado. Se borra la línea base de los perros elegidos.</span></span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={truth} onChange={(e) => setTruth(e.target.checked)} />
+        <span><strong>Guardar la conducta anotada</strong> <span className="xs muted">Para comparar, bloque a bloque, la conducta anotada en el video del dataset con la que reconoce el modelo. Duplica las escrituras de la ejecución.</span></span>
+      </label>
+      {learn && <p className="xs muted">Son dos etapas de {durationText(stage.dataMs)} de datos cada una: a ×{speed}, {stage.clockMs < 90_000 ? "un minuto o menos" : `unos ${durationText(stage.clockMs)}`} de reloj por etapa. Se acorta en Modelos y configuración, «Bloques de 10 s por etapa»{minBlocks < 360 ? <>; con menos de 1 h, el patrón normal sale más estrecho y el perro puede leerse distinto de lo habitual al terminar</> : null}.</p>}
       {error && <Callout kind="error">{error}</Callout>}
       <button className="btn btn-primary" type="button" disabled={busy || !selected.length} onClick={create}><Icon name="play" />Crear ejecución</button>
       <p className="xs muted">A ×1 y ×2 cada perro envía bloques de 2 s (la app se actualiza cada 2 s en tiempo real); desde ×5, bloques de 10 s.</p>
@@ -113,6 +130,16 @@ function NewRun({ dogs, uid, busyDogs, onCreated }: { dogs: Dog[]; uid: string; 
     </section>
   );
 }
+
+/** The scenarios of the demonstration, within the catalog's ranges. */
+interface Scenario { label: string; type: AnomalyType; magnitude: number; durationS: number }
+const SCENARIOS: Scenario[] = [
+  { label: "Fiebre (+1.5 °C, 30 min)", type: "fever", magnitude: 1.5, durationS: 1800 },
+  { label: "Taquicardia (+60 %, 30 min)", type: "tachycardia", magnitude: 0.6, durationS: 1800 },
+  { label: "Se mueve menos (−60 %, 1 h)", type: "activity_drop", magnitude: 0.6, durationS: 3600 },
+  { label: "Inmovilidad (1 h)", type: "immobility", magnitude: 0.97, durationS: 3600 },
+  { label: "Collar quitado (10 min)", type: "collar_off", magnitude: 24, durationS: 600 },
+];
 
 function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
   const [dogId, setDogId] = useState(run.dogIds[0]);
@@ -123,13 +150,15 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
   const [error, setError] = useState<string | null>(null);
   const spec = ANOMALY_CATALOG.types[type];
   const chooseType = (t: AnomalyType) => { setType(t); setMagnitude(ANOMALY_CATALOG.types[t].default); };
-  const inject = async () => {
+  const inject = async (preset?: Scenario) => {
     setError(null); setSent(null);
+    const [t, m, d] = preset ? [preset.type, preset.magnitude, preset.durationS] : [type, magnitude, durationS];
+    if (preset) { setType(t); setMagnitude(m); setDurationS(d); }
     try {
-      validateInjection(type, magnitude, durationS);
-      await updateDoc(doc(db, "simulatorRuns", run.id), { pendingInjection: { dogId, type, magnitude, durationS } });
-      const what = `${spec.label.toLowerCase()}, ${magnitudeText(type, magnitude)}, ${DURATION_LABELS[durationS]}`;
-      // without a process nothing applies it yet; the panel says so instead of «Enviada».
+      validateInjection(t, m, d);
+      await updateDoc(doc(db, "simulatorRuns", run.id), { pendingInjection: { dogId, type: t, magnitude: m, durationS: d } });
+      const what = `${ANOMALY_CATALOG.types[t].label.toLowerCase()}, ${magnitudeText(t, m)}, ${DURATION_LABELS[d]}`;
+      // Without a process nothing applies it yet; the panel says so instead of «Enviada».
       setSent(run.worker
         ? `Enviada a ${dogs.get(dogId)?.name ?? dogId}: ${what}.`
         : `Guardada para ${dogs.get(dogId)?.name ?? dogId} (${what}): se aplicará cuando el proceso del simulador tome la ejecución.`);
@@ -139,7 +168,7 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
   };
   const bySignal: Record<string, AnomalyType[]> = {};
   for (const t of ANOMALY_TYPES) (bySignal[ANOMALY_CATALOG.types[t].signal] ??= []).push(t);
-  const signalText: Record<string, string> = { imu: "Movimiento", hr: "Frecuencia cardiaca", temp: "Temperatura" };
+  const signalText: Record<string, string> = { imu: "Movimiento", hr: "Frecuencia cardiaca", temp: "Temperatura", sensor: "Sensor (no es del perro)" };
   const step = spec.unit === "celsius" ? 0.1 : 0.01;
   return (
     <section className="panel stack-sm" aria-labelledby="inj-title">
@@ -147,6 +176,15 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
       <div className="field"><label htmlFor="inj-dog">Perro</label>
         <select id="inj-dog" className="select" value={dogId} onChange={(e) => setDogId(e.target.value)}>
           {run.dogIds.map((id) => <option key={id} value={id}>{dogs.get(id)?.name ?? id}</option>)}</select></div>
+      {/* The scenarios of the demonstration, one click each on the dog chosen above. */}
+      <div className="stack-sm">
+        <span className="xs muted">Escenarios de demostración (un clic)</span>
+        <div className="scenario-chips">
+          {SCENARIOS.map((sc) => (
+            <button key={sc.label} className="btn btn-secondary btn-sm" type="button" onClick={() => inject(sc)} disabled={run.state === "stopped"}>{sc.label}</button>
+          ))}
+        </div>
+      </div>
       <div className="field"><label htmlFor="inj-type">Tipo</label>
         <select id="inj-type" className="select" value={type} onChange={(e) => chooseType(e.target.value as AnomalyType)}>
           {Object.entries(bySignal).map(([sig, items]) => <optgroup key={sig} label={signalText[sig]}>{items.map((t) => <option key={t} value={t}>{ANOMALY_CATALOG.types[t].label}</option>)}</optgroup>)}
@@ -163,7 +201,7 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
         <div className="field-hint">{blocksFor(durationS)} bloques de 10 s.</div></div>
       {error && <Callout kind="error">{error}</Callout>}
       {sent && <Callout kind="ok">{sent}</Callout>}
-      <button className="btn btn-primary" type="button" onClick={inject} disabled={run.state === "stopped"}><Icon name="flask" />Inyectar anomalía</button>
+      <button className="btn btn-primary" type="button" onClick={() => inject()} disabled={run.state === "stopped"}><Icon name="flask" />Inyectar anomalía</button>
       <p className="xs muted">Cada bloque afectado guarda <span className="mono">injectedAnomaly</span> como verdad de referencia para la evaluación. La Cloud Function nunca la usa.</p>
     </section>
   );
@@ -211,6 +249,7 @@ function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog
         <div className="sim-bar">
           <div className="sim-status">
             <RunStateTag run={run} now={now} large />
+            {run.learnBaseline && <span className="tag tag-outline"><Icon name="info" size={12} />Perro nuevo: aprende su patrón normal</span>}
             <span className="small muted">{run.worker ? <>proceso <span className="mono">{run.worker.id}</span></> : "sin proceso"} · <span className="mono">simulatorRuns/{run.id}</span>{!own && " · creada por otra cuenta"}</span>
           </div>
           <div className="sim-controls">
@@ -262,8 +301,10 @@ function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog
                 return (
                   <tr key={id}>
                     <td data-title><strong>{d?.name ?? id}</strong><div className="xs muted">{d?.breed}</div></td>
-                    <td data-label="Estado del último bloque"><LevelTag level={st?.level} /></td>
-                    <td className="num tabular strong" data-label="HS">{st?.healthScore ?? "—"}</td>
+                    {/* A collar that seems off is a state of the sensor, and a dog still learning has no level yet. */}
+                    <td data-label="Estado del último bloque">{st?.sensor === "no_wear" ? <StateTag level={st.level} sensorOff iconSize={12} />
+                      : st && !d?.baseline ? <StateTag level={st.level} learning iconSize={12} /> : <LevelTag level={st?.level} />}</td>
+                    <td className="num tabular strong" data-label="HS">{st?.sensor === "no_wear" || (st && !d?.baseline) ? "—" : st?.healthScore ?? "—"}</td>
                     <td data-label="Anomalía activa" data-wide>{inj.length ? injectionsText(inj) : <span className="muted">—</span>}</td>
                   </tr>
                 );
@@ -305,6 +346,11 @@ function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog
         </div>
       )}
     </section>
+    {/* What happens to each block, and the model's behavior beside the one annotated from video. */}
+    <div className="split split-insights">
+      <RunPipeline run={run} dogs={dogs} />
+      <BehaviorCompare key={run.id} run={run} dogs={dogs} />
+    </div>
     </>
   );
 }
@@ -374,7 +420,7 @@ function FusionConfigPanel() {
   return (
     <section className="panel stack-sm" aria-labelledby="cfg-title">
       <h2 className="panel-title" id="cfg-title">Configuración de fusión vigente</h2>
-      <p className="small muted">Se lee de <span className="mono">config/fusion</span>. <Link to="/admin/configuracion">Editar en Modelos y configuración</Link>.</p>
+      <p className="small muted">Se lee de <span className="mono">config/fusion</span>. <Link to="/admin/configuracion">Editar en Modelos y configuración</Link> · <Link to="/admin/revision">Revisión experta</Link>.</p>
       {error && <Callout kind="error">No pudimos leer la configuración.</Callout>}
       {loading ? <p className="small">Cargando…</p> : <dl className="dl dl-cols">{rows.map(([k, v]) => <div className="dl-row" key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
     </section>
@@ -384,13 +430,14 @@ function FusionConfigPanel() {
 export function SimulatorPage() {
   usePageTitle("Simulador");
   const now = useNow(5000);
+  const { data: cfg } = useFusionConfig();
   const { user } = useAuth();
   const { data: runs, loading, error } = useRuns();
   const { data: allDogs } = useDogs({ kind: "all" });
   const dogs = useMemo(() => new Map(allDogs.map((d) => [d.id, d])), [allDogs]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = runs.find((r) => r.id === selectedId) ?? runs.find((r) => r.state !== "stopped") ?? runs[0];
-  // the dogs of the active runs, which a new run cannot take.
+  // The dogs of the active runs, which a new run cannot take.
   const busyDogs = useMemo(() => new Set(runs.filter((r) => r.state !== "stopped").flatMap((r) => r.dogIds)), [runs]);
   const showRun = (runId: string) => {
     setSelectedId(runId);
@@ -434,7 +481,7 @@ export function SimulatorPage() {
             configuration (the tallest, a list of 14 lines) goes under both, full width, in two columns. Before, the two
             went in a column beside the new run and left about 540 px empty under it. Same order in the document. */}
         <div className="split split-even">
-          {user && <NewRun dogs={allDogs} uid={user.uid} busyDogs={busyDogs} onCreated={showRun} />}
+          {user && <NewRun dogs={allDogs} uid={user.uid} busyDogs={busyDogs} onCreated={showRun} minBlocks={cfg.baseline?.minBlocks ?? 360} />}
           <ModelsPanel />
         </div>
         <FusionConfigPanel />

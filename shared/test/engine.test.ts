@@ -551,7 +551,7 @@ describe("reasons of an episode", () => {
     // heart rate, movement).
     const merged = mergeReasons(null, { reasons: [r("hr_high", "heart_rate", 76.7, [54.5, 76.5]), r("activity_low", "behavior", 20, [52, 64])], fallback: false });
     expect(merged.reasons.map((x) => x.code)).toEqual(["activity_low", "hr_high"]);
-    // The fever of: the movement average ends further out of its band than the fever was, and the alert still
+    // The fever case: the movement average ends further out of its band than the fever was, and the alert still
     // stores the fever first, because it named the alert when it opened.
     const plan: Plan = (k) => ({ temp: k >= 6 && k < 66 ? 40.3 : 38.7, active: k < 55 ? k % 2 === 0 : k >= 90 });
     const final = written(replay(plan, 130))!;
@@ -562,7 +562,7 @@ describe("reasons of an episode", () => {
   it("keeps the reason that names an alert while it lasts, unless it rises to «Revisar»", () => {
     const r = (code: string, component: AlertReason["component"], value: number, range: [number, number]): AlertReason =>
       ({ code, component, value, normalRange: range, message: code });
-    // Toby in20 % of movement against 52–64 % (2.7 band widths out) and 48 lpm against 49–87 lpm (0.03).
+    // Toby in: 20 % of movement against 52–64 % (2.7 band widths out) and 48 lpm against 49–87 lpm (0.03).
     const act = r("activity_low", "behavior", 20, [52, 64]), hrLow = r("hr_low", "heart_rate", 48, [49, 87]);
     expect(titleCodeFor(null, [hrLow, act], false)).toBe("activity_low");
     // An alert opened by the heart rate keeps its name when the movement, further out of its band, joins later...

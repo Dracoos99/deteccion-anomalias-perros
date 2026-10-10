@@ -8,7 +8,9 @@ export interface Manifest {
   version: number;
   imuHz: number;
   imuChannels: string[];
-  imu: Record<string, { subjectId: string; samples: number; minutes: number; breed?: string; weightKg?: number; imuMean?: number[]; imuStd?: number[] }[]>;
+  imu: Record<string, { subjectId: string; samples: number; minutes: number; breed?: string; weightKg?: number; imuMean?: number[]; imuStd?: number[];
+    /** The split of the behavioral model the subject belongs to, and its 2 s windows with one annotated class. */
+    split?: "train" | "val" | "test" | null; labeledWindows?: number }[]>;
   hr: Record<string, { subjectId: string; values: number; hours: number; hrMean: number; stretches?: number }[]>;
   activity: { thresholdG: number; balancedAccuracyVal: number };
 }
@@ -22,6 +24,15 @@ export function loadManifest(dir = SIM_DATA_DIR): Manifest {
     throw new Error(`No encuentro ${file}. Genera los datos del simulador con: cd ml && .venv/Scripts/python -m src.export_sim`);
   }
   return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+/** The behavior annotated from video for each 2 s window of a subject's IMU (index in BEHAVIORS, -1 without one
+ * clean class), or null when the export has no labels. Never read by the engine. */
+export function loadLabels(datasetId: string, subjectId: string, dir = SIM_DATA_DIR): Int8Array | null {
+  const file = path.join(dir, "labels", datasetId, `${subjectId}.i8`);
+  if (!fs.existsSync(file)) return null;
+  const buf = fs.readFileSync(file);
+  return new Int8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length));
 }
 
 /** Interleaved IMU samples (n × 6) of one subject, in g and °/s. */

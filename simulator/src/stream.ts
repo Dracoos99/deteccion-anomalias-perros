@@ -9,7 +9,7 @@
 import { BLOCK_SAMPLES, BLOCK_SECONDS, IMU_CHANNELS } from "./config";
 import { applyInjections, type ActiveInjection } from "../../shared/anomalies";
 import { TemperatureSeries } from "../../shared/synthetic";
-import type { InjectedAnomaly } from "../../shared/types";
+import { BEHAVIORS, type Behavior, type InjectedAnomaly } from "../../shared/types";
 
 export interface Block {
   index: number;
@@ -17,9 +17,12 @@ export interface Block {
   hr: number[];
   temp: number | null;
   truth: InjectedAnomaly[];
+  /** The annotated behavior of each 2 s window of the block (null without one clean class), when known. */
+  behaviors?: (Behavior | null)[];
 }
 
 const round5 = (v: number) => Math.round(v * 1e5) / 1e5;
+const WINDOW_SAMPLES = 200;   // the 2 s window of the models
 
 export class DogStream {
   readonly injections: ActiveInjection[] = [];
@@ -30,8 +33,11 @@ export class DogStream {
 
   private readonly hrBlocks: number[][] | null;
 
+  private readonly labels: Int8Array | null;
+
   constructor(readonly dogId: string, private readonly imu: Float32Array, private readonly hr: number[],
-    opts: { tempKey?: string; hrBreaks?: number[] } = {}) {
+    opts: { tempKey?: string; hrBreaks?: number[]; labels?: Int8Array | null } = {}) {
+    this.labels = opts.labels ?? null;
     this.samples = Math.floor(imu.length / IMU_CHANNELS);
     if (this.samples < BLOCK_SAMPLES) throw new Error(`${dogId}: la señal IMU tiene menos de un bloque.`);
     this.temperature = new TemperatureSeries(opts.tempKey ?? dogId);
@@ -60,6 +66,18 @@ export class DogStream {
     return { imu, hr, temp: this.tempValue };
   }
 
+  /** The annotated behavior of the 2 s windows of block k, from the same samples as its IMU (looping too). */
+  behaviors(k: number): (Behavior | null)[] | undefined {
+    if (!this.labels) return undefined;
+    const out: (Behavior | null)[] = [];
+    for (let w = 0; w < BLOCK_SAMPLES / WINDOW_SAMPLES; w++) {
+      const s = (k * BLOCK_SAMPLES + w * WINDOW_SAMPLES) % this.samples;
+      const v = this.labels[Math.floor(s / WINDOW_SAMPLES)];
+      out.push(v != null && v >= 0 ? BEHAVIORS[v] ?? null : null);
+    }
+    return out;
+  }
+
   block(k: number): Block {
     const { signals, truth } = applyInjections(this.normal(k), this.injections, k);
     return {
@@ -68,6 +86,7 @@ export class DogStream {
       hr: signals.hr.map((v) => Math.round(v * 10) / 10),
       temp: signals.temp == null ? null : Math.round(signals.temp * 100) / 100,
       truth,
+      behaviors: this.behaviors(k),
     };
   }
 }
@@ -94,5 +113,6 @@ export function splitBlock(b: Block, parts: number): Block[] {
   const per = b.imu.length / parts, secs = BLOCK_SECONDS / parts;
   return Array.from({ length: parts }, (_, j) => ({
     index: b.index, imu: b.imu.slice(j * per, (j + 1) * per), hr: b.hr.slice(j * secs, (j + 1) * secs), temp: b.temp, truth: b.truth,
+    behaviors: b.behaviors?.slice((j * b.behaviors.length) / parts, ((j + 1) * b.behaviors.length) / parts),
   }));
 }

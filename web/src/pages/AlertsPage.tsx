@@ -40,7 +40,7 @@ const BULK_ERROR: Record<BulkKind | "undo", string> = {
 };
 const OFFLINE_NOTE = " Sin conexión: se guardará cuando vuelvas a conectarte.";
 
-/** the last bulk action of this tab, if its «Deshacer» still lasts. Storage may be blocked: then nothing. */
+/** The last bulk action of this tab, if its «Deshacer» still lasts. Storage may be blocked: then nothing. */
 function readStoredBulk(key: string): BulkDone | null {
   try {
     const s = restoreBulk(sessionStorage.getItem(key), Date.now());
@@ -79,7 +79,7 @@ export function AlertsPage() {
   const bulkKey = bulk ? `${bulk.at}|${bulk.undone}` : null;
   const restoredKey = useRef(bulkKey);
   useEffect(() => { if (bulkKey && bulkKey !== restoredKey.current) bulkRef.current?.focus(); }, [bulkKey]);
-  // the action stays in this tab while it can be undone; undone, it goes.
+  // The action stays in this tab while it can be undone; undone, it goes.
   useEffect(() => {
     try {
       if (bulk && !bulk.undone && Date.now() - bulk.at < UNDO_MS) {

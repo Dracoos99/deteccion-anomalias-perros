@@ -198,6 +198,9 @@ export interface BlockInput {
   behavior?: BehaviorOutput | null;
   /** Heart-rate autoencoder; absent: provisional heart-rate rule. */
   physio?: PhysioScorer | null;
+  /** The collar seems off the dog (prefilter «imu_no_wear»): its windows count as time without movement data,
+   * not as a dog lying still, so a collar left on a table does not open an alert of low activity. */
+  sensorOff?: boolean;
 }
 
 function tempScore(temp: number | null, baseline: BaselineStats | null, cfg: EngineConfig): number {
@@ -462,7 +465,7 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
       for (let i = 1; i < st.behaviorEma.length; i++) if (st.behaviorEma[i] > st.behaviorEma[best]) best = i;
       shown = model.meta.classes[best];
     }
-    if (samples >= (w + 1) * WINDOW_SAMPLES) {
+    if (!input.sensorOff && samples >= (w + 1) * WINDOW_SAMPLES) {
       intensity = windowIntensity(input.imu, w * WINDOW_SAMPLES);
       active = modelActivity && reading ? reading.active : intensity > cfg.activity.thresholdG;
       const a = active ? 1 : 0;

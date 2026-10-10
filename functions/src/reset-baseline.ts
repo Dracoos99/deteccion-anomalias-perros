@@ -9,8 +9,10 @@ import { REGION } from "./config";
 
 export async function resetDogBaseline(db: Firestore, dogId: string, caller: { uid: string; admin: boolean }): Promise<void> {
   const dogRef = db.doc(`dogs/${dogId}`);
+  const stateRef = db.doc(`dogState/${dogId}`);
   await db.runTransaction(async (tx) => {
     const dog = await tx.get(dogRef);
+    const state = await tx.get(stateRef);
     if (!dog.exists) throw new HttpsError("not-found", "No encontramos este perro.");
     if (!caller.admin && dog.get("ownerId") !== caller.uid) throw new HttpsError("permission-denied", "Este perro no está en tu cuenta.");
     tx.update(dogRef, {
@@ -18,7 +20,9 @@ export async function resetDogBaseline(db: Firestore, dogId: string, caller: { u
       // Only when the dog already has a status: a partial status would look like data in the app.
       ...(dog.get("status") ? { "status.baselineProgress": { stage: "initial", share: 0 } } : {}),
     });
-    tx.set(db.doc(`dogState/${dogId}`), { baselineAcc: null }, { merge: true });
+    // Only an existing engine memory: a document with nothing but baselineAcc would be read by the Function as a broken
+    // one.
+    if (state.exists) tx.update(stateRef, { baselineAcc: null });
   });
 }
 

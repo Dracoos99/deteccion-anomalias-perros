@@ -306,13 +306,20 @@ describe("phase 5", () => {
 
   it("lets the owner or an admin discard the learned baseline, nobody else", async () => {
     await db.doc("dogs/toby").update({ baseline: { ...baseline, origin: "function" }, status: { healthScore: 90, level: "green", openAlerts: 0 } });
+    await db.doc("dogState/toby").set({ lastBlockStartMs: 1, hrBuffer: [], baselineAcc: { stage: "model", blocks: 2 } });
     await expect(resetDogBaseline(db, "toby", { uid: "otro", admin: false })).rejects.toThrow();
     await resetDogBaseline(db, "toby", { uid: "lucia", admin: false });
     const dog = (await db.doc("dogs/toby").get()).data()!;
     expect(dog.baseline).toBeUndefined();
     expect(dog.status).toMatchObject({ healthScore: 90, baselineProgress: { stage: "initial", share: 0 } });
-    expect((await db.doc("dogState/toby").get()).get("baselineAcc")).toBeNull();
+    const state = (await db.doc("dogState/toby").get()).data()!;
+    expect(state.baselineAcc).toBeNull();
+    expect(state.lastBlockStartMs).toBe(1);   // the rest of the engine memory stays
     await resetDogBaseline(db, "toby", { uid: "admin1", admin: true });
+    // A dog with no data yet gets no engine memory with only baselineAcc (the Function would read it as broken).
+    await db.doc("dogState/toby").delete();
+    await resetDogBaseline(db, "toby", { uid: "lucia", admin: false });
+    expect((await db.doc("dogState/toby").get()).exists).toBe(false);
   });
 
   it("records one push attempt per alert and kind, and drops tokens of browsers that left", async () => {

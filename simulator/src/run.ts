@@ -10,7 +10,7 @@ import { FieldValue, Timestamp, type DocumentReference, type Firestore } from "f
 import {
   BLOCK_SECONDS, MAX_DOGS_PER_RUN, READING_TTL_DAYS, SCHEMA_VERSION, STATS_FLUSH_MS, SUB_BLOCK_MAX_SPEED, WINDOWS_PER_BLOCK, WINDOW_SECONDS, readingId,
 } from "./config";
-import { HR_DATASETS, IMU_DATASETS, loadHr, loadImu, loadManifest } from "./data";
+import { HR_DATASETS, IMU_DATASETS, loadHr, loadImu, loadLabels, loadManifest } from "./data";
 import { loadSimBehaviorModel } from "./behavior";
 import { imuStats } from "../../shared/behavior-model";
 import { DogStream, splitBlock, type Block } from "./stream";
@@ -50,12 +50,12 @@ export function validateRunRequest(dogIds: string[], speed: number): void {
 }
 
 /** Creates a run document. worker is set when the caller will execute it; null leaves it for a `serve` process. */
-export async function createRun(db: Firestore, req: { dogIds: string[]; speed: number; durationS?: number | null; createdBy: string; runId?: string; worker?: string | null }): Promise<string> {
+export async function createRun(db: Firestore, req: { dogIds: string[]; speed: number; durationS?: number | null; createdBy: string; runId?: string; worker?: string | null; learnBaseline?: boolean; recordTruth?: boolean }): Promise<string> {
   validateRunRequest(req.dogIds, req.speed);
   const ref = req.runId ? db.doc(`simulatorRuns/${req.runId}`) : db.collection("simulatorRuns").doc();
   await ref.create({
     createdBy: req.createdBy, dogIds: req.dogIds, speed: req.speed, state: "running", durationS: req.durationS ?? null, seed: 0,
-    pendingInjection: null, injectionsLog: [], error: null,
+    learnBaseline: !!req.learnBaseline, recordTruth: !!req.recordTruth, pendingInjection: null, injectionsLog: [], error: null,
     worker: req.worker ? { id: req.worker, host: os.hostname(), heartbeatAt: Timestamp.now() } : null,
     stats: { blocksWritten: 0, avgLatencyMs: null, p95LatencyMs: null, maxLatencyMs: null, resultsSeen: 0, startedAt: null, stoppedAt: null, lastBlockAt: null },
     schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(),
@@ -76,6 +76,8 @@ export class SimulatorRun {
   private writeErrors = 0;
   /** Ids with a result (this run). A dog's next block goes out only after the previous one has its result. */
   private readonly resultIds = new Set<string>();
+  /** The IMU subject of each dog and its split, for simulatorTruth. */
+  private readonly subjects = new Map<string, { datasetId: string; subjectId: string; split: "train" | "val" | "test" | null }>();
   private waits = 0;
   private resultTimeouts = 0;
   private lastBlockAt: number | null = null;
@@ -137,10 +139,25 @@ export class SimulatorRun {
       if (!hrSrc?.subjectId || !HR_DATASETS.includes(hrSrc.datasetId!)) throw new Error(`${dog.name}: source.hr debe apuntar al dataset público de frecuencia cardiaca (2023), a PhysioZoo o a los 23 perros.`);
       const imu = loadImu(imuSrc.datasetId!, imuSrc.subjectId, this.opts.dataDir);
       const hr = loadHr(hrSrc.datasetId!, hrSrc.subjectId, this.opts.dataDir);
-      const stream = new DogStream(dogId, imu, hr.values, { hrBreaks: hr.breaks });
-      // Recompute when missing, when asked, or when it was measured with another behavioral model.
+      // The annotated behavior travels with the stream only when the run records it.
+      const labels = run.recordTruth ? loadLabels(imuSrc.datasetId!, imuSrc.subjectId, this.opts.dataDir) : null;
+      const stream = new DogStream(dogId, imu, hr.values, { hrBreaks: hr.breaks, labels });
+      const subjectInfo = manifest.imu[imuSrc.datasetId!]?.find((s) => s.subjectId === imuSrc.subjectId);
+      this.subjects.set(dogId, { datasetId: imuSrc.datasetId!, subjectId: imuSrc.subjectId, split: subjectInfo?.split ?? null });
+      // A «new dog» run leaves the baseline to the Function, which learns it from the first blocks:
+      // the same as «Volver a aprender su patrón normal» (functions/src/reset-baseline.ts), only before the run's first
+      // block, so a process that takes over a run in course does not discard what the Function learned meanwhile.
       const wanted = model?.meta.version ?? "rules";
-      if (!dog.baseline || this.opts.rebaseline || (dog.baseline.activitySource ?? "rules") !== wanted) {
+      if (run.learnBaseline) {
+        if (!((run.stats?.blocksWritten ?? 0) > 0)) {
+          // A new dog has no baseline, no state and no engine memory: the first block starts everything, so the
+          // card never shows the old level next to «Estamos aprendiendo».
+          await dogSnap.ref.update({ baseline: FieldValue.delete(), status: FieldValue.delete() });
+          if (state) await this.db.doc(`dogState/${dogId}`).delete();
+          this.log(`${dog.name}: perro nuevo, sin línea base ni estado; el sistema la aprende con sus primeros datos`);
+        }
+      // Recompute when missing, when asked, or when it was measured with another behavioral model.
+      } else if (!dog.baseline || this.opts.rebaseline || (dog.baseline.activitySource ?? "rules") !== wanted) {
         const subject = manifest.imu[imuSrc.datasetId!]?.find((s) => s.subjectId === imuSrc.subjectId);
         const stats = subject?.imuMean && subject?.imuStd ? { mean: subject.imuMean, std: subject.imuStd } : imuStats(imu);
         const flags = model ? model.activeFlags(imu, stats.mean, stats.std) : null;
@@ -290,6 +307,16 @@ export class SimulatorRun {
       doc.injectedAnomalies = b.truth;
     }
     try {
+      // The annotated behavior of the block, apart from the reading (the Function never sees it).
+      if (b.behaviors) {
+        const counts = new Map<string, number>();
+        for (const x of b.behaviors) if (x) counts.set(x, (counts.get(x) ?? 0) + 1);
+        const main = [...counts].sort((a, c) => c[1] - a[1])[0]?.[0] ?? null;
+        await this.db.doc(`simulatorTruth/${readingId(this.runId, dogId, index)}`).set({
+          runId: this.runId, dogId, blockStart: Timestamp.fromMillis(blockStartMs), behaviors: b.behaviors, behavior: main,
+          subject: this.subjects.get(dogId) ?? null, schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(),
+        });
+      }
       await this.db.doc(`readings/${readingId(this.runId, dogId, index)}`).create(doc);
       d.awaiting = readingId(this.runId, dogId, index);
       d.awaitingSince = Date.now();

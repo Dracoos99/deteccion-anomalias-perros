@@ -1,14 +1,17 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import type { Alert, Dog, Fusion } from "../data/hooks";
-import { BaselineProgress } from "./BaselineProgress";
+import { BaselineProgress, LearnedBanner } from "./BaselineProgress";
 import { AlertBanner } from "./AlertBanner";
 import {
-  LEARNING_TEXT, ageText, behaviorNow, describeDog, endSentence, isLearning, lastValue, scoreNote as scoreNoteText, shownScore, whenPhrase, type Friendly,
+  LEARNING_TEXT, ageText, behaviorShown, describeDog, endSentence, isLearning, lastValue, scoreNote as scoreNoteText, shownScore, whenPhrase, type Friendly,
 } from "../lib/plain";
 import { DataTime, Icon, LevelTag, ScoreTile, StateTag, averageMinutes, levelVars, useFreshness, useOnline, useSteadyScore } from "./ui";
 
 /** One friendly vital: its name with an icon, the plain value and, small, the exact numbers, one per line. */
+/** With the collar off nothing that arrives is the dog's, not even as a last value. */
+const NO_DOG_DATA: Friendly = { dev: "unknown", label: "Sin datos del perro", detail: null };
+
 function FriendlyRow({ icon, name, f, extra, last = false }: { icon: string; name: string; f: Friendly; extra?: string | null; last?: boolean }) {
   const out = f.dev === "low" || f.dev === "high";
   return (
@@ -44,24 +47,26 @@ export function DogCard({ dog, cfg, openAlert, alertIsNew = false, scoreNote = f
   const { freshness, shownMs } = useFreshness(s);
   const stale = freshness === "stale";
   const learning = !stale && isLearning(s, dog.baseline);
+  // The collar seems off: nothing arriving is the dog's.
+  const sensorOff = !stale && s?.sensor === "no_wear";
   const d = describeDog(s, dog.baseline, cfg, openAlert, ongoing, { key: dog.id });
   const level = d.level;
-  const behavior = s?.lastBehavior && !stale ? `Ahora: ${behaviorNow(s.lastBehavior, dog.sex).toLowerCase()}` : null;
+  const behavior = s?.lastBehavior && !stale && !sensorOff ? `Ahora: ${behaviorShown(s.lastBehavior, s.lastBehaviorProb, dog.sex).toLowerCase()}` : null;
   const { user, isAdmin } = useAuth();
   const canLoad = isAdmin || dog.ownerId === user?.uid;
   const meta = [dog.breed, ageText(dog.birthDate)].filter(Boolean).join(" · ");
-  const neutral = stale || learning;
+  const neutral = stale || learning || sensorOff;
   // Offline, the time of the data says so with its own icon, not the clock of a live card.
   const online = useOnline();
-  const tile = !!s && !learning && !stale;
+  const tile = !!s && !learning && !stale && !sensorOff;
   const notes = tile && (scoreNote || !!d.levelNote);
   return (
-    <article className="panel dog-card" data-variant={featured ? "featured" : "compact"} data-level={stale ? "stale" : learning ? "learning" : level ?? "none"} style={levelVars(neutral ? null : level)} aria-labelledby={`dog-${dog.id}`}>
+    <article className="panel dog-card" data-variant={featured ? "featured" : "compact"} data-level={stale ? "stale" : sensorOff ? "sensor" : learning ? "learning" : level ?? "none"} style={levelVars(neutral ? null : level)} aria-labelledby={`dog-${dog.id}`}>
       <div className="dog-card-head">
         <div className="dog-card-id">
           <h2 className="dog-name" id={`dog-${dog.id}`}><Link to={`/perros/${dog.id}`}>{dog.name}</Link></h2>
           {meta && <div className="dog-meta">{meta}</div>}
-          <StateTag level={level} learning={learning} stale={stale} />
+          <StateTag level={level} learning={learning} stale={stale} sensorOff={sensorOff} />
         </div>
         {tile && <ScoreTile score={score} variant={featured ? "glass" : "quiet"} average={averageMinutes(cfg)} />}
       </div>
@@ -72,7 +77,7 @@ export function DogCard({ dog, cfg, openAlert, alertIsNew = false, scoreNote = f
           {!stale && d.todo && <p className="small">{d.todo}</p>}
         </div>
       )}
-      {openAlert && <AlertBanner key={openAlert.id} alert={openAlert} isNew={alertIsNew} dogLevel={stale || learning ? null : level} source={s?.lastSource} present={d.titleStill !== false} />}
+      {openAlert && <AlertBanner key={openAlert.id} alert={openAlert} isNew={alertIsNew} dogLevel={neutral ? null : level} source={s?.lastSource} present={d.titleStill !== false} />}
       {/* What the figure is, and why the level is another when it is: on a phone, after the phrase (the
           protagonist); on wide screens, in the featured card, right under the figure. */}
       {notes && (
@@ -82,11 +87,12 @@ export function DogCard({ dog, cfg, openAlert, alertIsNew = false, scoreNote = f
         </div>
       )}
       <BaselineProgress dog={dog} cfg={cfg} />
+      <LearnedBanner dog={dog} />
       {s ? (
         <dl className="friendly">
-          <FriendlyRow icon="paw" name="Actividad" f={stale ? lastValue(d.activity) : d.activity} extra={behavior} last={stale} />
-          <FriendlyRow icon="heart" name="Corazón" f={stale ? lastValue(d.heart) : d.heart} last={stale} />
-          <FriendlyRow icon="thermometer" name="Temperatura" f={stale ? lastValue(d.temp) : d.temp} last={stale} />
+          <FriendlyRow icon="paw" name="Actividad" f={sensorOff ? NO_DOG_DATA : stale ? lastValue(d.activity) : d.activity} extra={behavior} last={stale || sensorOff} />
+          <FriendlyRow icon="heart" name="Corazón" f={sensorOff ? NO_DOG_DATA : stale ? lastValue(d.heart) : d.heart} last={stale || sensorOff} />
+          <FriendlyRow icon="thermometer" name="Temperatura" f={sensorOff ? NO_DOG_DATA : stale ? lastValue(d.temp) : d.temp} last={stale || sensorOff} />
         </dl>
       ) : (
         <div className="well">Sus datos aparecerán cuando lleguen sus primeras lecturas; con ellas aprendemos su patrón normal.
@@ -94,7 +100,7 @@ export function DogCard({ dog, cfg, openAlert, alertIsNew = false, scoreNote = f
         </div>
       )}
       <div className="dog-card-foot">
-        <span className="card-time" data-offline={!online && freshness !== "stale" ? "true" : undefined}>{s && freshness ? <><Icon name={!online && freshness !== "stale" ? "wifi-off" : "clock"} size={14} /> <DataTime freshness={freshness} shownMs={shownMs} /></> : "Esperando sus primeros datos"}</span>
+        <span className="card-time" data-offline={!online && freshness !== "stale" ? "true" : undefined}>{s && freshness ? <><Icon name={!online && freshness !== "stale" ? "wifi-off" : "clock"} size={14} /> <DataTime freshness={sensorOff && freshness === "live" ? "recent" : freshness} shownMs={shownMs} /></> : "Esperando sus primeros datos"}</span>
         <Link className="card-more" to={`/perros/${dog.id}`} aria-label={`Ver detalle de ${dog.name}`}>Ver detalle <Icon name="chevron-right" size={14} /></Link>
       </div>
     </article>

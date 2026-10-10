@@ -112,6 +112,54 @@ describe.skipIf(!hasData)("simulator end to end", () => {
     expect((await db.doc("dogs/toby").get()).get("status.openAlerts")).toBe(1);
   }, 120_000);
 
+  it("a «new dog» run discards the baseline and the Function learns it from the stream, in its two stages", async () => {
+    // A short learning period (3 blocks of 10 s per stage); the Function caches config/fusion for 15 s.
+    await db.doc("config/fusion").set({ baseline: { minBlocks: 3 } });
+    await new Promise((r) => setTimeout(r, 16_000));
+    await db.doc("dogs/toby").update({ baseline: { activeRatioMean: 0.3, activeRatioStd: 0.1, hrMean: 70, hrStd: 5, tempMean: 38.6, tempStd: 0.1, samples: 100, activitySource: "rules", computedAt: Timestamp.now() } });
+    const runId = await createRun(db, { dogIds: ["toby"], speed: 10, durationS: 90, createdBy: "test", worker: "test", learnBaseline: true });
+    expect((await db.doc(`simulatorRuns/${runId}`).get()).get("learnBaseline")).toBe(true);
+    const run = new SimulatorRun(db, runId, { workerId: "test", log: quiet, drainMs: 60_000 });
+    await run.start();
+    await run.done;
+    await waitFor(() => buildReport(db, runId), (r) => r.results === r.readings);
+    const learned = await waitFor(async () => (await db.doc("dogs/toby").get()).data()!, (d) => d.baseline?.activitySource === MODEL_VERSION);
+    // The simulator's baseline went away; the Function learned one (origin «function»), first with the movement rule and
+    // then with the behavioral model, and the learning period ended.
+    expect(learned.baseline).toMatchObject({ origin: "function", activitySource: MODEL_VERSION });
+    expect(learned.baseline.hrMean).not.toBe(70);
+    expect(learned.status.baselineProgress).toBeNull();
+    await db.doc("config/fusion").delete();
+  }, 150_000);
+
+  it("a collar taken off says «Revisa el collar» and opens no alert of low activity", async () => {
+    const runId = await createRun(db, { dogIds: ["toby"], speed: 10, durationS: 600, createdBy: "test", worker: "test" });
+    await db.doc(`simulatorRuns/${runId}`).update({ pendingInjection: { dogId: "toby", type: "collar_off", magnitude: 24, durationS: 3600 } });
+    const run = new SimulatorRun(db, runId, { workerId: "test", log: quiet, drainMs: 60_000 });
+    await run.start();
+    await run.done;
+    await waitFor(() => buildReport(db, runId), (r) => r.results === r.readings);
+    const status = (await db.doc("dogs/toby").get()).get("status");
+    expect(status.sensor).toBe("no_wear");
+    expect((await db.doc(`results/${runId}_toby_000050`).get()).get("prefilterFlags")).toContain("imu_no_wear");
+    // Ten minutes of a collar on a table: no alert, although the signal is as still as a dog that does not move.
+    expect((await db.collection("alerts").where("dogId", "==", "toby").get()).size).toBe(0);
+  }, 150_000);
+
+  it("records the behavior annotated from video apart from the readings when the run asks for it", async () => {
+    const runId = await createRun(db, { dogIds: ["toby"], speed: 10, durationS: 60, createdBy: "test", worker: "test", recordTruth: true });
+    const run = new SimulatorRun(db, runId, { workerId: "test", log: quiet, drainMs: 60_000 });
+    await run.start();
+    await run.done;
+    const truth = await db.collection("simulatorTruth").where("runId", "==", runId).get();
+    expect(truth.size).toBe(6);
+    const first = truth.docs.find((d) => d.id === `${runId}_toby_000000`)!.data();
+    expect(first.behaviors).toHaveLength(5);
+    expect(first.subject).toMatchObject({ datasetId: "vehkaoja2022", subjectId: "23", split: "train" });
+    // The reading carries no annotation: the Function never sees it.
+    expect((await db.doc(`readings/${runId}_toby_000000`).get()).get("behaviors")).toBeUndefined();
+  }, 90_000);
+
   it("serve mode claims a run created without worker (from the panel) and executes it", async () => {
     const runId = await createRun(db, { dogIds: ["luna"], speed: 10, durationS: 30, createdBy: "panel", worker: null });
     const stop = serveRuns(db, { workerId: "serve-test", log: quiet, drainMs: 30_000 });
