@@ -23,6 +23,16 @@ describe("planPush", () => {
     expect("tokens" in planPush("a1", alert, user, "escalated", APP)).toBe(true);
     expect("tokens" in planPush("a1", { ...alert, severity: "red" }, user, "new", APP)).toBe(true);
   });
+  it("keeps «Atención» silent in the quiet hours and still sends «Revisar»", () => {
+    const quiet = { from: "22:00", to: "07:00", tz: "America/Lima" };
+    const user = { fcmTokens: ["t1"], notificationPrefs: { red: true, amber: true, quiet } };
+    const night = Date.UTC(2026, 9, 10, 4, 0);   // 23:00 in Lima
+    const day = Date.UTC(2026, 9, 10, 17, 0);    // 12:00 in Lima
+    expect(planPush("a1", alert, user, "new", APP, night)).toEqual({ skipped: "quiet" });
+    expect("tokens" in planPush("a1", alert, user, "new", APP, day)).toBe(true);
+    expect("tokens" in planPush("a1", alert, user, "escalated", APP, night)).toBe(true);
+    expect("tokens" in planPush("a1", { ...alert, severity: "red" }, user, "new", APP, night)).toBe(true);
+  });
   it("skips reviewed alerts, owners without browsers and missing profiles", () => {
     expect(planPush("a1", { ...alert, status: "acknowledged" }, { fcmTokens: ["t1"] }, "new", APP)).toEqual({ skipped: "acknowledged" });
     expect(planPush("a1", alert, { fcmTokens: [] }, "new", APP)).toEqual({ skipped: "no_tokens" });

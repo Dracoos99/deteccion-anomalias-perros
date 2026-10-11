@@ -13,6 +13,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import { FieldValue, getFirestore, type Firestore } from "firebase-admin/firestore";
 import { REGION } from "./config";
 import { pushText } from "./shared/alert-text";
+import { inQuietHours } from "./shared/quiet";
 import type { AlertDoc, UserDoc } from "./shared/types";
 
 export type PushKind = "new" | "escalated";
@@ -26,14 +27,16 @@ export interface PushSender { send(tokens: string[], message: PushMessage): Prom
 type AlertLike = Pick<AlertDoc, "dogId" | "dogName" | "severity" | "reasons" | "status" | "titleCode">;
 type UserLike = Pick<UserDoc, "fcmTokens" | "notificationPrefs">;
 
-/** Who gets what, or why nothing is sent. Pure. */
-export function planPush(alertId: string, alert: AlertLike, user: UserLike | null, kind: PushKind, appUrl: string):
+/** Who gets what, or why nothing is sent. Pure: `nowMs` is the moment of the send, for the quiet hours. */
+export function planPush(alertId: string, alert: AlertLike, user: UserLike | null, kind: PushKind, appUrl: string, nowMs = Date.now()):
   { tokens: string[]; message: PushMessage } | { skipped: string } {
   if (alert.status !== "open") return { skipped: "acknowledged" };
   if (!user) return { skipped: "no_user" };
   const severity = kind === "escalated" ? "red" : alert.severity;
   const prefs = user.notificationPrefs ?? { red: true, amber: true };
   if (prefs[severity] === false) return { skipped: "prefs" };
+  // In the quiet hours only «Revisar» sounds; an «Atención» alert stays in the app and in the alert count.
+  if (severity === "amber" && inQuietHours(nowMs, prefs.quiet)) return { skipped: "quiet" };
   const tokens = [...new Set(user.fcmTokens ?? [])];
   if (!tokens.length) return { skipped: "no_tokens" };
   const { title, body } = pushText(alert.dogName, alert.reasons, kind, alert.titleCode);

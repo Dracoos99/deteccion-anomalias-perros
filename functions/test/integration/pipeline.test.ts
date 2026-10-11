@@ -12,6 +12,7 @@ import { ENGINE_VERSION } from "../../src/shared/engine";
 import { DEFAULT_FUSION_CONFIG } from "../../src/shared/types";
 import { resetDogBaseline } from "../../src/reset-baseline";
 import { notifyAlert, type PushSender } from "../../src/notify";
+import { deleteOwnerData } from "../../src/delete-data";
 
 const PROJECT = "demo-perros-tesis";
 let app: App;
@@ -341,3 +342,60 @@ describe("phase 5", () => {
     expect(await notifyAlert(db, "a2", "escalated", sender, "https://x.web.app")).toEqual({ sent: 1, failed: 1, skipped: null });
   });
 });
+
+describe("deleteOwnerData", () => {
+  /** Two dogs of Lucía (one archived) and one of Martín, with a document in every collection that names a dog. */
+  async function seed() {
+    await db.doc("dogs/nina").set({ name: "Nina", ownerId: "lucia", active: false, schemaVersion: 1 });
+    await db.doc("dogs/max").set({ name: "Max", ownerId: "martin", active: true, schemaVersion: 1 });
+    await db.doc("users/lucia").set({ role: "owner", displayName: "Lucía Paredes", email: "lucia@example.com" });
+    await db.doc("users/martin").set({ role: "owner", displayName: "Martín Quispe", email: "martin@example.com" });
+    const own = { toby: "lucia", nina: "lucia", max: "martin" } as const;
+    for (const [dogId, ownerId] of Object.entries(own)) {
+      for (const c of ["readings", "results", "trends", "trendsMinute", "trendsTenSec", "alerts", "csvUploads"]) {
+        await db.doc(`${c}/${dogId}_1`).set({ dogId, ownerId });
+      }
+      await db.doc(`simulatorTruth/${dogId}_1`).set({ dogId, runId: "r1" });
+      await db.doc(`expertReviews/${dogId}_1`).set({ dogId, kind: "control" });
+      await db.doc(`dogState/${dogId}`).set({ v: 1 });
+    }
+    // An orphan: a result of a dog that no longer exists, still with Lucía's id.
+    await db.doc("results/gone_1").set({ dogId: "gone", ownerId: "lucia" });
+  }
+  const count = async (c: string) => (await db.collection(c).get()).size;
+
+  it("deletes one dog and everything that names it, and nothing of other dogs", async () => {
+    await seed();
+    await expect(deleteOwnerData(db, "martin", "toby")).rejects.toThrow("no está en tu cuenta");
+    const r = await deleteOwnerData(db, "lucia", "toby");
+    expect(r).toMatchObject({ dogs: 1, account: false });
+    expect(r.documents).toBe(11);   // 7 data documents, 2 research documents, the engine memory and the dog
+    expect((await db.doc("dogs/toby").get()).exists).toBe(false);
+    expect((await db.doc("dogState/toby").get()).exists).toBe(false);
+    expect((await db.doc("readings/toby_1").get()).exists).toBe(false);
+    expect((await db.doc("readings/nina_1").get()).exists).toBe(true);
+    expect((await db.doc("users/lucia").get()).exists).toBe(true);
+  });
+
+  it("deletes the whole account, archived dogs and orphans included, and leaves other owners alone", async () => {
+    await seed();
+    const r = await deleteOwnerData(db, "lucia");
+    expect(r).toMatchObject({ dogs: 2, account: true });
+    expect(await count("dogs")).toBe(1);
+    for (const c of ["readings", "results", "trends", "alerts", "csvUploads", "simulatorTruth", "expertReviews", "dogState"]) {
+      expect((await db.collection(c).get()).docs.map((d) => d.id)).toEqual(c === "dogState" ? ["max"] : ["max_1"]);
+    }
+    expect((await db.doc("users/lucia").get()).exists).toBe(false);
+    expect((await db.doc("users/martin").get()).exists).toBe(true);
+  });
+
+  it("refuses a dog that a simulator run is still feeding", async () => {
+    await seed();
+    await db.doc("simulatorRuns/r1").set({ dogIds: ["toby"], state: "running" });
+    await expect(deleteOwnerData(db, "lucia", "toby")).rejects.toThrow("demostración en curso");
+    await expect(deleteOwnerData(db, "lucia")).rejects.toThrow("demostración en curso");
+    await db.doc("simulatorRuns/r1").update({ state: "stopped" });
+    expect((await deleteOwnerData(db, "lucia", "toby")).dogs).toBe(1);
+  });
+});
+

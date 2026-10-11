@@ -4,6 +4,7 @@
  * (heart rate relative to each dog's baseline) (owner-centred app, no vet role). Timestamps are Firestore Timestamps at runtime;
  * they are typed generically so each package can plug in its own SDK type.
  */
+import type { QuietHours } from "./quiet";
 
 /** Every sign-up is an owner; "admin" is granted only by a server-side script and never shown in the UI. */
 export type Role = "owner" | "admin";
@@ -25,8 +26,9 @@ export interface UserDoc<T = unknown> {
   phone?: string;
   /** FCM tokens of the browsers where the owner turned on notifications (at most 10). */
   fcmTokens?: string[];
-  /** Which alerts are pushed. Missing means both; "red" alerts stay on in the app. */
-  notificationPrefs?: { red: boolean; amber: boolean };
+  /** Which alerts are pushed. Missing means both; "red" alerts stay on in the app. `quiet`
+   * keeps the «Atención» pushes silent between two hours of the owner's time zone (shared/quiet.ts). */
+  notificationPrefs?: { red: boolean; amber: boolean; quiet?: QuietHours | null };
   /** When this person last cleared their Alertas list, for every dog (`all`) or for one (`byDog`). Alerts
    * created until then leave their list; they stay in the dog's history and in the vet view. */
   alertsCleared?: { all?: T; byDog?: Record<string, T> };

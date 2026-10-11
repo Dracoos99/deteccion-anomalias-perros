@@ -357,6 +357,18 @@
       "collectionGroup": "trendsMinute",
       "fieldPath": "slots",
       "indexes": []
+    },
+    {
+      "collectionGroup": "readings",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "trendsTenSec",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

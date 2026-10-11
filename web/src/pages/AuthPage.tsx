@@ -6,6 +6,7 @@ import { FirebaseError } from "firebase/app";
 import { auth, usingEmulators } from "../firebase";
 import { landingFor, useAuth } from "../auth/AuthContext";
 import { Callout, EmulatorBanner, Icon, Notice, usePageTitle } from "../components/ui";
+import { accountJustDeleted, clearAccountDeleted } from "../lib/myData";
 import { completeSignUp } from "../auth/signup";
 
 type Mode = "login" | "registro" | "recuperar";
@@ -58,6 +59,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
+  // Right after «Borrar mi cuenta». Read once, then forgotten, so a reload does not repeat it.
+  const [deleted] = useState(accountJustDeleted);
+  useEffect(() => { if (deleted) clearAccountDeleted(); }, [deleted]);
 
   const [f, setF] = useState({ name: "", email: "", password: "", consent: false });
   const [touched, setTouched] = useState(false);
@@ -139,7 +143,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
               </nav>
             )}
             <form className="stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
-              {msg && <Callout kind={msg.kind}>{msg.text}</Callout>}
+              {msg ? <Callout kind={msg.kind}>{msg.text}</Callout> : deleted && <Callout kind="ok">Borramos tu cuenta y todos sus datos.</Callout>}
               {mode === "registro" && (
                 <div className="field"><label htmlFor="a-name">Nombre y apellido</label>
                   <input id="a-name" className="input" autoComplete="name" maxLength={NAME_MAX} aria-required="true" value={f.name} onChange={set("name")} {...inv("name")} />{err("name")}</div>

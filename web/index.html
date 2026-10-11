@@ -11,6 +11,10 @@
          choice never flashes the light boot frame. -->
     <script>try { var t = localStorage.getItem("appearance"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- installable on the home screen (on the iPhone, only an installed app receives pushes). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Mis perros" />
     <link rel="preload" href="/fonts/SourceSans3-normal-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>Detección de anomalías en perros</title>
   </head>

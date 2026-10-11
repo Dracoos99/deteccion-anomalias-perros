@@ -1,7 +1,8 @@
 /* Screen 6 · Registro y edición del perro: name, breed, weight, birth date and sex. No vet assignment (v3).
    The rules keep ownerId, status and baseline out of the owner's reach; "Volver a aprender su patrón normal" goes
    through the resetBaseline function. «Quitar perro» archives the dog (active: false) without
-   deleting its data, and both actions ask on the page, not with a browser dialog. */
+   deleting its data, and both actions ask on the page, not with a browser dialog. «Borrar sus datos» deletes
+   the dog and all its data for good, through the deleteMyData function, after the owner types the confirmation word. */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
@@ -10,6 +11,7 @@ import { Callout, EmptyState, Icon, PageHead, PageLoading, Seg, usePageTitle } f
 import { callFunction, db } from "../firebase";
 import { useDog, type Dog } from "../data/hooks";
 import { fromHome } from "../lib/nav";
+import { CONFIRM_WORD } from "../lib/myData";
 
 /** An action that asks first, on the page: the question and two buttons that name what they do. */
 function ConfirmRow({ question, yes, onYes, onNo, busy, danger = false }: { question: string; yes: string; onYes: () => void; onNo: () => void; busy: boolean; danger?: boolean }) {
@@ -85,6 +87,48 @@ function ArchiveDog({ dog }: { dog: Dog }) {
           onYes={onArchive} onNo={() => setState("idle")} busy={state === "busy"} danger />
       ) : (
         <div><button className="btn btn-danger btn-sm" type="button" onClick={() => setState("confirm")}><Icon name="archive" size={14} />Quitar perro</button></div>
+      )}
+    </section>
+  );
+}
+
+/** The dog and all its data, for good. Only its owner sees it (the function refuses anyone else). */
+function DeleteDog({ dog }: { dog: Dog }) {
+  const navigate = useNavigate();
+  const [state, setState] = useState<"idle" | "confirm" | "busy">("idle");
+  const [word, setWord] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const ready = word.trim().toUpperCase() === CONFIRM_WORD;
+  const onDelete = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!ready) return;
+    setState("busy"); setError(null);
+    try {
+      await callFunction("deleteMyData", { scope: "dog", dogId: dog.id, confirm: CONFIRM_WORD });
+      navigate("/perfil", { replace: true, state: { deletedDog: dog.name } });
+    } catch (err) {
+      const code = (err as { code?: string }).code ?? "";
+      setError(code.endsWith("failed-precondition") ? (err as Error).message : "No pudimos borrar sus datos. Revisa tu conexión e inténtalo de nuevo.");
+      setState("confirm");
+    }
+  };
+  return (
+    <section className="panel stack-sm" aria-labelledby="d-delete">
+      <h2 className="section-title" id="d-delete">Borrar los datos de {dog.name}</h2>
+      <p className="small muted">Borra para siempre a {dog.name} y todos sus datos. Si solo quieres que deje de aparecer, usa «Quitar perro».</p>
+      {state === "idle" ? (
+        <div><button className="btn btn-danger btn-sm" type="button" onClick={() => { setState("confirm"); setWord(""); setError(null); }}><Icon name="trash" size={14} />Borrar sus datos</button></div>
+      ) : (
+        <form className="callout callout-warn stack-sm" onSubmit={onDelete} aria-labelledby="d-delete-q">
+          <p id="d-delete-q">Se borran para siempre {dog.name}, sus lecturas, sus alertas, sus tendencias y sus cargas. No se puede deshacer. Las copias de seguridad del sistema los conservan hasta 7 días más y después se borran solas.</p>
+          <div className="field"><label htmlFor="d-delete-word">Escribe {CONFIRM_WORD} para confirmar</label>
+            <input id="d-delete-word" className="input" autoComplete="off" value={word} onChange={(e) => setWord(e.target.value)} disabled={state === "busy"} autoFocus /></div>
+          {error && <p className="small" role="alert">{error}</p>}
+          <div className="row">
+            <button className="btn btn-danger-solid btn-sm" type="submit" disabled={state === "busy" || !ready}>{state === "busy" ? "Borrando…" : `Borrar a ${dog.name} para siempre`}</button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setState("idle")} disabled={state === "busy"}>Cancelar</button>
+          </div>
+        </form>
       )}
     </section>
   );
@@ -201,6 +245,7 @@ export function DogForm() {
       </form>
       {editing && dog && <ResetBaseline dog={dog} />}
       {editing && dog && <ArchiveDog dog={dog} />}
+      {editing && dog && dog.ownerId === user!.uid && <DeleteDog dog={dog} />}
       </div>
     </main>
   );

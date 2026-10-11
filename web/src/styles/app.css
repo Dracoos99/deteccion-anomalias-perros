@@ -1784,8 +1784,11 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
   /* With none or one dog the list is much shorter than the settings, and the column beside it would stay empty.
      Then the dogs come first at full width and the settings below, their sections side by side. */
   .profile-grid-short { grid-template-columns: minmax(0, 1fr); }
-  .profile-grid-short .profile-settings { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-  .profile-grid-short .profile-section + .profile-section { border-top: 0; border-left: 1px solid var(--color-divider-soft); }
+  /* add two sections: rows of up to three, each cell drawing its top and left hairline (the outer
+     ones fall outside the panel and are clipped). */
+  .profile-grid-short .profile-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); overflow: hidden; }
+  .profile-grid-short .profile-section + .profile-section { border-top: 0; }
+  .profile-grid-short .profile-section { box-shadow: -1px -1px 0 0 var(--color-divider-soft); }
 }
 .profile-settings { padding: 0; }
 .profile-section { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6); min-width: 0; }
@@ -2253,3 +2256,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
 .cmp-cell[data-miss="true"] { box-shadow: inset 0 -7px 0 var(--color-status-red); }
 .cmp-miss-key { box-shadow: inset 0 -7px 0 var(--color-status-red); }
 .cmp-key { display: inline-block; flex: none; width: 12px; height: 12px; }
+
+/* The two hours of the quiet hours, side by side (stacked under 360 px). */
+.quiet-hours { display: grid; grid-template-columns: repeat(2, minmax(0, 9rem)); gap: var(--space-3); margin-left: 28px; }
+@media (max-width: 359px) { .quiet-hours { grid-template-columns: minmax(0, 1fr); } }

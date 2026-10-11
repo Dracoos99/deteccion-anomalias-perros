@@ -164,6 +164,7 @@ const clickText = async (tag, label) => {
   if (!el) throw new Error(`${tag} not found: ${label} — page shows: ${(await text()).replace(/\s+/g, " ").slice(0, 400)}`);
   await el.click();
 };
+let newDogPath = null;
 try {
   await clickText("a", "Registrar a mi perro");
   check("empty Inicio leads to the dog registration", await waitPath("/perros/nuevo"));
@@ -177,6 +178,7 @@ try {
   check("registered dog opens its detail", opened, opened ? "" : (await text()).replace(/\s+/g, " ").slice(300, 900));
   await page.waitForSelector(".dog-state", { timeout: 10000 }).catch(() => {});
   const dogPath = path_();
+  newDogPath = dogPath;
   check("detail of a dog without data explains it", (await text()).includes("Todavía no hay datos.") && (await text()).includes("Qué es normal para Mora"));
   await shot("03-detalle-sin-datos-1440");
   await clickText("a", "Editar perfil");
@@ -232,6 +234,8 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("Qué quieres recibir"), { timeout: 10000 }).catch(() => {});
   check("Perfil offers the data upload and the notification settings", (await text()).includes("Cargar datos") && (await text()).includes("Avisos")
     && (await text()).includes("los avisos no funcionan con los emuladores"));
+  check("Perfil offers «Tus datos»: the download and the deletion", (await text()).includes("Tus datos")
+    && (await text()).includes("Descargar mis datos") && (await text()).includes("Borrar mi cuenta"));
 } catch (e) {
   check("dog registration flow", false, e.message);
 }
@@ -239,6 +243,34 @@ try {
 // 8. Unknown and retired routes inside the shell
 await page.goto(BASE + "/veterinario", { waitUntil: "load" }); await sleep(600);
 check("retired vet route shows not-found", (await text()).includes("No encontramos esta página"));
+
+// 9. The new account deletes its dog, then itself, and can no longer sign in.
+try {
+  if (!newDogPath) throw new Error("the new dog was not registered");
+  await page.goto(BASE + "/acceso", { waitUntil: "load" }); await sleep(800);
+  if (path_() === "/acceso") await login(email, "clave-segura-1");
+  await spaGo(newDogPath + "/editar");
+  await clickText("button", "Borrar sus datos");
+  await page.waitForSelector("#d-delete-word");
+  check("deleting a dog waits for the confirmation word", await page.$eval("form[aria-labelledby=d-delete-q] button[type=submit]", (b) => b.disabled));
+  await page.type("#d-delete-word", "borrar");
+  await clickText("button", "para siempre");
+  check("the dog is deleted for good and Perfil says so", await waitPath("/perfil", 30000)
+    && await page.waitForFunction(() => document.body.innerText.includes("Borramos a Mora Luna y todos sus datos"), { timeout: 10000 }).then(() => true, () => false));
+  check("the deleted dog is no longer in the list", await page.waitForFunction(() => document.body.innerText.includes("Todavía no registras perros"), { timeout: 10000 }).then(() => true, () => false));
+  await clickText("button", "Borrar mi cuenta");
+  await page.waitForSelector("#p-delete-word");
+  await page.type("#p-delete-word", "BORRAR");
+  await shot("08-borrar-cuenta-1440");
+  await clickText("button", "Borrar mi cuenta para siempre");
+  check("the account is deleted and the sign-in says so", await waitPath("/acceso", 30000)
+    && await page.waitForFunction(() => document.body.innerText.includes("Borramos tu cuenta y todos sus datos"), { timeout: 10000 }).then(() => true, () => false));
+  await page.type("#a-email", email); await page.type("#a-pass", "clave-segura-1");
+  await page.click("button[type=submit]"); await sleep(3000);
+  check("the deleted account can no longer sign in", path_() === "/acceso");
+} catch (e) {
+  check("data deletion flow", false, e.message);
+}
 
 await browser.close();
 console.log(results.join("\n"));

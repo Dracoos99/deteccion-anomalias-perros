@@ -22,6 +22,16 @@ service cloud.firestore {
     function dog(dogId) { return get(/databases/$(database)/documents/dogs/$(dogId)).data; }
 
     match /users/{userId} {
+      // Which pushes the person receives, and the quiet hours ("HH:MM" to "HH:MM" in their time zone).
+      function validTime(t) { return t is string && t.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'); }
+      function validQuiet(q) {
+        return q == null || (q is map && q.keys().hasOnly(['from', 'to', 'tz']) && validTime(q.from) && validTime(q.to)
+          && q.tz is string && q.tz.size() > 0 && q.tz.size() <= 64);
+      }
+      function validPrefs(p) {
+        return p is map && p.keys().hasOnly(['red', 'amber', 'quiet']) && p.get('red', true) is bool
+          && p.get('amber', true) is bool && validQuiet(p.get('quiet', null));
+      }
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       // The profile (with its role and consent) is created by setInitialRole. The client may only edit
       // its own contact and notification fields, never the role.
@@ -31,6 +41,7 @@ service cloud.firestore {
       allow update: if signedIn() && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'fcmTokens', 'notificationPrefs', 'alertsCleared'])
         && request.resource.data.get('fcmTokens', []).size() <= 10
+        && validPrefs(request.resource.data.get('notificationPrefs', {}))
         && request.resource.data.get('alertsCleared', {}) is map
         && request.resource.data.get('alertsCleared', {}).keys().hasOnly(['all', 'byDog'])
         && request.resource.data.get('alertsCleared', {}).get('byDog', {}).size() <= 200;

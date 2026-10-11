@@ -266,4 +266,13 @@ describe("notification settings", () => {
     await assertFails(updateDoc(doc(owner(), "users/owner1"), { role: "admin" }));
     await assertFails(updateDoc(doc(otherOwner(), "users/owner1"), { fcmTokens: ["x"] }));
   });
+  it("the quiet hours are two HH:MM hours and a time zone, or nothing", async () => {
+    const quiet = { from: "22:00", to: "07:00", tz: "America/Lima" };
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: true, amber: true, quiet } }));
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: true, amber: true, quiet: null } }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: true, amber: true, quiet: { ...quiet, from: "25:00" } } }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: true, amber: true, quiet: { ...quiet, extra: 1 } } }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: "yes", amber: true } }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: true, amber: true, sound: "loud" } }));
+  });
 });
