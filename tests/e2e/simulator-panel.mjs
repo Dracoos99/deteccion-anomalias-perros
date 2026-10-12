@@ -51,9 +51,11 @@ await page.waitForSelector("#a-email");
 await page.type("#a-email", "admin@example.com");
 await page.type("#a-pass", "demo-1234");
 await page.click("button[type=submit]");
-// Every account lands on Inicio; the admin reaches the research tools at /admin.
+// Every account lands on Inicio; the admin reaches the research tools from «Consola Admin» in the top bar
+// which opens on «Simulador & IA».
 await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
-await spaGo("/admin");
+await page.waitForSelector(".topbar-nav a[href='/admin']", { timeout: 15000 });
+await page.click(".topbar-nav a[href='/admin']");
 await page.waitForSelector("section[aria-labelledby='new-title'] input[type=checkbox]", { timeout: 15000 });
 
 // New run: only Toby, ×10, 30 simulated minutes.
@@ -115,14 +117,19 @@ await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
 await page.waitForSelector(".dog-card", { timeout: 15000 });
 const bannerSelector = "xpath/.//article[.//h2//a[normalize-space(.)='Toby']]//a[contains(@class, 'alert-banner')]";
 check("Inicio shows Toby's open alert", !!await page.waitForSelector(bannerSelector, { timeout: 15000 }).catch(() => null));
-// «Marcar todas como revisadas» in Alertas, and «Deshacer» makes the alert new again.
-const newCount = () => page.evaluate(() => [...document.querySelectorAll(".seg button")].map((b) => b.textContent).find((t) => t?.startsWith("Nuevas")));
+// «Marcar todas como revisadas» in «Activas», and «Deshacer» makes the alert new again. The count of
+// the tab is the number of active alerts (none: no count).
+const activeCount = () => page.evaluate(() => Number(document.querySelector("#tab-activas .tab-count")?.textContent ?? 0));
 await spaGo("/alertas");
+check("«Activas» groups Toby's alert under its severity", await page.waitForFunction(() =>
+  [...document.querySelectorAll(".severity-group")].some((g) => /Crítico|Advertencia/.test(g.innerText) && g.innerText.includes("Toby")), { timeout: 10000 }).then(() => true, () => false));
+await page.screenshot({ path: path.join(OUT, "07-alertas-activas-1440.png"), fullPage: true });
 await page.waitForSelector("xpath/.//button[contains(., 'Marcar todas como revisadas')]", { timeout: 10000 }).catch(() => {});
 await clickButton("Marcar todas como revisadas").catch((e) => errors.push(String(e)));
-check("Alertas marks every new alert as reviewed at once", await waitText("quedó revisada", 10000) && await newCount() === "Nuevas (0)");
+check("Alertas marks every new alert as reviewed at once", await waitText("quedó revisada", 10000) && await activeCount() === 0);
 await clickButton("Deshacer").catch((e) => errors.push(String(e)));
-check("«Deshacer» makes it new again", await waitText("volvió a quedar como nueva", 10000) && await newCount() === "Nuevas (1)");
+check("«Deshacer» makes it new again", await waitText("volvió a quedar como nueva", 10000)
+  && await page.waitForFunction(() => Number(document.querySelector("#tab-activas .tab-count")?.textContent ?? 0) === 1, { timeout: 10000 }).then(() => true, () => false));
 await spaGo("/");
 const banner = await page.waitForSelector(bannerSelector, { timeout: 15000 }).catch(() => null);
 if (banner) {
@@ -135,17 +142,12 @@ if (banner) {
   await clickButton("Marcar como revisada");
   check("the owner marks it as reviewed", await waitText("Revisada", 10000));
 }
-// «Limpiar lista» takes the alerts off Alertas (they stay in the dog's history) and «Deshacer» brings them back.
-await spaGo("/alertas");
-await page.waitForSelector("xpath/.//button[contains(., 'Limpiar lista')]", { timeout: 10000 }).catch(() => {});
-await clickButton("Limpiar lista").catch((e) => errors.push(String(e)));
-check("«Limpiar lista» empties Alertas and says the alerts stay in each dog's history",
-  await waitText("Quitamos las alertas de la lista", 10000) && (await text()).includes("Lista limpia")
-  && (await text()).includes("siguen en el historial de cada perro"));
-await page.screenshot({ path: path.join(OUT, "07b-alertas-limpias-1440.png"), fullPage: true });
-await clickButton("Deshacer").catch((e) => errors.push(String(e)));
-check("«Deshacer» brings them back", await waitText("volvieron a la lista", 10000)
-  && await page.waitForSelector(".alert-item", { timeout: 10000 }).then(() => true, () => false));
+// The reviewed alert leaves «Activas» and stays in «Historial», a row with its dog, severity and state.
+await spaGo("/alertas?vista=historial");
+check("«Historial» keeps the reviewed alert with its dog, severity and state", await page.waitForFunction(() =>
+  [...document.querySelectorAll("#panel-historial .history-table tbody tr")].some((r) => r.innerText.includes("Toby") && /Crítico|Advertencia/.test(r.innerText) && r.innerText.includes("Revisada")),
+  { timeout: 10000 }).then(() => true, () => false));
+await page.screenshot({ path: path.join(OUT, "07b-alertas-historial-1440.png"), fullPage: true });
 await spaGo("/perros/toby");
 await page.waitForSelector(".dog-state", { timeout: 10000 }).catch(() => {});
 const [tempTab] = await page.$$("xpath/.//button[@role='tab' and normalize-space(.)='Temperatura']");
@@ -171,7 +173,10 @@ await page.type("#a-email", "admin@example.com");
 await page.type("#a-pass", "demo-1234");
 await page.click("button[type=submit]");
 await page.waitForFunction(() => location.pathname === "/", { timeout: 15000 });
-await spaGo("/admin/configuracion");
+await spaGo("/admin");
+// «Simulador & IA» switches between the simulator and the models.
+await page.waitForSelector(".console-sub a[href='/admin/configuracion']", { timeout: 15000 });
+await page.click(".console-sub a[href='/admin/configuracion']");
 await page.waitForSelector("#c-wb", { timeout: 15000 }).catch(() => {});
 check("A2 shows the active models and the fusion form", await waitText("Fusión y umbrales", 10000) && await waitText("lstm-ae-v1", 10000) && (await text()).includes(MODEL));
 await page.$eval("#c-wb", (el) => { el.value = ""; });

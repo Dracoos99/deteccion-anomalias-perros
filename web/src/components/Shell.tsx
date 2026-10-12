@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useDogs, useOpenAlerts } from "../data/hooks";
@@ -54,27 +54,29 @@ function useNavigationEffects(contentRef: React.RefObject<HTMLDivElement | null>
   return announce;
 }
 
-/** Owner navigation: the same three sections for every account; no role is ever shown.
- * The research tools (/admin) are reached from Perfil, only by admin accounts. */
+/** The sections of the top navigation. «Consola Admin» joins them only for the admin account: an owner's
+ * page never contains it. No role is ever named. */
 const NAV = [
   { to: "/", label: "Inicio", icon: "home" },
+  { to: "/perros", label: "Perros", icon: "paw" },
   { to: "/alertas", label: "Alertas", icon: "bell" },
-  { to: "/perfil", label: "Perfil", icon: "user" },
-];
+] as const;
+const ADMIN_NAV = { to: "/admin", label: "Consola Admin", icon: "flask" } as const;
 
-/** Unreviewed alerts on "Alertas": on the icon in the tab bar, after the label in the side column and the masthead
- * row. Screen readers get the meaning after the label (see NavItems). */
+/** New alerts on «Alertas»: after the label in the top bar, on the icon in the tab bar. Screen readers get the
+ * meaning after the label. */
 function NavBadge({ count, end = false }: { count: number; end?: boolean }) {
   if (!count) return null;
   return <span className={end ? "nav-badge nav-badge-end" : "nav-badge"} aria-hidden="true">{count > 99 ? "99+" : count}</span>;
 }
 
-function NavItems({ linkClass, iconSize, openCount, badgeAtEnd = false }: { linkClass: string; iconSize: number; openCount: number; badgeAtEnd?: boolean }) {
+function NavItems({ linkClass, iconSize, openCount, admin, badgeAtEnd = false }: { linkClass: string; iconSize: number; openCount: number; admin: boolean; badgeAtEnd?: boolean }) {
   const { pathname, search } = useLocation();
   const section = sectionOf(pathname, search);
+  const items = admin ? [...NAV, ADMIN_NAV] : NAV;
   return (
     <>
-      {NAV.map((n) => {
+      {items.map((n) => {
         const count = n.to === "/alertas" ? openCount : 0;
         // "page" for the section's own page, "true" for a page inside it.
         const current = pathname === n.to ? "page" : section === n.to ? "true" : undefined;
@@ -91,9 +93,52 @@ function NavItems({ linkClass, iconSize, openCount, badgeAtEnd = false }: { link
   );
 }
 
-/** Three layouts of the same navigation: a side column on wide screens, the masthead with its tab row on
- * medium ones and a bottom tab bar on phones; all three drawn as the dark environment around the content.
- * The project line goes under the name, not above it. */
+/** The avatar and its menu: the person's name and mail, «Mi perfil», «Configuración» and «Cerrar sesión». A disclosure
+ * (a button that opens a list of links): Escape, a click outside or a navigation close it, and the focus goes back to
+ * the button. */
+function UserMenu({ name, email, onLogout }: { name: string; email: string; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const wrap = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const { pathname } = useLocation();
+  useEffect(() => { setOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); button.current?.focus(); } };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const initial = (name.trim() || email || "?").charAt(0).toUpperCase();
+  const current = (to: string) => (pathname === to ? "page" : undefined);
+  return (
+    <div className="user-menu" ref={wrap}>
+      <button ref={button} type="button" className="user-menu-button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}>
+        <span className="user-avatar" aria-hidden="true">{initial}</span>
+        <span className="user-menu-name">{name || email}</span>
+        <Icon name="chevron-down" size={14} />
+        <span className="sr-only">Menú de la cuenta</span>
+      </button>
+      {open && (
+        <div className="user-menu-panel appear" id={panelId}>
+          <div className="user-menu-head">
+            <strong>{name || email}</strong>
+            {name && <span>{email}</span>}
+          </div>
+          <Link className="user-menu-item" to="/perfil" aria-current={current("/perfil")}><Icon name="user" size={16} />Mi perfil</Link>
+          <Link className="user-menu-item" to="/configuracion" aria-current={current("/configuracion")}><Icon name="sliders" size={16} />Configuración</Link>
+          <div className="user-menu-sep" role="separator" />
+          <button type="button" className="user-menu-item" onClick={onLogout}><Icon name="log-out" size={16} />Cerrar sesión</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The frame of every page: a dark top bar fixed to the top, with the name of the system, the sections and the
+ * account menu; on phones the sections go to a floating tab bar at the bottom. The content below it is centred. */
 export function Shell() {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
@@ -102,55 +147,34 @@ export function Shell() {
   const { data: dogs, loading: dogsLoading } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });
   const open = dogsLoading ? openAll : openAll.filter((a) => dogs.some((d) => d.id === a.dogId));
   const onLogout = async () => { await logout(); navigate("/acceso", { replace: true }); };
-  const name = user?.displayName || user?.email || "";
+  const name = user?.displayName || "";
+  const email = user?.email || "";
   const contentRef = useRef<HTMLDivElement | null>(null);
   const announce = useNavigationEffects(contentRef);
   return (
     <>
-      <div className="shell">
-        <aside className="sidebar">
-          <div className="sidebar-brand">
-            <Link className="brand-title" to="/">Detección de anomalías en perros</Link>
-            <div className="brand-kicker">Proyecto de tesis · UPC</div>
-          </div>
-          <nav className="sidebar-nav" aria-label="Principal">
-            <NavItems linkClass="side-link" iconSize={16} openCount={open.length} badgeAtEnd />
+      <EmulatorBanner />
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Link className="topbar-brand" to="/" aria-label="Detección de anomalías, tesis UPC: ir al inicio">
+            <span className="topbar-name">Detección de anomalías</span>
+            <span className="topbar-badge">Tesis UPC</span>
+          </Link>
+          <nav className="topbar-nav" aria-label="Principal">
+            <NavItems linkClass="topbar-link" iconSize={16} openCount={open.length} admin={isAdmin} badgeAtEnd />
           </nav>
-          <div className="sidebar-foot">
-            <div className="sidebar-user" title={user?.email ?? undefined}>
-              <span className="sidebar-user-name">{name}</span>
-            </div>
-            <button type="button" className="btn btn-ghost btn-sm logout-btn" onClick={onLogout}><Icon name="log-out" size={14} />Cerrar sesión</button>
-          </div>
-        </aside>
-        <div className="shell-main">
-          <EmulatorBanner />
-          <OfflineBanner />
-          <header className="masthead">
-            <div className="masthead-inner">
-              <div className="brand">
-                <Link className="brand-title" to="/">Detección de anomalías en perros</Link>
-                <div className="brand-kicker">Proyecto de tesis · UPC</div>
-              </div>
-              <div className="masthead-actions">
-                <div className="user-chip"><span className="user-chip-name">{name}</span></div>
-                <button type="button" className="btn btn-ghost btn-sm logout-btn" onClick={onLogout}><Icon name="log-out" size={14} />Cerrar sesión</button>
-              </div>
-            </div>
-            <nav className="nav" aria-label="Principal"><div className="nav-inner">
-              <NavItems linkClass="nav-link" iconSize={16} openCount={open.length} badgeAtEnd />
-            </div></nav>
-          </header>
-          <div className="page-content" ref={contentRef} tabIndex={-1}><Outlet /></div>
-          <p className="sr-only" role="status">{announce}</p>
-          <footer className="footer"><div className="footer-inner">
-            <span>Proyecto de tesis · Ingeniería de Sistemas de Información · UPC</span>
-            <span className="footer-notice">{NOTICE_TEXT}</span>
-          </div></footer>
+          <UserMenu name={name} email={email} onLogout={onLogout} />
         </div>
-      </div>
-      <nav className="tabbar" aria-label="Secciones">
-        <NavItems linkClass="tabbar-link" iconSize={20} openCount={open.length} />
+      </header>
+      <OfflineBanner />
+      <div className="page-content" ref={contentRef} tabIndex={-1}><Outlet /></div>
+      <p className="sr-only" role="status">{announce}</p>
+      <footer className="footer"><div className="footer-inner">
+        <span>Proyecto de tesis · Ingeniería de Sistemas de Información · UPC</span>
+        <span className="footer-notice">{NOTICE_TEXT}</span>
+      </div></footer>
+      <nav className="tabbar" aria-label="Secciones" style={{ "--tabs": isAdmin ? 4 : 3 } as React.CSSProperties}>
+        <NavItems linkClass="tabbar-link" iconSize={20} openCount={open.length} admin={isAdmin} />
       </nav>
     </>
   );

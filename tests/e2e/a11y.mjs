@@ -46,12 +46,18 @@ for (const width of [390, 1440]) {
   await page.waitForFunction(() => location.pathname === "/", { timeout: 20000 });
   await sleep(2000);
   await audit(`${width} /`);
-  for (const p of ["/alertas", "/perros/toby", "/perros/rocky/veterinario", "/perfil", "/perfil/datos", "/perros/nuevo"]) {
+  // The account menu open, over Inicio.
+  await page.click(".user-menu-button");
+  await page.waitForSelector(".user-menu-panel", { visible: true });
+  await sleep(500);   // the panel fades in (250 ms): measure its contrast once it is opaque
+  await audit(`${width} / (menú de la cuenta)`);
+  await page.keyboard.press("Escape");
+  for (const p of ["/perros", "/alertas", "/alertas?vista=historial", "/perros/toby", "/perros/rocky/veterinario", "/perfil", "/configuracion", "/perfil/datos", "/perros/nuevo"]) {
     await spaGo(p);
     await audit(`${width} ${p}`);
   }
-  await spaGo("/alertas");
-  const first = await page.$eval("a.alert-item", (a) => a.getAttribute("href")).catch(() => null);
+  await spaGo("/alertas?vista=historial");
+  const first = await page.$eval("#panel-historial td[data-title] a", (a) => a.getAttribute("href")).catch(() => null);
   if (first) { await spaGo(first); await audit(`${width} ${first.replace(/[^/]+$/, ":alerta")}`); }
   await spaGo("/perfil");
   for (const b of await page.$$("xpath/.//button[contains(., 'Cerrar sesión')]")) if (await b.isVisible()) { await b.click(); break; }
@@ -63,7 +69,7 @@ await page.waitForSelector("#a-email");
 await page.type("#a-email", "admin@example.com"); await page.type("#a-pass", "demo-1234");
 await page.click("button[type=submit]");
 await page.waitForFunction(() => location.pathname === "/", { timeout: 20000 });
-for (const p of ["/admin", "/admin/configuracion"]) { await spaGo(p); await sleep(1500); await audit(`1440 ${p}`); }
+for (const p of ["/admin", "/admin/configuracion", "/admin/ingesta", "/admin/revision"]) { await spaGo(p); await sleep(1500); await audit(`1440 ${p}`); }
 await browser.close();
 
 const serious = found.filter((f) => f.impact === "serious" || f.impact === "critical");

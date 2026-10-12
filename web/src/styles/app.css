@@ -269,6 +269,8 @@
 
 /* ── Base ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+/* A hidden element stays hidden whatever its class sets (a tab panel of Alertas is also a .stack). */
+[hidden] { display: none !important; }
 /* No cyan tap flash on phones (buttons have their own pressed state); scrollbars in the palette. */
 html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; scrollbar-color: var(--color-scrollbar) var(--color-bg); }
 body {
@@ -285,7 +287,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 ::selection { background: var(--color-selection); color: var(--color-text); }
 .auth-brand ::selection, .offline ::selection, .proto ::selection, .chart-tip ::selection,
-.sidebar ::selection, .tabbar ::selection, .nav ::selection { background: var(--color-chrome-raised); color: var(--color-on-dark); }
+.topbar ::selection, .tabbar ::selection { background: var(--color-chrome-raised); color: var(--color-on-dark); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .skip-link { position: absolute; left: -9999px; top: 0; background: var(--color-text); color: var(--color-bg); padding: 8px 12px; z-index: 100; }
 .skip-link:focus { left: 8px; top: 8px; color: var(--color-bg); }
@@ -298,139 +300,127 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .icon { display: inline-block; flex: none; vertical-align: middle; }
 
 /* ── Boot frame (before React mounts, and while the account is resolved) ──── */
-/* The frame of the app from the first frame: the dark side column or tab bar and placeholders for the
-   title and the cards. The same markup is in index.html; it uses the real shell classes, so it is the shape of the app. */
+/* The frame of the app from the first frame: the dark top bar (or the tab bar on phones) and placeholders
+   for the title and the cards. The same markup is in index.html; it uses the real shell classes, so it is the shape of the app. */
 .boot { min-height: 100vh; font-family: var(--font-ui); }
-.boot-pill { display: block; height: 40px; border-radius: var(--radius-sm); }
-.sidebar .skeleton, .nav-inner .skeleton, .tabbar .skeleton { background: var(--color-chrome-raised); }
-.sidebar .skeleton::after, .nav-inner .skeleton::after, .tabbar .skeleton::after { background: linear-gradient(90deg, transparent, var(--color-chrome-line), transparent); }
-.nav-inner .boot-pill { width: 5.5rem; height: 32px; border-radius: var(--radius-pill); }
-.tabbar .boot-pill { border-radius: var(--radius-pill); }
+.topbar .skeleton, .tabbar .skeleton { background: var(--color-chrome-raised); }
+.topbar .skeleton::after, .tabbar .skeleton::after { background: linear-gradient(90deg, transparent, var(--color-chrome-line), transparent); }
+.boot-pill { display: block; width: 5.5rem; height: 32px; border-radius: var(--radius-pill); }
+.boot-avatar { display: block; width: 32px; height: 32px; border-radius: 50%; flex: none; }
 
 /* ── Emulator bar (development only, not part of the product) ───────────── */
 .proto { background: var(--color-chrome); color: var(--color-on-dark); font-size: var(--fs-caption); border-bottom: 1px solid var(--color-chrome-line); }
-.proto-inner { max-width: var(--page-max); margin: 0; padding: 6px var(--gutter); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
+.proto-inner { max-width: var(--page-max); margin: 0 auto; padding: 6px var(--gutter); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
 .proto-label { letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
 
-/* ── Masthead and navigation ────────────────────────────────────────────── */
-/* Three layouts of the same navigation, drawn as the dark environment around the light work surface
-: a dark side column from 1024 px; on medium widths the masthead with the sections in a dark pill; on
-   phones a dark, translucent pill that floats over the content. The current section is a lighter surface with
-   heavier text, plus aria-current. */
-.masthead { background: var(--color-bg); padding: 0 var(--gutter); }
-.masthead-inner {
-  max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0; padding: var(--space-4) 0 var(--space-3);
-  display: flex; align-items: center; gap: var(--space-4);
+/* ── Top navigation ──────────────────────────────────────────── */
+/* One dark bar fixed to the top, a complete dark block that frames the light work surface: the name of the
+   system and its badge on the left, the sections in the middle (the current one a lighter surface with heavier text, plus
+   aria-current) and the account menu on the right. On phones the sections move to a floating tab bar. */
+.topbar {
+  position: sticky; top: 0; z-index: 30; background: var(--color-chrome); color: var(--color-on-dark);
+  box-shadow: inset 0 -1px 0 var(--color-chrome-edge), var(--shadow-1);
 }
-.brand { margin-right: auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-/* The project line goes under the name, in sentence case: no eyebrow above a title. */
-.brand-kicker { font-size: var(--fs-caption); color: var(--color-text-muted); }
-.brand-title {
-  font-family: var(--font-heading); font-weight: var(--fw-strong); font-size: var(--fs-headline); line-height: 1.2;
-  letter-spacing: var(--tracking-headline); color: var(--color-text); text-decoration: none; display: block; min-height: 24px;
+.topbar-inner { max-width: var(--page-max); margin: 0 auto; padding: 0 var(--gutter); min-height: 64px; display: flex; align-items: center; gap: var(--space-4); }
+.topbar-brand { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 40px; color: var(--color-on-dark); text-decoration: none; flex: none; }
+@media (hover: hover) and (pointer: fine) { .topbar-brand:hover { color: var(--color-on-dark); } }
+.topbar-name { font-weight: var(--fw-strong); font-size: var(--fs-body); letter-spacing: var(--tracking-headline); white-space: nowrap; }
+.topbar-badge {
+  padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--color-chrome-line); white-space: nowrap;
+  font-size: var(--fs-caption); font-weight: var(--fw-strong); line-height: 1.35; color: var(--color-on-dark-muted);
 }
-@media (hover: hover) and (pointer: fine) { .brand-title:hover { color: var(--color-text); } }
-.masthead-actions { display: flex; align-items: center; gap: var(--space-2); }
-.masthead .logout-btn { min-height: 32px; font-size: var(--fs-footnote); gap: 4px; }
-.user-chip { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
-.user-chip-name { font-weight: var(--fw-strong); font-size: var(--fs-footnote); }
-.nav { max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0; padding-bottom: var(--space-2); }
-.nav-inner {
-  display: inline-flex; align-items: center; gap: 2px; padding: 4px; border-radius: var(--radius-pill);
-  background: var(--color-chrome); box-shadow: inset 0 0 0 1px var(--color-chrome-edge), var(--shadow-1);
-}
-.nav-link {
-  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: 8px 16px; border-radius: var(--radius-pill);
-  text-decoration: none; color: var(--color-on-dark-muted); font-size: var(--fs-footnote); font-weight: var(--fw-medium);
+.topbar-nav { flex: 1; min-width: 0; display: flex; justify-content: center; gap: 2px; }
+.topbar-link {
+  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: 8px 14px; border-radius: var(--radius-pill);
+  text-decoration: none; color: var(--color-on-dark-muted); font-size: var(--fs-footnote); font-weight: var(--fw-medium); white-space: nowrap;
   transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover);
 }
-@media (hover: hover) and (pointer: fine) { .nav-link:hover { background: var(--color-chrome-line); color: var(--color-on-dark); } }
-.nav-link[aria-current] { background: var(--color-chrome-raised); color: var(--color-on-dark); font-weight: var(--fw-strong); }
+@media (hover: hover) and (pointer: fine) { .topbar-link:hover { background: var(--color-chrome-line); color: var(--color-on-dark); } }
+.topbar-link[aria-current] { background: var(--color-chrome-raised); color: var(--color-on-dark); font-weight: var(--fw-strong); }
 .nav-icon { position: relative; display: inline-flex; }
-/* New alerts: on the icon in the tab bar, at the end of the row in the side column and the masthead. Sized in em,
-   so the number stays inside its pill with a larger text size. */
+/* New alerts: at the end of the link in the top bar, on the icon in the tab bar. Sized in em, so the number stays inside
+   its pill with a larger text size. */
 .nav-badge {
   position: absolute; top: -7px; right: -10px; min-width: 1.6em; height: 1.6em; padding: 0 0.4em; border-radius: var(--radius-pill);
   background: var(--color-danger-fill); color: var(--color-on-accent); font-size: var(--fs-caption); font-weight: 700; font-style: normal; line-height: 1;
   display: grid; place-items: center; box-shadow: 0 0 0 2px var(--color-chrome); font-variant-numeric: tabular-nums;
 }
-.nav-badge-end { position: static; margin-left: auto; min-width: 1.7em; height: 1.7em; padding: 0 0.45em; font-size: var(--fs-caption); box-shadow: none; }
-.nav-link .nav-badge-end { margin-left: 2px; }
+.nav-badge-end { position: static; min-width: 1.7em; height: 1.7em; padding: 0 0.45em; box-shadow: none; }
 /* Focus on the chrome: a light blue ring that keeps 3:1 against the dark. */
-.nav :focus-visible, .sidebar :focus-visible, .tabbar :focus-visible { outline-color: var(--color-focus-on-dark); }
+.topbar :focus-visible, .tabbar :focus-visible { outline-color: var(--color-focus-on-dark); }
+
+/* The account menu: the avatar (the initial on a cobalt disc), the name and a chevron; the panel floats over the page. */
+.user-menu { position: relative; flex: none; }
+.user-menu-button {
+  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: 4px 10px 4px 4px; border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--color-on-dark); cursor: pointer; font-size: var(--fs-footnote); font-weight: var(--fw-strong);
+  transition: background-color var(--dur-hover) var(--ease-hover);
+}
+@media (hover: hover) and (pointer: fine) { .user-menu-button:hover { background: var(--color-chrome-line); } }
+.user-menu-button[aria-expanded="true"] { background: var(--color-chrome-raised); }
+.user-avatar {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: var(--color-accent-fill); color: var(--color-on-accent); font-size: var(--fs-footnote); font-weight: var(--fw-display);
+}
+.user-menu-name { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu-panel {
+  position: absolute; right: 0; top: calc(100% + var(--space-2)); z-index: 40; min-width: 15rem; max-width: min(20rem, calc(100vw - 2 * var(--gutter)));
+  padding: var(--space-2); background: var(--color-popover); color: var(--color-text); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-3);
+}
+.user-menu-panel :focus-visible { outline-color: var(--color-accent); }
+.user-menu-head { display: grid; gap: 2px; padding: var(--space-2) var(--space-3) var(--space-3); margin-bottom: var(--space-1); border-bottom: 1px solid var(--color-divider-soft); }
+.user-menu-head strong { font-size: var(--fs-body); overflow-wrap: anywhere; }
+.user-menu-head span { font-size: var(--fs-footnote); color: var(--color-text-muted); overflow-wrap: anywhere; }
+.user-menu-item {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 40px; padding: 8px var(--space-3); border: 0; border-radius: var(--radius-sm);
+  background: none; color: var(--color-text); font-size: var(--fs-body); text-align: left; text-decoration: none; cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) { .user-menu-item:hover { background: var(--color-hover-wash); color: var(--color-text); } }
+.user-menu-item[aria-current] { font-weight: var(--fw-strong); background: var(--color-ink-wash); }
+.user-menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--color-divider-soft); }
+
+/* Medium widths: the badge and the person's name step back so the sections fit. */
+@media (max-width: 1023px) {
+  .topbar-badge, .user-menu-name { display: none; }
+  .user-menu-button { padding-right: 8px; }
+  .topbar-link { padding: 8px 12px; }
+}
 .tabbar { display: none; }
 @media (max-width: 720px) {
-  .masthead { padding: 0; }
-  .masthead-inner { padding: var(--space-3) var(--gutter) 0; }
-  .brand-kicker { display: none; }
-  .brand-title { font-size: var(--fs-body); min-height: var(--tap); display: flex; align-items: center; }
-  .user-chip { display: none; }
-  .nav { display: none; }
-  .masthead .logout-btn { display: none; } /* logout lives in Perfil on phones */
+  .topbar-inner { min-height: 56px; justify-content: space-between; }
+  .topbar-nav { display: none; }
+  .user-menu-button { min-height: var(--tap); }
   /* The floating tab bar: a dark glass pill above the content, which keeps scrolling under it. */
   .tabbar {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 6px;
+    display: grid; grid-template-columns: repeat(var(--tabs, 3), 1fr); gap: 4px; padding: 6px;
     position: fixed; left: var(--space-3); right: var(--space-3); bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); z-index: 20;
     border-radius: var(--radius-pill); border: 1px solid var(--color-chrome-line);
     background: var(--color-chrome-glass); box-shadow: var(--shadow-3);
     -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%);
   }
   .tabbar-link {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 6px 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 6px 2px;
     border-radius: var(--radius-pill); font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--color-on-dark-muted); text-decoration: none;
-    transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover);
+    text-align: center; line-height: 1.15; transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover);
   }
   @media (hover: hover) and (pointer: fine) { .tabbar-link:hover { color: var(--color-on-dark); } }
   .tabbar-link[aria-current] { background: var(--color-chrome-line); color: var(--color-on-dark); font-weight: var(--fw-strong); }
   .tabbar .nav-badge { top: -6px; right: -11px; }
-  /* What takes the keyboard focus is never left under the floating bar. The bar covers the bottom 78 px of the window;
-     the scroll padding is the bar plus room to breathe, so the browser scrolls an element that would end up behind it. */
+  /* What takes the keyboard focus is never left under the floating bar. */
   html { scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
 }
+/* What takes the focus is never left under the sticky top bar. */
+html { scroll-padding-top: 5rem; }
 /* Less transparency asked by the system: a solid bar. */
 @media (prefers-reduced-transparency: reduce) {
   .tabbar { background: var(--color-chrome); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 
-.sidebar { display: none; }
-@media (min-width: 1024px) {
-  .shell { display: grid; grid-template-columns: var(--side-width) minmax(0, 1fr); min-height: 100vh; }
-  .shell-main { min-width: 0; }
-  .shell-main > .masthead { display: none; }
-  .sidebar {
-    display: flex; flex-direction: column; gap: var(--space-6); position: sticky; top: 0; height: 100vh; overflow-y: auto;
-    padding: var(--space-6) var(--space-3) var(--space-4); background: var(--color-chrome); color: var(--color-on-dark);
-    box-shadow: inset -1px 0 0 var(--color-chrome-edge);   /* the frame's edge against a dark ground */
-    scrollbar-color: var(--color-chrome-raised) var(--color-chrome);
-  }
-}
-.sidebar-brand { padding: 0 var(--space-3); }
-.sidebar-brand .brand-title { color: var(--color-on-dark); font-size: var(--fs-body); }
-.sidebar-brand .brand-kicker { color: var(--color-on-dark-muted); }
-@media (hover: hover) and (pointer: fine) { .sidebar-brand .brand-title:hover { color: var(--color-on-dark); } }
-.sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
-.side-link {
-  display: flex; align-items: center; gap: var(--space-3); min-height: 40px; padding: 8px var(--space-3); border-radius: var(--radius-sm);
-  font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--color-on-dark-muted); text-decoration: none;
-  transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover);
-}
-@media (hover: hover) and (pointer: fine) { .side-link:hover { background: var(--color-chrome-line); color: var(--color-on-dark); } }
-.side-link[aria-current] { background: var(--color-chrome-raised); color: var(--color-on-dark); font-weight: var(--fw-strong); }
-.sidebar-foot { margin-top: auto; border-top: 1px solid var(--color-chrome-line); padding: var(--space-3) var(--space-3) 0; display: grid; gap: 4px; justify-items: start; }
-.sidebar-user { display: grid; min-width: 0; max-width: 100%; line-height: 1.3; }
-.sidebar-user-name { font-weight: var(--fw-strong); font-size: var(--fs-footnote); color: var(--color-on-dark); overflow-wrap: anywhere; }
-/* The side padding keeps the outline of a Windows contrast theme off the letters; the negative margin keeps the
-   text aligned with the name above it. */
-.sidebar-foot .logout-btn { padding: 0 var(--space-2); margin-left: calc(-1 * var(--space-2)); min-height: 32px; font-size: var(--fs-footnote); font-weight: var(--fw-medium); gap: 6px; color: var(--color-on-dark-muted); }
-@media (hover: hover) and (pointer: fine) {
-  .sidebar-foot .logout-btn:hover:not(:disabled) { background: none; color: var(--color-on-dark); text-decoration: underline; }
-}
-.sidebar-foot .logout-btn:active:not(:disabled) { background: none; color: var(--color-on-dark); }
-
 /* ── Page layout ────────────────────────────────────────────────────────── */
-/* Pages start at the left of the content column (every page lines up with the side column and the footer); the
-   narrow ones (a form) are centred in it. */
-.page { max-width: var(--page-max); margin: 0; padding: var(--page-pad-top) var(--gutter) var(--space-6); }
+/* With the top bar, the pages are centred under it (the same width as the bar's content and the footer); the
+   narrow ones (a form) are narrower and centred too. */
+.page { max-width: var(--page-max); margin: 0 auto; padding: var(--page-pad-top) var(--gutter) var(--space-6); }
 .page-content:focus { outline: none; }   /* focused after each navigation so keyboard and screen readers start here */
 .page-narrow { max-width: 860px; }
 .page-profile { max-width: 1040px; }
@@ -684,8 +674,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
    28 px (--fs-lead), the paddings and the gaps of the card and of its tiles are tighter, so the card and its first figures
    fit a 1024 x 768 screen under the head. The protagonist keeps its size and its weight. */
 @media (min-width: 721px) and (max-width: 1179px) {
-  .home-hero { margin-bottom: var(--space-4); gap: var(--space-3); }
-  .home-hero .page-sub { margin-top: var(--space-2); }
   .dog-card[data-variant="featured"] { padding: var(--space-4) var(--space-6) var(--space-3); row-gap: var(--space-2); }
   .dog-card[data-variant="featured"] .score-tile-glass { padding: var(--space-2) var(--space-3); }
   .dog-card[data-variant="featured"] .friendly-row,
@@ -742,77 +730,50 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .alert-banner[data-ended="true"]:hover { background: var(--color-surface); }
 }
 
-/* ── Inicio (screen 2): the sample ──────────────────────────── */
-/* Three levels of text in the head, as in the PO's references: the page title in display type, the summary of all
-   the dogs in ink under it (the page's answer) and the fixed notice, quieter, as the third line. */
-.home-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); margin-bottom: var(--space-6); }
-.home-hero .page-head { display: block; margin: 0; }
-.home-hero .page-title {
-  font-size: var(--fs-hero); font-weight: var(--fw-display); line-height: var(--leading-hero); letter-spacing: var(--tracking-hero);
+/* ── Inicio as a dashboard ──────────────────────────────────── */
+/* Four figures at the top, each a quiet tile: a round well with its icon (tinted by the state it counts), the number in
+   title size and what it counts under it. The colour never goes alone: every tile has its icon and its words. Then the
+   toolbar (search, the state filter and «Registrar perro») and the cards. */
+.page-home .stack { gap: var(--space-5); }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+.kpi {
+  display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-4) var(--space-5);
+  background: var(--color-sheet); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
 }
-.home-hero .page-sub {
-  margin-top: var(--space-3); max-width: 60ch; font-size: var(--fs-title); font-weight: var(--fw-medium);
-  line-height: 1.25; letter-spacing: var(--tracking-title); color: var(--color-text); text-wrap: pretty;
+.kpi-icon { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--color-surface); color: var(--color-text-secondary); }
+.kpi[data-tone="green"] .kpi-icon { background: var(--color-status-green-bg); color: var(--color-status-green); }
+.kpi[data-tone="amber"] .kpi-icon { background: var(--color-status-amber-bg); color: var(--color-status-amber); }
+.kpi[data-tone="red"] .kpi-icon { background: var(--color-status-red-bg); color: var(--color-status-red); }
+.kpi-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpi-value { font-size: var(--fs-title); font-weight: var(--fw-display); line-height: 1.1; letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; color: var(--color-text); }
+.kpi-label { font-size: var(--fs-footnote); line-height: 1.3; color: var(--color-text-secondary); }
+.kpi-loading { box-shadow: none; }
+.kpi-skel-icon { display: block; flex: none; width: 40px; height: 40px; border-radius: 50%; }
+.kpi-skel-value { display: block; width: 2.5rem; height: 24px; }
+.kpi-skel-label { display: block; width: 7rem; max-width: 100%; height: 12px; }
+.dash-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.dash-search { position: relative; flex: 1 1 16rem; min-width: 0; max-width: 26rem; }
+.dash-search > .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
+.dash-search .input { min-height: 44px; padding-left: 40px; border-radius: var(--radius-pill); }
+.dash-tools > .seg { flex: none; }
+.dash-add { margin-left: auto; }
+.dash-count { margin: 0; }
+.dash-skel-search { display: block; flex: 1 1 16rem; max-width: 26rem; height: 44px; border-radius: var(--radius-pill); }
+.dash-skel-filter { display: block; width: 15rem; max-width: 100%; height: 40px; border-radius: 20px; }
+@media (max-width: 1023px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); } }
+/* On a phone each tile is a column (icon, number, words), two per row; the search takes its own row and the filter and
+   «Registrar perro» share the next. */
+@media (max-width: 720px) {
+  .kpi { flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); }
+  .kpi-icon, .kpi-skel-icon { width: 32px; height: 32px; }
+  .dash-search, .dash-skel-search { flex-basis: 100%; max-width: none; }
+  .dash-tools > .seg { flex: 1 1 100%; flex-wrap: nowrap; }
+  .dash-tools > .seg button { flex: 1 1 0; }
+  .dash-add { margin-left: 0; flex: 1 1 auto; }
 }
-.home-hero .notice { border: 0; padding: 0; gap: var(--space-2); max-width: var(--measure); font-size: var(--fs-footnote); line-height: 1.45; color: var(--color-text-muted); }
-.home-hero .notice .icon { margin-top: 2px; }
-.home-hero-notes { display: flex; flex-direction: column; gap: var(--space-2); }
-/* The lowest Health Score: a quiet outlined line, not a second protagonist. The figure is title-sized in
-   its level's colour and what it is goes right under it; it comes after the fixed notice, so the page reads title,
-   summary, notice, figure. With every dog «Todo normal» the protagonist is the phrase, not a number. */
-.home-lowest {
-  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg);
-  border: 1px solid var(--color-divider); background: transparent;
-}
-.home-lowest-link {
-  display: flex; align-items: center; gap: var(--space-4); color: var(--color-text); text-decoration: none; border-radius: var(--radius-sm);
-  transition: background-color var(--dur-hover) var(--ease-hover);
-}
-.home-lowest-link:focus-visible { outline-offset: 4px; }
-.home-lowest-figure { flex: none; display: flex; flex-direction: column; align-items: center; min-width: 3.75rem; font-variant-numeric: tabular-nums; }
-.home-lowest-value { font-size: var(--fs-title); font-weight: var(--fw-strong); line-height: 1.1; letter-spacing: var(--tracking-title); color: var(--level-color, var(--color-text)); }
-.home-lowest-of { font-size: var(--fs-caption); line-height: 1.3; color: var(--color-text-muted); }
-.home-lowest-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.home-lowest-name { font-size: var(--fs-footnote); color: var(--color-text-muted); }
-.home-lowest-dog { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-body); font-weight: var(--fw-strong); overflow-wrap: anywhere; }
-.home-score-note { margin: 0; max-width: var(--measure); font-size: var(--fs-footnote); line-height: 1.45; color: var(--color-text-muted); }
-@media (hover: hover) and (pointer: fine) { .home-lowest-link:hover { color: var(--color-text); } .home-lowest-link:hover .home-lowest-dog { text-decoration: underline; } }
-@media (min-width: 721px) {
-  .home-hero[data-band="true"] {
-    grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem); grid-template-areas: "head lowest" "notes lowest"; column-gap: var(--space-10); align-items: start;
-  }
-  .home-hero[data-band="true"] .home-hero-head { grid-area: head; }
-  .home-hero[data-band="true"] .home-lowest { grid-area: lowest; }
-  .home-hero[data-band="true"] .home-hero-notes { grid-area: notes; }
-}
-.page-home .stack { gap: var(--space-6); }
-/* The dogs that have no data yet, together: one card; each dog a quiet strip with its name and the
-   action that loads its data. What they are all waiting for is said once, in the head. */
-.dog-group { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); border-radius: var(--radius-card); }
-.dog-group-head { display: flex; flex-direction: column; gap: var(--space-1); }
-.dog-group-head p { margin: 0; max-width: var(--measure); }
-.dog-group-count { font-weight: var(--fw-medium); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.dog-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: var(--space-2) var(--space-3); }
-.dog-card.dog-row {
-  flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: none; container-type: normal;
-  transition: background-color var(--dur-hover) var(--ease-hover);
-}
-.dog-row-id { flex: 1 1 8rem; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.dog-row .dog-name { font-size: var(--fs-headline); letter-spacing: var(--tracking-headline); line-height: var(--leading-title); }
-.dog-row .dog-name a::after { border-radius: var(--radius-md); }
-.dog-row .btn { position: relative; z-index: 1; }
-.dog-row > .icon { color: var(--color-text-muted); }
-@media (max-width: 720px) { .dog-row > .icon { display: none; } }   /* a lone chevron would wrap under a long name */
-.dog-card.dog-row:has(.dog-name a:focus-visible) { outline-offset: 2px; }
-@media (hover: hover) and (pointer: fine) { .dog-card.dog-row:hover { background: var(--color-surface); box-shadow: none; transform: none; } }
-.dog-card.dog-row:has(.dog-name a:active) { transform: none; background: var(--color-surface); }
 .page-home .grid-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: var(--space-5); align-items: start; }   /* A short card does not stretch to its neighbour */
 .page-home .grid-cards > .dog-card[data-variant="compact"]:only-child { max-width: 40rem; }
-@media (max-width: 720px) {
-  .home-hero { margin-bottom: var(--space-6); }
-  .page-home .grid-cards { gap: var(--space-4); }
-}
+@media (max-width: 720px) { .page-home .grid-cards { gap: var(--space-4); } }
 
 /* Description lists: label on the left, value on the right */
 .dl { display: grid; gap: 0; margin: 0; font-size: var(--fs-footnote); }
@@ -1001,16 +962,17 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
   border: 1px solid transparent;
 }
 .field .seg { align-self: flex-start; }
-.seg button {
+.seg button, .seg a {
+  text-decoration: none;
   border: 0; background: transparent; padding: 6px 14px; font-size: var(--fs-footnote); font-weight: var(--fw-medium); cursor: pointer;
   display: inline-flex; gap: 6px; align-items: center; justify-content: center; min-height: 34px; color: var(--color-text-secondary);
   border-radius: var(--radius-pill); transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover), box-shadow var(--dur-hover) var(--ease-hover);
 }
-.seg button:focus-visible { position: relative; z-index: 1; }
-@media (hover: hover) and (pointer: fine) { .seg button:hover:not([aria-pressed="true"]) { background: var(--color-hover-wash); color: var(--color-text); } }
-.seg button:active:not([aria-pressed="true"]) { background: var(--color-divider); }
-.seg button[aria-pressed="true"] { background: var(--color-key); color: var(--color-text); font-weight: var(--fw-strong); box-shadow: var(--shadow-key); }
-@media (max-width: 720px) { .seg button { min-height: var(--tap); min-width: var(--tap); } }
+.seg button:focus-visible, .seg a:focus-visible { position: relative; z-index: 1; }
+@media (hover: hover) and (pointer: fine) { .seg button:hover:not([aria-pressed="true"]), .seg a:hover:not([aria-current="page"]) { background: var(--color-hover-wash); color: var(--color-text); } }
+.seg button:active:not([aria-pressed="true"]), .seg a:active:not([aria-current="page"]) { background: var(--color-divider); }
+.seg button[aria-pressed="true"], .seg a[aria-current="page"] { background: var(--color-key); color: var(--color-text); font-weight: var(--fw-strong); box-shadow: var(--shadow-key); }
+@media (max-width: 720px) { .seg button, .seg a { min-height: var(--tap); min-width: var(--tap); } }
 .tabs {
   display: flex; gap: 2px; padding: 4px; border-radius: var(--radius-pill); background: var(--color-surface); border: 1px solid transparent;
   position: relative; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity;
@@ -1320,71 +1282,52 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
   .alert-item[data-featured="true"]:hover { box-shadow: inset 0 1px 0 var(--color-lift), 0 0 0 1.5px color-mix(in srgb, var(--level-color) 55%, transparent), var(--shadow-2); }
   .alert-item[data-featured="true"]:hover .alert-item-more { background: var(--color-accent-fill-hover); text-decoration: none; }
 }
-/* The toolbar over the list: the filters at the left and the two bulk actions at the right, on one bar; what
-   «Limpiar lista» does is said right under it. On a phone the bar is two rows and the actions are full-width buttons. */
-.alerts-layout { display: flex; flex-direction: column; gap: var(--space-6); }
-.alerts-main { min-width: 0; }
-.alert-tools { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.alert-bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); padding: var(--space-2);
-  background: var(--color-sheet); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
-}
-.alert-filters { flex: 1 1 auto; gap: var(--space-3) var(--space-4); min-width: 0; }
+/* The alert centre: the two tabs («Activas», «Historial») and the dog filter on one line; under them the active
+   alerts by severity, or the audit table. With nothing active, one quiet line instead of a big empty card. */
+.alert-center { display: flex; flex-direction: column; gap: var(--space-5); }
+.alert-center-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.alert-tabs { flex: none; }
 .alert-dog-filter { gap: var(--space-2); min-width: 0; max-width: 100%; flex-wrap: nowrap; }
 .alert-dog-filter .select { width: auto; max-width: 100%; }
-/* Bulk actions on the toolbar, and their result with «Deshacer» at the end of the line. */
+.alerts-calm {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-4) var(--space-5);
+  background: var(--color-sheet); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+}
+.alerts-calm > .icon { flex: none; color: var(--color-status-green); }
+.alerts-calm > span { flex: 1 1 16rem; min-width: 0; }
+.alert-skel { display: flex; flex-direction: column; gap: var(--space-2); }
+.severity-group { gap: var(--space-3); }
+.severity-group + .severity-group { margin-top: var(--space-4); }
+.severity-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); font-size: var(--fs-headline); }
+.severity-count { font-weight: var(--fw-strong); }
+@media (min-width: 721px) {
+  .severity-group .alert-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); gap: var(--space-4); }
+  .severity-group .alert-list > li:has(> .alert-item[data-featured="true"]) { grid-column: 1 / -1; }
+}
+.history-table td[data-title] a { font-weight: var(--fw-strong); }
+.history-table td[data-title] a::first-letter { text-transform: uppercase; }
+.history-state { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+/* Bulk review over the list, and its result with «Deshacer» at the end of the line. */
 .alert-actions { gap: var(--space-2); flex: none; }
-.alert-hint { margin: 0; padding-inline: var(--space-2); max-width: var(--measure); }
-.alert-hint-toggle { display: none; }
 .bulk-done:focus { outline: none; }   /* focused by the page after an action, so it is read aloud */
 .bulk-done { align-items: center; }
 .bulk-done-body { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); }
 .bulk-done-body > span { flex: 1 1 16rem; }
 .more-row { justify-content: space-between; }
 .more-row p { margin: 0; }
-/* Each day opens with its own title: a title-size heading with air above it, not a small grey line. */
+/* A title-size heading with air above it (the severity groups of Alertas). */
 .day-heading { font-family: var(--font-ui); font-size: var(--fs-title); font-weight: var(--fw-display); line-height: var(--leading-title); letter-spacing: var(--tracking-title); color: var(--color-text); margin: 0; }
-.alerts-main > .alert-day { gap: var(--space-4); }
-.alerts-main > .alert-day + .alert-day { margin-top: var(--space-6); }
-@media (min-width: 721px) {
-  .alerts-main .alert-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); gap: var(--space-4); }
-  .alerts-main .alert-list > li:has(> .alert-item[data-featured="true"]) { grid-column: 1 / -1; }
-}
-/* On a phone the toolbar is two compact rows: the filters on one row (the tabs and «Perro» side by side) and the
-   two bulk actions on the next, as two buttons that may wrap to two lines instead of stacking. All of it is about 120 px, so
-   the first alert, with its time and «Ver detalle», is in the first screen. Every control keeps its 44 px target and its
-   place in the focus order. */
 @media (max-width: 720px) {
   .page-intro { margin-bottom: var(--space-4); }
-  .alerts-layout { gap: var(--space-3); }
-  .alerts-main > .alert-day { gap: var(--space-3); }
-  .alert-tools { gap: var(--space-1); }
-  .alert-bar { padding: var(--space-2); gap: var(--space-2); }
-  .alert-filters { flex: 1 1 100%; flex-wrap: nowrap; gap: var(--space-2); }
-  .alert-filters .seg { display: flex; flex: 0 0 auto; flex-wrap: nowrap; }
-  .alert-filters .seg button { flex: 1 1 auto; padding-inline: 10px; white-space: nowrap; }
-  .alert-dog-filter { flex: 1 1 0; min-width: 0; gap: var(--space-2); }   /* the tabs keep their size; the list takes the rest, and a long dog name is cut with an ellipsis inside it */
-  .alert-dog-filter .select { flex: 1 1 auto; width: auto; min-width: 0; padding-left: 10px; padding-right: 32px; background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; }
-  .alert-actions { flex: 1 1 100%; flex-wrap: nowrap; gap: var(--space-2); }
-  .alert-actions > .btn { flex: 1 1 0; min-width: 0; padding-block: 5px; padding-inline: 10px; white-space: normal; text-wrap: balance; text-align: center; }
-  .alert-actions > .btn:first-child { flex-grow: 1.6; }
-  /* The sentence about «Limpiar lista» is folded behind an info button (44 px) at the end of the row; opened, it shows
-     under the toolbar. It stays the description of «Limpiar lista» for screen readers either way. */
-  .alert-actions > .alert-hint-toggle { display: inline-flex; flex: 0 0 var(--tap); width: var(--tap); padding: 0; color: var(--color-text-secondary); }
-  .alert-hint-toggle[aria-expanded="true"] { background: var(--color-accent-wash); color: var(--color-accent); }
-  .alert-hint:not([data-open="true"]) { display: none; }
-  .alert-hint { padding-inline: var(--space-1); line-height: 1.4; }
+  .alert-center { gap: var(--space-4); }
+  .alert-center-bar > * { flex: 1 1 auto; }
+  .alert-tabs button { flex: 1 1 0; }
+  .alert-dog-filter .select { flex: 1 1 auto; width: auto; min-width: 0; }
+  .alert-actions > .btn { flex: 1 1 auto; }
   .alert-item[data-featured="true"] { padding: var(--space-4); gap: var(--space-4); }
   .alert-item[data-featured="true"] .alert-item-icon { width: 48px; height: 48px; }
   .alert-item[data-featured="true"] .alert-item-more { margin-top: 0; }
   .alert-item[data-featured="true"] .alert-item-body { gap: 6px; }
-}
-/* Under 340 px the two do not fit side by side: the tabs take their row and «Perro» the next, as the wide field it was. */
-@media (max-width: 339px) {
-  .alert-filters { flex-wrap: wrap; }
-  .alert-filters .seg { flex: 1 1 100%; }
-  .alert-dog-filter { flex: 1 1 100%; }
-  .alert-dog-filter .select { width: 100%; }
 }
 /* New alerts on the dog's tab: the same red pill as the navigation badge. */
 .tab-count { display: inline-grid; place-items: center; min-width: 1.64em; height: 1.64em; padding: 0 0.45em; border-radius: 0.82em;
@@ -1738,7 +1681,7 @@ html:has(.form-actions) { scroll-padding-bottom: 6.5rem; }
 
 /* ── Footer: a light rule across the content column ─────────────────────── */
 .footer { padding: var(--space-4) var(--gutter) var(--space-5); border-top: 1px solid var(--color-divider-soft); }
-.footer-inner { max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0; font-size: var(--fs-caption); color: var(--color-text-muted); display: flex; flex-wrap: wrap; gap: 6px var(--space-3); justify-content: space-between; }
+.footer-inner { max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0 auto; font-size: var(--fs-caption); color: var(--color-text-muted); display: flex; flex-wrap: wrap; gap: 6px var(--space-3); justify-content: space-between; }
 /* The fixed notice is on the page once: a page that shows it itself does not repeat it in the footer. */
 .page-content:has(.notice) ~ .footer .footer-notice { display: none; }
 /* Phones: room for the floating tab bar (66 px tall, 12 px above the edge) and the home indicator. */
@@ -1775,21 +1718,12 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
   .profile-name { font-size: var(--fs-lead); line-height: 1.12; letter-spacing: var(--tracking-display); }
   .profile-mail { font-size: var(--fs-headline); }
 }
-.profile-grid { display: flex; flex-direction: column; gap: var(--space-8); }
-.profile-section-head { margin-bottom: var(--space-3); }
-.profile-section-head .section-title { font-size: var(--fs-title); font-weight: var(--fw-display); line-height: var(--leading-title); letter-spacing: var(--tracking-title); }
-.profile-side { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-@media (min-width: 1024px) {
-  .profile-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); column-gap: var(--space-10); align-items: start; }
-  /* With none or one dog the list is much shorter than the settings, and the column beside it would stay empty.
-     Then the dogs come first at full width and the settings below, their sections side by side. */
-  .profile-grid-short { grid-template-columns: minmax(0, 1fr); }
-  /* add two sections: rows of up to three, each cell drawing its top and left hairline (the outer
-     ones fall outside the panel and are clipped). */
-  .profile-grid-short .profile-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); overflow: hidden; }
-  .profile-grid-short .profile-section + .profile-section { border-top: 0; }
-  .profile-grid-short .profile-section { box-shadow: -1px -1px 0 0 var(--color-divider-soft); }
-}
+/* Perfil and Configuración: one panel each, as wide as a form reads well, left-aligned under the title. */
+.account-panel, .settings-panel, .account-foot { max-width: 48rem; }
+.profile-name-row { flex-wrap: nowrap; gap: var(--space-2); }
+.profile-name-row .input { flex: 1 1 auto; min-width: 0; max-width: 24rem; }
+.profile-value { font-size: var(--fs-body); overflow-wrap: anywhere; }
+.account-foot { margin-top: var(--space-6); justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); }
 .profile-settings { padding: 0; }
 .profile-section { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6); min-width: 0; }
 .profile-section + .profile-section { border-top: 1px solid var(--color-divider-soft); }
@@ -1808,8 +1742,27 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
 .dog-list-edit { flex: none; }
 @media (hover: hover) and (pointer: fine) { .dog-list-name:hover .dog-list-title { color: var(--color-accent); text-decoration: underline; } }
 .profile-field-set { border: 0; padding: 0; margin: 0; min-width: 0; }
-/* Perfil keeps its own «Cerrar sesión» only on phones, where the masthead has none. */
-@media (min-width: 721px) { .profile-logout { display: none; } }
+/* Perros: the list as wide as it reads well, with its placeholders while it loads. */
+.page-dogs .dog-list, .dogs-search { max-width: 52rem; }
+.dog-list-skel { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4) 0; border-bottom: 1px solid var(--color-divider-soft); }
+.dog-list-skel:last-of-type { border-bottom: 0; }
+.avatar-skel { display: block; flex: none; width: 48px; height: 48px; border-radius: 50%; }
+.dog-list-skel > .skeleton:not(.avatar-skel) { display: block; }
+
+/* ── Consola Admin ───────────────────────────────────────────── */
+/* The title of the console, its three tabs (links, each tool with its address) and, for «Simulador & IA», the switch
+   between the simulator and the models; then the tool, whose title is a section title. */
+.console > .page-head { margin-bottom: var(--space-4); }
+.console-tabs { width: fit-content; margin-bottom: var(--space-3); }
+.console-sub { display: flex; width: fit-content; max-width: 100%; margin-bottom: var(--space-2); }
+.console-pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; margin-top: var(--space-4); }
+.console-pane > .page-head { margin-bottom: 0; }
+.console-pane-title { font-family: var(--font-heading); font-size: var(--fs-title); font-weight: var(--fw-display); line-height: var(--leading-title); letter-spacing: var(--tracking-title); margin: 0; }
+/* On a phone the three tabs do not fit in a row of pills: a grid of three, the icon over the words, like the tab bar. */
+@media (max-width: 720px) {
+  .console-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: auto; border-radius: var(--radius-lg); overflow: visible; }
+  .console-tabs a { flex-direction: column; gap: 4px; padding: 8px 6px; border-radius: var(--radius-md); white-space: normal; text-align: center; line-height: 1.2; }
+}
 
 /* ── Vista para el veterinario (screen 5): a document, dense, technical and printable ─ */
 /* It reads as a sheet of paper on the ground: serif titles, a quiet band of facts, one section per
@@ -1890,7 +1843,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
 /* ── Pressed state: the press shows at once ─────────────────────────────── */
 /* Navigation and links get an instant tint; buttons and the clickable cards also shrink a little while pressed,
    only when motion is welcome. */
-.side-link:active, .nav-link:active, .tabbar-link:active { background: var(--color-chrome-raised); color: var(--color-on-dark); }
+.topbar-link:active, .tabbar-link:active, .user-menu-button:active { background: var(--color-chrome-raised); color: var(--color-on-dark); }
 .crumbs a:active, .back-link:active, .card-more:active, .auth-link:active, .dog-list-edit:active, .alert-item-more:active { opacity: 0.6; }
 .dog-list-name:active { background: var(--color-ink-wash); }
 /* With reduced motion, colours and shadows still change smoothly; nothing moves or grows. */
@@ -1920,8 +1873,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
     --color-status-green: #000; --color-status-amber: #000; --color-status-red: #000; --chart-bar: #000;
   }
   body { background: var(--color-bg); }
-  .masthead, .nav, .tabbar, .footer, .no-print, .proto, .skip-link, .sidebar, .offline { display: none !important; }
-  .shell { display: block !important; }
+  .topbar, .tabbar, .footer, .no-print, .proto, .skip-link, .offline { display: none !important; }
   .page { padding: 0; max-width: none; }
   .vet-view { font-size: 10.5pt; gap: 12px; }
   .vet-paper { background: none; box-shadow: none; border-radius: 0; padding: 0; gap: 14px; }
@@ -1972,11 +1924,11 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
   .rangebar-marker { forced-color-adjust: none; background: CanvasText; box-shadow: 0 0 0 2px Canvas; }
   .gauge path { stroke: GrayText; }
   .gauge path.gauge-arc { stroke: Highlight; }
-  .nav-link[aria-current], .side-link[aria-current], .tabbar-link[aria-current] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .topbar-link[aria-current], .tabbar-link[aria-current], .user-menu-item[aria-current] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .tabs [aria-selected="true"], .tabs [aria-current="page"], .seg button[aria-pressed="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .tabs, .seg { border: 1px solid CanvasText; }
-  .nav-inner, .tabbar { border: 1px solid CanvasText; }
-  .sidebar { border-right: 1px solid CanvasText; }
+  .tabbar, .user-menu-panel { border: 1px solid CanvasText; }
+  .topbar { border-bottom: 1px solid CanvasText; }
   .score-tile, .alert-banner, .tag, .live-now div, .callout, .vet-facts { border: 1px solid CanvasText; }
   .nav-badge, .tab-count { border: 1px solid CanvasText; }   /* the count of new alerts keeps its pill outside the current section */
   .alert-item-icon, .reason-icon, .avatar, .profile-avatar, .empty > .icon, .dropzone > .icon, .icon-chip { border: 1px solid CanvasText; }
@@ -1991,7 +1943,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
   .bezel { border: 1px solid GrayText; }
   .dog-card[data-variant="featured"] .friendly-row, .dog-card[data-variant="featured"] .friendly-row:first-child,
   .dog-card[data-variant="featured"] .friendly-row:last-child { border: 1px solid CanvasText; }
-  .home-lowest, .dog-group, .dog-card.dog-row { border-color: CanvasText; }
+  .kpi, .alerts-calm { border-color: CanvasText; }
   .alert-banner[data-ended="true"] { box-shadow: none; }
   .card-time[data-offline="true"] { border: 1px solid CanvasText; }
   .form-actions { border: 1px solid CanvasText; }

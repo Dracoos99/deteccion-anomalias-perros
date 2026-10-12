@@ -15,13 +15,15 @@ const CompleteProfile = lazy(() => import("./pages/CompleteProfile").then((m) =>
 const CsvUploadPage = lazy(() => import("./pages/CsvUploadPage").then((m) => ({ default: m.CsvUploadPage })));
 const DogDetail = lazy(() => import("./pages/DogDetail").then((m) => ({ default: m.DogDetail })));
 const DogForm = lazy(() => import("./pages/DogForm").then((m) => ({ default: m.DogForm })));
+const DogsPage = lazy(() => import("./pages/DogsPage").then((m) => ({ default: m.DogsPage })));
 const ProfilePage = lazy(() => import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const VetView = lazy(() => import("./pages/VetView").then((m) => ({ default: m.VetView })));
+const AdminConsole = lazy(() => import("./pages/AdminConsole").then((m) => ({ default: m.AdminConsole })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((m) => ({ default: m.SimulatorPage })));
 const ConfigPage = lazy(() => import("./pages/ConfigPage").then((m) => ({ default: m.ConfigPage })));
 const ReviewPage = lazy(() => import("./pages/ReviewPage").then((m) => ({ default: m.ReviewPage })));
 const page = (el: ReactNode, shape?: "detail" | "sheet") => <Suspense fallback={<PageLoading shape={shape} />}>{el}</Suspense>;
-const adminPage = (el: ReactNode) => <RequireAdmin>{page(el)}</RequireAdmin>;
 
 function NotFound() {
   return (
@@ -32,6 +34,8 @@ function NotFound() {
   );
 }
 
+/* Routes by role: the owner's sections (Inicio, Perros, Alertas, and the account pages of the avatar menu)
+   are open to any account; the Consola Admin is one guarded layout whose pages load only for an admin account. */
 export function App() {
   return (
     <AuthProvider>
@@ -44,17 +48,22 @@ export function App() {
           <Route path="/acceso/completar" element={page(<CompleteProfile />)} />
           <Route element={<RequireAccount><Shell /></RequireAccount>}>
             <Route path="/" element={<Home />} />
-            <Route path="/alertas" element={page(<AlertsPage />)} />
-            <Route path="/alertas/:alertId" element={page(<AlertDetail />)} />
+            <Route path="/perros" element={page(<DogsPage />)} />
             <Route path="/perros/nuevo" element={page(<DogForm />)} />
             <Route path="/perros/:dogId" element={page(<DogDetail />, "detail")} />
             <Route path="/perros/:dogId/editar" element={page(<DogForm />)} />
             <Route path="/perros/:dogId/veterinario" element={page(<VetView />, "sheet")} />
-            <Route path="/perfil" element={page(<ProfilePage />)} />
             <Route path="/perfil/datos" element={page(<CsvUploadPage />)} />
-            <Route path="/admin" element={adminPage(<SimulatorPage />)} />
-            <Route path="/admin/configuracion" element={adminPage(<ConfigPage />)} />
-            <Route path="/admin/revision" element={adminPage(<ReviewPage />)} />
+            <Route path="/alertas" element={page(<AlertsPage />)} />
+            <Route path="/alertas/:alertId" element={page(<AlertDetail />)} />
+            <Route path="/perfil" element={page(<ProfilePage />)} />
+            <Route path="/configuracion" element={page(<SettingsPage />)} />
+            <Route path="/admin" element={<RequireAdmin>{page(<AdminConsole />)}</RequireAdmin>}>
+              <Route index element={<SimulatorPage />} />
+              <Route path="configuracion" element={<ConfigPage />} />
+              <Route path="ingesta" element={<CsvUploadPage />} />
+              <Route path="revision" element={<ReviewPage />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

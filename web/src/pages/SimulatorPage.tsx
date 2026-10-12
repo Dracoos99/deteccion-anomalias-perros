@@ -7,7 +7,7 @@ import { ANOMALY_CATALOG, ANOMALY_TYPES, blocksFor, validateInjection } from "@s
 import type { AnomalyType } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { db, usingEmulators } from "../firebase";
-import { Ago, Callout, EmptyState, Icon, LevelTag, PageHead, Seg, StateTag, fmtNum, useNow, usePageTitle } from "../components/ui";
+import { Ago, Callout, EmptyState, Icon, LevelTag, PageFrame, PageHead, Seg, StateTag, fmtNum, useNow, usePageTitle } from "../components/ui";
 import { useActiveModels, useDogs, useFusionConfig, useRuns, type Dog, type Run } from "../data/hooks";
 import { datasetText, durationText } from "../lib/plain";
 import { learningStageMs, overGoal, runPhase, type Phase, type RunLike } from "../lib/simRun";
@@ -448,8 +448,8 @@ export function SimulatorPage() {
     });
   };
   return (
-    <main className="page page-admin" id="main">
-      <PageHead kicker="Herramientas de investigación" kickerIcon="flask" title="Simulador"
+    <PageFrame className="page-admin">
+      <PageHead title="Simulador"
         sub="Reproduce sujetos de los datasets públicos al ritmo real (o hasta 10 veces más rápido), escribe un bloque de 2 a 10 s por documento en readings e inyecta anomalías con su verdad de referencia." />
       <div className="stack">
         <div className="callout"><Icon name="info" size={16} style={{ marginTop: 1 }} /><div>La conducta la clasifica el <strong>modelo CNN-LSTM</strong> y la frecuencia cardiaca, el <strong>autoencoder LSTM</strong> junto con la regla del promedio; la temperatura sigue con <strong>reglas provisionales</strong>. La latencia se mide en cada bloque.</div></div>
@@ -486,6 +486,6 @@ export function SimulatorPage() {
         </div>
         <FusionConfigPanel />
       </div>
-    </main>
+    </PageFrame>
   );
 }

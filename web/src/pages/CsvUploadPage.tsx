@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, EmptyState, Icon, PageHead, fmtNum, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, PageFrame, PageHead, fmtNum, useInConsole, usePageTitle } from "../components/ui";
 import { useCsvUploads, useDogs, useFusionConfig, type CsvUpload, type Dog } from "../data/hooks";
 import { CSV_HEADER, CSV_MAX_BYTES, checkCsv, sampleCsv, templateCsv, type CsvCheck } from "../lib/csv";
 import { uploadCsv, type UploadProgress } from "../lib/csvUpload";
@@ -103,7 +103,8 @@ function RecentUploads({ uploads, dogs }: { uploads: CsvUpload[]; dogs: Map<stri
 
 export function CsvUploadPage() {
   const { user, isAdmin } = useAuth();
-  usePageTitle("Cargar datos");
+  const inConsole = useInConsole();
+  usePageTitle(inConsole ? "Ingesta CSV" : "Cargar datos");
   const viewer = { uid: user!.uid, isAdmin };
   const [params] = useSearchParams();
   const { data: allDogs, loading: dogsLoading } = useDogs(isAdmin ? { kind: "all" } : { kind: "owner", uid: user!.uid });
@@ -187,9 +188,11 @@ export function CsvUploadPage() {
     : quarter === 0 ? `Cargando ${plural(progress!.total, "bloque", "bloques")}.` : quarter > 0 ? `${quarter * 25} % analizado.` : "";
 
   return (
-    <main className="page" id="main">
-      <nav className="crumbs" aria-label="Ruta">{fromInicio ? <Link to="/">Inicio</Link> : <Link to="/perfil">Perfil</Link>}<span aria-hidden="true">›</span><span>Cargar datos</span></nav>
-      <PageHead title="Cargar datos desde un archivo" sub="Sube las lecturas del sensor de tu perro. Las revisamos antes de guardarlas." hero />
+    <PageFrame>
+      {!inConsole && <nav className="crumbs" aria-label="Ruta">{fromInicio ? <Link to="/">Inicio</Link> : <Link to="/perros">Perros</Link>}<span aria-hidden="true">›</span><span>Cargar datos</span></nav>}
+      {inConsole
+        ? <PageHead title="Ingesta CSV" sub="Carga en cualquier perro las lecturas de un archivo CSV. Se revisan en el navegador antes de escribir los bloques de 10 s en readings." />
+        : <PageHead title="Cargar datos desde un archivo" sub="Sube las lecturas del sensor de tu perro. Las revisamos antes de guardarlas." hero />}
       <p className="sr-only" role="status">{milestone}</p>
       <ol className="stepper" aria-label="Pasos">
         {STEPS.map((s, i) => (
@@ -361,6 +364,6 @@ export function CsvUploadPage() {
           <div><button className="btn btn-secondary btn-sm" type="button" onClick={() => download("plantilla_lecturas.csv", templateCsv())}><Icon name="download" size={14} />Descargar plantilla</button></div>
         </aside>
       </div>
-    </main>
+    </PageFrame>
   );
 }

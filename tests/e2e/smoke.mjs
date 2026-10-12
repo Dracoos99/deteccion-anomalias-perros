@@ -37,12 +37,17 @@ await openBrowser();
 const path_ = () => new URL(page.url()).pathname;
 const waitPath = async (p, t = 15000) => { try { await page.waitForFunction((x) => location.pathname === x, { timeout: t }, p); return true; } catch { return false; } };
 const text = () => page.evaluate(() => document.body.innerText);
+const waitText = (needle, t = 10000) => page.waitForFunction((n) => document.body.innerText.includes(n), { timeout: t }, needle).then(() => true, () => false);
 const noRoleWords = async () => { const t = await text(); return ROLE_WORDS.filter((w) => t.includes(w)); };
 const shot = async (name) => { await sleep(500); await page.screenshot({ path: path.join(OUT, name + ".png"), fullPage: true }); };
+/** «Cerrar sesión» is in the account menu of the top bar (and at the foot of Mi perfil). */
+const openUserMenu = async () => {
+  if (!(await page.$(".user-menu-panel"))) await page.click(".user-menu-button");
+  return page.waitForSelector(".user-menu-panel", { visible: true, timeout: 5000 }).then(() => true, () => false);
+};
 const logout = async () => {
-  for (const btn of await page.$$("xpath/.//button[contains(., 'Cerrar sesión')]")) {
-    if (await btn.isVisible()) { await btn.click(); break; }
-  }
+  await openUserMenu();
+  await page.click(".user-menu-panel button");
   await waitPath("/acceso");
 };
 /** Navigate inside the app, as a person following links does: no reload, so the emulator's HTTP/1.1 connections
@@ -71,26 +76,46 @@ await login("lucia.paredes@example.com", "wrong-pass");
 await page.waitForSelector(".callout-error", { timeout: 10000 }).catch(() => {});
 check("wrong password shows generic error", (await text()).includes("El correo o la contraseña no son correctos"));
 
-// 3. Owner: Inicio with her dogs, fixed notice, three sections, no roles anywhere
+// 3. Owner: Inicio as a dashboard, fixed notice, the top bar with three sections and the account menu, no roles anywhere
 await login("lucia.paredes@example.com");
 check("owner lands on Inicio (/)", await waitPath("/"));
 await page.waitForSelector(".dog-card", { timeout: 10000 }).catch(() => {});
-const ownerDogs = await page.$$eval(".dog-name", (els) => els.map((e) => e.textContent));
+const ownerDogs = await page.$$eval(".dog-name", (els) => els.map((e) => e.textContent).sort());
 check("owner sees her 3 dogs only", JSON.stringify(ownerDogs) === JSON.stringify(["Luna", "Rocky", "Toby"]), JSON.stringify(ownerDogs));
 check("fixed notice with the v3 wording", (await text()).includes(NOTICE));
-check("wide screens show the side navigation Inicio · Alertas · Perfil",
-  await page.$eval(".sidebar", (el) => getComputedStyle(el).display !== "none")
-  && JSON.stringify(await navLabels(".sidebar .side-link .nav-label")) === JSON.stringify(["Inicio", "Alertas", "Perfil"]));
-check("the side navigation names the account and offers to sign out", (await page.$eval(".sidebar", (el) => el.innerText)).includes("Lucía Paredes")
-  && (await page.$eval(".sidebar", (el) => el.innerText)).includes("Cerrar sesión"));
+const kpiLabels = await page.$$eval(".kpi .kpi-label", (els) => els.map((e) => e.textContent.trim()));
+check("Inicio opens with four figures: total, normal, active alerts and without data", kpiLabels.length === 4
+  && kpiLabels[0] === "Total de perros" && kpiLabels[1] === "En estado normal" && /^Alertas? activas?$/.test(kpiLabels[2]) && kpiLabels[3] === "Sin datos recientes",
+  JSON.stringify(kpiLabels));
+check("the first figure counts her 3 dogs", await page.$eval(".kpi .kpi-value", (el) => el.textContent.trim()) === "3");
+await page.type("#dog-search", "roc");
+await sleep(300);
+check("the search narrows the cards by name", JSON.stringify(await page.$$eval(".dog-name", (els) => els.map((e) => e.textContent))) === JSON.stringify(["Rocky"]));
+await page.focus("#dog-search");
+for (let i = 0; i < 3; i++) await page.keyboard.press("Backspace");
+await sleep(300);
+check("clearing the search brings every card back", (await page.$$(".dog-card")).length === 3);
+check("the state filter offers Todos, En alerta and Sin datos", JSON.stringify(await navLabels(".dash-tools .seg button")) === JSON.stringify(["Todos", "En alerta", "Sin datos"]));
+check("wide screens show the top bar Inicio · Perros · Alertas",
+  await page.$eval(".topbar-nav", (el) => getComputedStyle(el).display !== "none")
+  && JSON.stringify(await navLabels(".topbar-nav .topbar-link .nav-label")) === JSON.stringify(["Inicio", "Perros", "Alertas"]));
+check("the top bar names the system without a brand", (await page.$eval(".topbar-brand", (el) => el.innerText)).includes("Detección de anomalías")
+  && (await page.$eval(".topbar-brand", (el) => el.innerText)).includes("Tesis UPC"));
+await openUserMenu();
+const menuText = await page.$eval(".user-menu-panel", (el) => el.innerText);
+check("the account menu names the account and offers Mi perfil, Configuración and Cerrar sesión", menuText.includes("Lucía Paredes")
+  && menuText.includes("Mi perfil") && menuText.includes("Configuración") && menuText.includes("Cerrar sesión"));
+await page.keyboard.press("Escape");
+check("Escape closes the account menu and gives the focus back", !(await page.$(".user-menu-panel"))
+  && await page.evaluate(() => document.activeElement?.classList.contains("user-menu-button")));
 check("no role is shown on Inicio", !(await noRoleWords()).length, (await noRoleWords()).join(", "));
 await shot("02-inicio-1440");
 await page.setViewport({ width: 390, height: 844 });
 check("mobile shows the bottom tab bar with the three sections", await page.$eval(".tabbar", (t) => getComputedStyle(t).display !== "none")
-  && JSON.stringify(await navLabels(".tabbar .tabbar-link .nav-label")) === JSON.stringify(["Inicio", "Alertas", "Perfil"])
-  && await page.$eval(".sidebar", (el) => getComputedStyle(el).display === "none"));
+  && JSON.stringify(await navLabels(".tabbar .tabbar-link .nav-label")) === JSON.stringify(["Inicio", "Perros", "Alertas"])
+  && await page.$eval(".topbar-nav", (el) => getComputedStyle(el).display === "none"));
 const wideOnPhone = [];
-for (const p of ["/", "/perros/toby", "/alertas", "/perfil", "/perfil/datos", "/perros/toby/veterinario"]) {
+for (const p of ["/", "/perros", "/perros/toby", "/alertas", "/alertas?vista=historial", "/perfil", "/configuracion", "/perfil/datos", "/perros/toby/veterinario"]) {
   await spaGo(p);
   if (!(await noSideScroll())) wideOnPhone.push(p);
 }
@@ -106,35 +131,55 @@ await page.setViewport({ width: 1440, height: 900 });
 // 4. Research tools stay hidden from owners
 await spaGo("/admin");
 check("owner opening /admin is sent to Inicio without a message", await waitPath("/") && !(await text()).includes("No tienes acceso"));
+check("owner pages carry no link to the Consola Admin", !(await page.$("a[href^='/admin']")));
 await spaGo("/perfil");
 await page.waitForSelector("#p-account", { timeout: 10000 }).catch(() => {});
-check("owner Perfil shows the account and dogs, without research tools",
-  (await text()).includes("lucia.paredes@example.com") && (await text()).includes("Mis perros") && !(await page.$("#p-research")));
+const profileText = await text();
+check("Mi perfil shows the account, the appearance and the credentials only",
+  profileText.includes("lucia.paredes@example.com") && profileText.includes("Apariencia") && profileText.includes("Datos de acceso")
+  && profileText.includes("Cambiar contraseña") && !profileText.includes("Tus datos") && !profileText.includes("Qué quieres recibir"));
+await spaGo("/perros");
+await page.waitForSelector(".dog-list li", { timeout: 10000 }).catch(() => {});
+check("Perros lists her dogs with their state", (await page.$$(".dog-list li")).length === 3 && (await text()).includes("Cargar datos"));
 await spaGo("/alertas");
-check("Alertas loads (empty state or list)", /Sin alertas|Nueva|Revisada/.test(await text()));
+check("Alertas has two tabs, Activas and Historial",
+  JSON.stringify((await navLabels("[role=tab]")).map((t) => t.replace(/\d+$/, ""))) === JSON.stringify(["Activas", "Historial"]));
+check("Activas lists alerts by severity or says nothing is active", await page.waitForFunction(() =>
+  /Crítico|Advertencia|No hay alertas activas|Todos los sensores están reportando/.test(document.querySelector("#panel-activas")?.innerText ?? ""), { timeout: 10000 }).then(() => true, () => false));
+const shown = () => page.evaluate(() => ["#panel-activas", "#panel-historial"].map((s) => { const el = document.querySelector(s); return !!el && getComputedStyle(el).display !== "none"; }));
+check("only the panel of the chosen tab is shown", JSON.stringify(await shown()) === JSON.stringify([true, false]));
 await shot("07-alertas-1440");
+await page.click("#tab-historial");
+check("Historial shows the audit table or says there is nothing yet", await page.waitForFunction(() => location.search.includes("vista=historial")
+  && (!!document.querySelector("#panel-historial .history-table") || document.body.innerText.includes("Todavía no hay alertas registradas")), { timeout: 10000 }).then(() => true, () => false)
+  && JSON.stringify(await shown()) === JSON.stringify([false, true]));
 await logout();
 check("logout returns to /acceso", path_() === "/acceso");
 
-// 5. Admin: same Inicio (all dogs), research tools only from Perfil
+// 5. Admin: same Inicio (all dogs), and the Consola Admin in the top bar, with its three tabs
 await login("admin@example.com");
 check("admin also lands on Inicio", await waitPath("/"));
 await page.waitForSelector(".dog-card", { timeout: 10000 }).catch(() => {});
 check("admin sees every dog on Inicio (the 10 of the seed at least)", (await page.$$(".dog-card")).length >= 10, String((await page.$$(".dog-card")).length));
 check("no role is shown to the admin either", !(await noRoleWords()).length, (await noRoleWords()).join(", "));
-await spaGo("/perfil");
-await page.waitForSelector("#p-research", { timeout: 10000 }).catch(() => {});
-// The dog list arrives after the page: wait for it, so the research link does not move under the click.
-await page.waitForSelector(".dog-list li", { timeout: 10000 }).catch(() => {});
-check("admin Perfil offers the research tools", (await text()).includes("Herramientas de investigación"));
-await page.waitForSelector("section[aria-labelledby='p-research'] a", { visible: true, timeout: 10000 });
-await page.click("section[aria-labelledby='p-research'] a");
-check("research tools open at /admin", await waitPath("/admin"));
-await sleep(1500);
+check("the admin's top bar adds «Consola Admin»", JSON.stringify(await navLabels(".topbar-nav .topbar-link .nav-label")) === JSON.stringify(["Inicio", "Perros", "Alertas", "Consola Admin"]));
+await page.click(".topbar-nav a[href='/admin']");
+check("the console opens at /admin on «Simulador & IA»", await waitPath("/admin")
+  && await page.waitForSelector(".console-tabs a[aria-current=page]", { timeout: 10000 }).then((el) => el.evaluate((a) => a.textContent.trim())).catch(() => "") === "Simulador & IA");
+check("the console has the tabs Ingesta CSV, Simulador & IA and Revisión experta",
+  JSON.stringify(await navLabels(".console-tabs a")) === JSON.stringify(["Ingesta CSV", "Simulador & IA", "Revisión experta"]));
+await page.waitForFunction(() => document.body.innerText.includes("Nueva ejecución"), { timeout: 15000 }).catch(() => {});
 const adminText = await text();
 check("simulator panel shows config/fusion values", adminText.includes("0.4 · 0.4 · 0.2") && adminText.includes("Health Score < 60"));
 check("simulator panel lists runs or offers to create one", adminText.includes("Nueva ejecución") && (adminText.includes("Ejecuciones recientes") || adminText.includes("Todavía no hay ejecuciones")));
 await shot("a1-simulador-1440");
+await page.click(".console-tabs a[href='/admin/ingesta']");
+check("«Ingesta CSV» opens the upload for any dog", await waitPath("/admin/ingesta")
+  && !!(await page.waitForSelector("#csv-dog", { timeout: 15000 }).catch(() => null)) && (await page.$$eval("#csv-dog option", (o) => o.length)) >= 10);
+await page.click(".console-tabs a[href='/admin/revision']");
+check("«Revisión experta» opens the blind review", await waitPath("/admin/revision")
+  && await page.waitForFunction(() => document.body.innerText.includes("Acuerdo con el sistema"), { timeout: 15000 }).then(() => true, () => false));
+check("the console has one main landmark", (await page.$$("main")).length === 1);
 await logout();
 
 await openBrowser();
@@ -230,12 +275,26 @@ try {
     && document.getElementById("tabbtn-corazon")?.getAttribute("aria-selected") === "true"));
   check("the browser tab is named after the dog", (await page.title()).startsWith("Mora Luna · "));
   await shot("03b-detalle-aprendiendo-1440");
-  await spaGo("/perfil");
+  await spaGo("/perros");
+  await page.waitForSelector(".dog-list li", { timeout: 10000 }).catch(() => {});
+  check("Perros lists the new dog and offers the data upload", (await text()).includes("Mora Luna") && !!(await page.$("a[href='/perfil/datos']")));
+  // The notices, the app and «Tus datos» moved from Perfil to Configuración, in the account menu.
+  await openUserMenu();
+  await page.click(".user-menu-panel a[href='/configuracion']");
   await page.waitForFunction(() => document.body.innerText.includes("Qué quieres recibir"), { timeout: 10000 }).catch(() => {});
-  check("Perfil offers the data upload and the notification settings", (await text()).includes("Cargar datos") && (await text()).includes("Avisos")
+  check("Configuración offers the notification settings", path_() === "/configuracion" && (await text()).includes("Avisos")
     && (await text()).includes("los avisos no funcionan con los emuladores"));
-  check("Perfil offers «Tus datos»: the download and the deletion", (await text()).includes("Tus datos")
+  check("Configuración offers «Tus datos»: the download and the deletion", (await text()).includes("Tus datos")
     && (await text()).includes("Descargar mis datos") && (await text()).includes("Borrar mi cuenta"));
+  // Mi perfil changes the name, and the account menu of the top bar shows the new one at once.
+  await spaGo("/perfil");
+  await page.waitForSelector("#p-name");
+  await page.focus("#p-name");
+  await page.$eval("#p-name", (el) => el.select());
+  await page.keyboard.type("Carmen Vidal Ruiz");
+  await clickText("button", "Guardar");
+  check("Mi perfil saves the name and the top bar shows it", await waitText("Listo: se guardó tu nombre.")
+    && await page.waitForFunction(() => document.querySelector(".user-menu-name")?.textContent === "Carmen Vidal Ruiz", { timeout: 10000 }).then(() => true, () => false));
 } catch (e) {
   check("dog registration flow", false, e.message);
 }
@@ -255,9 +314,10 @@ try {
   check("deleting a dog waits for the confirmation word", await page.$eval("form[aria-labelledby=d-delete-q] button[type=submit]", (b) => b.disabled));
   await page.type("#d-delete-word", "borrar");
   await clickText("button", "para siempre");
-  check("the dog is deleted for good and Perfil says so", await waitPath("/perfil", 30000)
+  check("the dog is deleted for good and Perros says so", await waitPath("/perros", 30000)
     && await page.waitForFunction(() => document.body.innerText.includes("Borramos a Mora Luna y todos sus datos"), { timeout: 10000 }).then(() => true, () => false));
   check("the deleted dog is no longer in the list", await page.waitForFunction(() => document.body.innerText.includes("Todavía no registras perros"), { timeout: 10000 }).then(() => true, () => false));
+  await spaGo("/configuracion");
   await clickText("button", "Borrar mi cuenta");
   await page.waitForSelector("#p-delete-word");
   await page.type("#p-delete-word", "BORRAR");

@@ -6,7 +6,6 @@ import {
 } from "@shared/types";
 import type { TrendDayDoc, TrendTier, TrendTierDoc } from "@shared/trends";
 import { db } from "../firebase";
-import { NO_MARKS, type ClearMarks } from "../lib/bulkAlerts";
 
 export type Dog = DogDoc<Timestamp> & { id: string };
 /** Owners see their dogs; an admin sees every dog, so the owner screens work for the demo with the same account. */
@@ -83,43 +82,23 @@ export function useActiveModels(): Live<ModelVersion[]> {
 
 export type Alert = AlertDoc<Timestamp> & { id: string };
 
-/** Latest alerts, newest first (screen 7). Owners filter by ownerId (index alerts: ownerId, createdAt). `since`: only
- * alerts created after it; undefined waits until it is known. */
-export function useAlerts(scope: DogsScope, max = 50, since: number | null | undefined = null): Live<Alert[]> {
-  const base = scope.kind === "all" ? "all" : `owner:${scope.uid}`, key = `${base}|${max}|${since}`;
+/** Latest alerts, newest first. Owners filter by ownerId (index alerts: ownerId,
+ * createdAt). */
+export function useAlerts(scope: DogsScope, max = 50): Live<Alert[]> {
+  const base = scope.kind === "all" ? "all" : `owner:${scope.uid}`, key = `${base}|${max}`;
   const [state, setState] = useState<Keyed<Alert[]>>({ data: [], loading: true, error: null, key: null, base: null });
   useEffect(() => {
-    if (since === undefined) return;
     const alerts = collection(db, "alerts");
-    const after = since != null ? [where("createdAt", ">", Timestamp.fromMillis(since))] : [];
     const q = scope.kind === "owner"
-      ? query(alerts, where("ownerId", "==", scope.uid), ...after, orderBy("createdAt", "desc"), limit(max))
-      : query(alerts, ...after, orderBy("createdAt", "desc"), limit(max));
+      ? query(alerts, where("ownerId", "==", scope.uid), orderBy("createdAt", "desc"), limit(max))
+      : query(alerts, orderBy("createdAt", "desc"), limit(max));
     return onSnapshot(q,
       (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as AlertDoc<Timestamp>) })), loading: false, error: null, key, base }),
       (err) => setState({ data: [], loading: false, error: err.message, key, base }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  if (since === undefined) return { data: [], loading: true, error: null };
-  // Asking for more, or clearing the list, keeps the alerts already loaded while the new query arrives.
+  // Asking for more keeps the alerts already loaded while the new query arrives.
   return current(state, key, base);
-}
-
-/** When the person cleared their Alertas list, in epoch ms; null until the profile arrives. `marks` counts a
- * clear still on its way with the local estimate of the server time, so the list empties at once; `since`, for the
- * query, keeps the previous mark until the server confirms the new one, so the query changes only once. */
-export function useClearMarks(uid: string): { marks: ClearMarks; since: number | null } | null {
-  const [state, setState] = useState<{ marks: ClearMarks; since: number | null } | null>(null);
-  useEffect(() => onSnapshot(doc(db, "users", uid),
-    (snap) => {
-      const cleared = (snap.data({ serverTimestamps: "estimate" }) as UserDoc<Timestamp> | undefined)?.alertsCleared;
-      const confirmed = (snap.data({ serverTimestamps: "previous" }) as UserDoc<Timestamp> | undefined)?.alertsCleared;
-      const byDog: Record<string, number> = {};
-      for (const [dogId, t] of Object.entries(cleared?.byDog ?? {})) if (t?.toMillis) byDog[dogId] = t.toMillis();
-      setState({ marks: { all: cleared?.all?.toMillis?.() ?? null, byDog }, since: confirmed?.all?.toMillis?.() ?? null });
-    },
-    () => setState({ marks: NO_MARKS, since: null })), [uid]);
-  return state;
 }
 
 // ── Phase 3: one dog, its trends and its alerts ──────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 /* Shared UI ported from the v2 prototype, with the look of the v3 mockups
 . Styles live in styles/app.css. */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { FusionConfig, Level } from "@shared/types";
 import { usingEmulators } from "../firebase";
 import { freshness as freshnessOf, shownDataMs, type Freshness } from "../lib/live";
@@ -9,6 +9,7 @@ import { LEARNING_TEXT, glueTime, steadyScore, whenPhrase, type Steady } from ".
 /* Line icons on a 24 px grid, 2 px stroke: the set of the v3 mockups, plus a few more for the research tools. */
 const ICONS: Record<string, ReactNode> = {
   "check-circle": <><circle cx="12" cy="12" r="9" /><path d="m8.5 12 2.5 2.5 4.5-5" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" /></>,
   "alert-triangle": <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></>,
   "alert-octagon": <><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z" /><path d="M12 8v4" /><path d="M12 16h.01" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>,
@@ -122,7 +123,8 @@ export function useOnline(): boolean {
  * «En vivo»: "Sin conexión · último dato hace 28 s", like the banner at the top. */
 export function DataTime({ freshness, shownMs }: { freshness: Freshness; shownMs: number | null }) {
   const online = useOnline();
-  if (freshness === "stale") return <>Últimos datos: {shownMs != null ? whenPhrase(shownMs) : "sin dato"}</>;
+  // Old data in relative time («Últimos datos hace 5 días»), the full date on hover.
+  if (freshness === "stale") return shownMs != null ? <span title={whenPhrase(shownMs)}>Últimos datos {fmtAgo(new Date(shownMs))}</span> : <>Últimos datos: sin dato</>;
   if (!online) return <>Sin conexión · último dato <Ago t={shownMs != null ? new Date(shownMs) : null} /></>;
   return <>Actualizado <Ago t={shownMs != null ? new Date(shownMs) : null} />{freshness === "live" && <LiveBadge />}</>;
 }
@@ -142,6 +144,9 @@ export function fmtAgo(t: Date | null | undefined, now = Date.now()): string {
   if (s < 60) return `hace ${s} s`;
   if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
   if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
+  // In days up to a month («hace 5 días»), then the date.
+  const days = Math.floor(s / 86400);
+  if (days < 30) return days === 1 ? "hace 1 día" : `hace ${days} días`;
   return `el ${glueTime(t.toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" }))}`;
 }
 
@@ -266,10 +271,33 @@ export function Notice() {
   );
 }
 
+/** A page shown inside the Consola Admin (its tabs and title are the console's): no <main> of its own, no
+ * crumbs, and its title is a section title. */
+export const InConsole = createContext(false);
+export const useInConsole = () => useContext(InConsole);
+
+/** The frame of a page: its <main>, or a plain section inside the Consola Admin. */
+export function PageFrame({ className, children }: { className?: string; children: ReactNode }) {
+  const inConsole = useInConsole();
+  if (inConsole) return <div className={className ? `console-pane ${className}` : "console-pane"}>{children}</div>;
+  return <main className={className ? `page ${className}` : "page"} id="main">{children}</main>;
+}
+
 /** The head of a page: the title in display type, what the page is about under it (`kicker`: the dog of an alert, the
  * research tools; with its icon) and a line of explanation. Never a label above the title. `hero` is the title
  * of a page whose protagonist is the screen itself (Alertas, Perfil, Cargar datos): the scale of the PO's references. */
 export function PageHead({ kicker, kickerIcon, title, sub, actions, hero = false }: { kicker?: string; kickerIcon?: string; title: string; sub?: string; actions?: ReactNode; hero?: boolean }) {
+  if (useInConsole()) {
+    return (
+      <div className="page-head console-pane-head">
+        <div className="page-head-main">
+          <h2 className="console-pane-title">{title}</h2>
+          {sub && <p className="page-sub">{sub}</p>}
+        </div>
+        {actions && <div className="row">{actions}</div>}
+      </div>
+    );
+  }
   return (
     <div className={hero ? "page-head page-head-hero" : "page-head"}>
       <div className="page-head-main">
@@ -307,6 +335,9 @@ export function Skeleton({ lines = [40, 60, 100], className }: { lines?: number[
  * `shape="detail"` the placeholders have the shape of the dog's page (title, state card, controls, chart), and with
  * `shape="sheet"` that of the Vista para el veterinario (title and a sheet), so the page does not jump when it arrives. */
 export function PageLoading({ title, text = "Cargando…", className, shape }: { title?: string; text?: string; className?: string; shape?: "detail" | "sheet" }) {
+  if (useInConsole()) {
+    return <div className="console-pane" aria-busy="true"><p className="small muted">{text}</p><Skeleton /><Skeleton lines={[35, 50, 100]} /></div>;
+  }
   return (
     <main className={className ? `page ${className}` : "page"} id="main" aria-busy="true">
       {title && <PageHead title={title} />}
@@ -337,34 +368,26 @@ export function PageLoading({ title, text = "Cargando…", className, shape }: {
 }
 
 /** The cold start: from the first frame, before the account is known, the frame of the app
- * (the dark side column or tab bar, a title and placeholder cards), so the screen never reads as broken. The same markup
+ * (the dark top bar or tab bar, a title and placeholder cards), so the screen never reads as broken. The same markup
  * is in web/index.html, shown before any script runs: keep the two in step. The account is unknown here, so it does not
  * say whose page it is; the pages that load after it have their own placeholders (PageLoading). */
 export function BootFrame() {
   return (
     <div className="boot" role="status" aria-busy="true">
-      <div className="shell">
-        <aside className="sidebar" aria-hidden="true">
-          <div className="sidebar-brand">
-            <span className="brand-title">Detección de anomalías en perros</span>
-            <div className="brand-kicker">Proyecto de tesis · UPC</div>
-          </div>
-          <div className="sidebar-nav"><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /></div>
-        </aside>
-        <div className="shell-main">
-          <header className="masthead" aria-hidden="true">
-            <div className="masthead-inner"><div className="brand"><span className="brand-title">Detección de anomalías en perros</span></div></div>
-            <div className="nav"><div className="nav-inner"><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /></div></div>
-          </header>
-          <div className="page-content">
-            <div className="page">
-              <div className="stack">
-                <p className="small muted">Cargando…</p>
-                <div className="skeleton skeleton-title" aria-hidden="true" />
-                <div className="panel stack-sm" aria-hidden="true"><div className="skeleton" style={{ height: 14, width: "40%" }} /><div className="skeleton" style={{ height: 22, width: "60%" }} /><div className="skeleton" style={{ height: 56, width: "100%" }} /></div>
-                <div className="panel stack-sm" aria-hidden="true"><div className="skeleton" style={{ height: 14, width: "35%" }} /><div className="skeleton" style={{ height: 22, width: "50%" }} /><div className="skeleton" style={{ height: 56, width: "100%" }} /></div>
-              </div>
-            </div>
+      <header className="topbar" aria-hidden="true">
+        <div className="topbar-inner">
+          <span className="topbar-brand"><span className="topbar-name">Detección de anomalías</span><span className="topbar-badge">Tesis UPC</span></span>
+          <div className="topbar-nav"><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /><span className="skeleton boot-pill" /></div>
+          <span className="skeleton boot-avatar" />
+        </div>
+      </header>
+      <div className="page-content">
+        <div className="page">
+          <div className="stack">
+            <p className="small muted">Cargando…</p>
+            <div className="skeleton skeleton-title" aria-hidden="true" />
+            <div className="panel stack-sm" aria-hidden="true"><div className="skeleton" style={{ height: 14, width: "40%" }} /><div className="skeleton" style={{ height: 22, width: "60%" }} /><div className="skeleton" style={{ height: 56, width: "100%" }} /></div>
+            <div className="panel stack-sm" aria-hidden="true"><div className="skeleton" style={{ height: 14, width: "35%" }} /><div className="skeleton" style={{ height: 22, width: "50%" }} /><div className="skeleton" style={{ height: 56, width: "100%" }} /></div>
           </div>
         </div>
       </div>

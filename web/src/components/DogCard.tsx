@@ -106,33 +106,3 @@ export function DogCard({ dog, cfg, openAlert, alertIsNew = false, scoreNote = f
     </article>
   );
 }
-
-/** The dogs that have no data yet, together: one card with a row for each (its name, which opens it, and
- * the action that loads its data), instead of as many identical cards. What every one of them is waiting for is said once. */
-export function DogGroup({ dogs }: { dogs: Dog[] }) {
-  const { user, isAdmin } = useAuth();
-  return (
-    <section className="panel dog-group" aria-labelledby="dog-group-title">
-      <div className="dog-group-head">
-        <h2 className="section-title" id="dog-group-title">Sin datos <span className="dog-group-count">({dogs.length})</span></h2>
-        <p className="small muted">Sus datos aparecerán cuando lleguen sus primeras lecturas; con ellas aprendemos su patrón normal.</p>
-      </div>
-      <div className="dog-rows">
-        {dogs.map((dog) => {
-          const meta = [dog.breed, ageText(dog.birthDate)].filter(Boolean).join(" · ");
-          const canLoad = isAdmin || dog.ownerId === user?.uid;
-          return (
-            <article className="dog-card dog-row" data-variant="row" data-level="none" key={dog.id} aria-labelledby={`dog-${dog.id}`}>
-              <div className="dog-row-id">
-                <h3 className="dog-name" id={`dog-${dog.id}`}><Link to={`/perros/${dog.id}`}>{dog.name}</Link></h3>
-                {meta && <div className="dog-meta">{meta}</div>}
-              </div>
-              {canLoad && <Link className="btn btn-secondary btn-sm" to={`/perfil/datos?perro=${dog.id}`}><Icon name="upload" size={14} />Cargar sus datos</Link>}
-              <Icon name="chevron-right" size={14} />
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}

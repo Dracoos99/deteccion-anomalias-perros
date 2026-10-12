@@ -1,53 +1,24 @@
-/* Bulk actions of the Alertas list, without Firestore: which alerts stay on a person's list, what each action
-   changed (to undo it) and what the owner reads afterwards. The writes are in alertActions.ts.
-   «Limpiar lista» moves a mark in the person's own profile (users/{uid}.alertsCleared), for every dog or for the dog
-   chosen in the filter: the alerts created until then leave their list and stay in the dog's history and in the vet
-   view. The new ones among them are reviewed in the same write. */
-
-export type BulkKind = "review" | "clear";
-
-/** When the person cleared the list, in epoch ms: for every dog, and per dog. */
-export interface ClearMarks { all: number | null; byDog: Record<string, number> }
-export const NO_MARKS: ClearMarks = { all: null, byDog: {} };
+/* The bulk action of Alertas, without Firestore: «Marcar todas como revisadas», what it changed (to undo it)
+   and what the owner reads afterwards. The writes are in alertActions.ts. retired «Limpiar lista»: the
+   «Historial» tab keeps every alert, so nothing is taken off a list any more. */
 
 /** How long «Deshacer» stays. firestore.rules lets whoever reviewed an alert make it new again for 10 minutes; the
  * button leaves a minute earlier, so a slow connection does not meet the limit. */
 export const UNDO_MS = 9 * 60_000;
 
-/** The mark that applies to a dog's alerts: the later of the two. */
-export function clearedUntil(marks: ClearMarks, dogId: string): number | null {
-  const all = marks.all, one = marks.byDog[dogId] ?? null;
-  return all == null ? one : one == null ? all : Math.max(all, one);
-}
-
-/** Whether an alert is on the list: created after the mark of its dog. One without a creation time yet (still being
- * written) is new, so it stays. */
-export function onList(alert: { dogId: string; createdAtMs: number | null }, marks: ClearMarks): boolean {
-  const until = clearedUntil(marks, alert.dogId);
-  return until == null || alert.createdAtMs == null || alert.createdAtMs > until;
-}
-
-/** What an action did, enough to undo it. */
+/** What the action did, enough to undo it: the new alerts it reviewed («Deshacer» makes them new again). */
 export interface BulkChange {
-  kind: BulkKind;
-  /** New alerts it reviewed: «Deshacer» makes them new again. */
+  kind: "review";
   reviewed: string[];
-  /** «Limpiar lista»: the dog whose mark moved (null: every dog) and the value the mark had before. */
-  mark?: { dogId: string | null; previous: number | null };
 }
 
 const num = (n: number) => n.toLocaleString("es-PE");
 
-/** What the owner reads after an action. `dogName`: the dog the list was filtered by, if any. Where cleared alerts went
- * is said by the empty list below it («Lista limpia»), so the message stays short. */
+/** What the owner reads after the action. `dogName`: the dog the list was filtered by, if any. */
 export function bulkDoneText(change: BulkChange, dogName?: string | null): string {
   const k = change.reviewed.length;
-  if (change.kind === "review") {
-    const of = dogName ? ` de ${dogName}` : "";
-    return k === 1 ? `La alerta nueva${of} quedó revisada.` : `Las ${num(k)} alertas nuevas${of} quedaron revisadas.`;
-  }
-  const reviewed = !k ? "" : k === 1 ? " La nueva quedó revisada." : ` Las ${num(k)} nuevas quedaron revisadas.`;
-  return (dogName ? `Quitamos de la lista las alertas de ${dogName}.` : "Quitamos las alertas de la lista.") + reviewed;
+  const of = dogName ? ` de ${dogName}` : "";
+  return k === 1 ? `La alerta nueva${of} quedó revisada.` : `Las ${num(k)} alertas nuevas${of} quedaron revisadas.`;
 }
 
 /** The last bulk action, kept in sessionStorage while its «Deshacer» lasts, so it survives
@@ -60,25 +31,21 @@ export const bulkStorageKey = (uid: string) => `alerts-bulk:${uid}`;
 const isStringArray = (x: unknown): x is string[] => Array.isArray(x) && x.every((v) => typeof v === "string");
 
 /** The stored action back, if it is well formed, it changed something and its «Deshacer» has not expired; else null
- * (the caller then clears the key). */
+ * (the caller then clears the key). One stored by the retired «Limpiar lista» is not brought back. */
 export function restoreBulk(raw: string | null, now: number): StoredBulk | null {
   if (!raw) return null;
   let v: unknown;
   try { v = JSON.parse(raw); } catch { return null; }
   if (!v || typeof v !== "object") return null;
   const { change, text, at } = v as Partial<StoredBulk>;
-  if (typeof at !== "number" || typeof text !== "string" || !change || (change.kind !== "review" && change.kind !== "clear")) return null;
-  if (!isStringArray(change.reviewed)) return null;
-  const mark = change.mark;
-  if (mark != null && (typeof mark !== "object" || (mark.dogId !== null && typeof mark.dogId !== "string") || (mark.previous !== null && typeof mark.previous !== "number"))) return null;
-  if (!change.reviewed.length && !mark) return null;
+  if (typeof at !== "number" || typeof text !== "string" || !change || change.kind !== "review") return null;
+  if (!isStringArray(change.reviewed) || !change.reviewed.length) return null;
   if (now - at >= UNDO_MS || at - now > 60_000) return null;
-  return { change: { kind: change.kind, reviewed: change.reviewed, ...(mark ? { mark } : {}) }, text, at };
+  return { change: { kind: "review", reviewed: change.reviewed }, text, at };
 }
 
 /** What the owner reads after «Deshacer». */
 export function bulkUndoneText(change: BulkChange): string {
   const k = change.reviewed.length;
-  if (change.kind === "review") return k === 1 ? "La alerta volvió a quedar como nueva." : `Las ${num(k)} alertas volvieron a quedar como nuevas.`;
-  return "Las alertas volvieron a la lista, como estaban.";
+  return k === 1 ? "La alerta volvió a quedar como nueva." : `Las ${num(k)} alertas volvieron a quedar como nuevas.`;
 }

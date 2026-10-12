@@ -2,11 +2,10 @@
    admin, with a probe of the Health Score formula. Layout of the v2 prototype
 . The values stay provisional until the team decides C3-C5. */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, writeBatch, type Timestamp } from "firebase/firestore";
 import { DEFAULT_FUSION_CONFIG, healthScore, levelOf, type FusionConfig } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
-import { Callout, HealthGauge, Icon, LevelTag, PageHead, PageLoading, fmtNum, usePageTitle } from "../components/ui";
+import { Callout, HealthGauge, Icon, LevelTag, PageFrame, PageHead, PageLoading, fmtNum, usePageTitle } from "../components/ui";
 import { db } from "../firebase";
 import { useActiveModels, useFusionConfig, type Fusion } from "../data/hooks";
 import { dateTimeText, durationText } from "../lib/plain";
@@ -204,9 +203,8 @@ export function ConfigPage() {
   };
 
   return (
-    <main className="page page-admin" id="main">
-      <nav className="crumbs" aria-label="Ruta"><Link to="/perfil">Perfil</Link><span aria-hidden="true">›</span><Link to="/admin">Herramientas de investigación</Link><span aria-hidden="true">›</span><span>Modelos y configuración</span></nav>
-      <PageHead kicker="Herramientas de investigación" kickerIcon="flask" title="Modelos y configuración"
+    <PageFrame className="page-admin">
+      <PageHead title="Modelos y configuración"
         sub="Modelos activos y los pesos y umbrales de la fusión (config/fusion). Los cambios se aplican a los bloques siguientes, en menos de 15 s." />
       <div className="stack">
         <ModelsSummary />
@@ -301,6 +299,6 @@ export function ConfigPage() {
         </div>
         <ChangeLog uid={user!.uid} />
       </div>
-    </main>
+    </PageFrame>
   );
 }

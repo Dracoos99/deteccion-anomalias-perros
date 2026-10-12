@@ -60,14 +60,14 @@ function ResetBaseline({ dog }: { dog: Dog }) {
 }
 
 /** «Quitar perro»: the dog is archived (active: false), never deleted. It leaves Inicio, Alertas, the
- * data upload and the research panel; its data, its alerts and its vet view stay. Perfil offers «Deshacer» right after. */
+ * data upload and the research panel; its data, its alerts and its vet view stay. Perros offers «Deshacer» right after. */
 function ArchiveDog({ dog }: { dog: Dog }) {
   const navigate = useNavigate();
   const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
   const onArchive = async () => {
     setState("busy");
     const write = updateDoc(doc(db, "dogs", dog.id), { active: false, updatedAt: serverTimestamp() });
-    const done = () => navigate("/perfil", { replace: true, state: { archived: { id: dog.id, name: dog.name } } });
+    const done = () => navigate("/perros", { replace: true, state: { archived: { id: dog.id, name: dog.name } } });
     try {
       // Offline, Firestore sends the change when the connection returns; the page does not wait for it.
       const sent = await Promise.race([write.then(() => true), new Promise<false>((r) => window.setTimeout(() => r(false), SAVE_WAIT_MS))]);
@@ -105,7 +105,7 @@ function DeleteDog({ dog }: { dog: Dog }) {
     setState("busy"); setError(null);
     try {
       await callFunction("deleteMyData", { scope: "dog", dogId: dog.id, confirm: CONFIRM_WORD });
-      navigate("/perfil", { replace: true, state: { deletedDog: dog.name } });
+      navigate("/perros", { replace: true, state: { deletedDog: dog.name } });
     } catch (err) {
       const code = (err as { code?: string }).code ?? "";
       setError(code.endsWith("failed-precondition") ? (err as Error).message : "No pudimos borrar sus datos. Revisa tu conexión e inténtalo de nuevo.");
@@ -171,7 +171,7 @@ export function DogForm() {
 
   if (editing && loading) return <PageLoading className="page-form" />;
   if (editing && (!dog || (dog.ownerId !== user!.uid && !isAdmin))) {
-    return <main className="page" id="main"><EmptyState icon="info" title="No encontramos este perro" action={<Link className="btn btn-secondary" to="/perfil">Ir a Perfil</Link>} /></main>;
+    return <main className="page" id="main"><EmptyState icon="info" title="No encontramos este perro" action={<Link className="btn btn-secondary" to="/perros">Ir a Perros</Link>} /></main>;
   }
 
   const nameLength = f.name.trim().length;
@@ -219,7 +219,7 @@ export function DogForm() {
 
   return (
     <main className="page page-form" id="main">
-      <nav className="crumbs" aria-label="Ruta">{fromInicio && !editing ? <Link to="/">Inicio</Link> : <Link to="/perfil">Perfil</Link>}<span aria-hidden="true">›</span><span>{editing ? dog!.name : "Nuevo perro"}</span></nav>
+      <nav className="crumbs" aria-label="Ruta">{fromInicio && !editing ? <Link to="/">Inicio</Link> : <Link to="/perros">Perros</Link>}<span aria-hidden="true">›</span><span>{editing ? dog!.name : "Nuevo perro"}</span></nav>
       <PageHead title={editing ? `Editar a ${dog!.name}` : "Registrar a tu perro"} sub={editing ? undefined : "Con estos datos lo reconocerás en la app y en la Vista para el veterinario."} />
       <div className="stack">
       <form className="panel stack-sm" onSubmit={onSubmit} noValidate aria-busy={busy}>
@@ -240,7 +240,7 @@ export function DogForm() {
           <Seg label="Sexo" options={SEXES} value={f.sex} onChange={(sex) => setF({ ...f, sex })} /></div>
         <div className="row form-row-actions">
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Guardando…" : editing ? "Guardar cambios" : "Registrar"}</button>
-          <Link className="btn btn-ghost" to={editing ? `/perros/${dogId}` : fromInicio ? "/" : "/perfil"}>Cancelar</Link>
+          <Link className="btn btn-ghost" to={editing ? `/perros/${dogId}` : fromInicio ? "/" : "/perros"}>Cancelar</Link>
         </div>
       </form>
       {editing && dog && <ResetBaseline dog={dog} />}

@@ -2,14 +2,13 @@
    without alert, each with its charts and without the system's verdict; the reviewer says whether there is a relevant
    deviation from the dog's normal pattern, and the page computes Cohen's kappa between the system and the reviewer. */
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { collection, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
 import { MINUTE_TIER, collectSlots, collectTierSlots, dayKey, slotStartMs, tierDocStart } from "@shared/trends";
 import type { ExpertReviewItem } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
 import { db } from "../firebase";
 import { TrendChart } from "../components/charts";
-import { Callout, EmptyState, Icon, PageHead, fmtNum, usePageTitle } from "../components/ui";
+import { Callout, EmptyState, Icon, PageFrame, PageHead, fmtNum, usePageTitle } from "../components/ui";
 import { useDog, useDogs, useFusionConfig, useReviewItems, useTierDocs, useTrendDocs, type Dog, type ReviewItem } from "../data/hooks";
 import { activityBand, alertStartMs, glueTime, hrBand } from "../lib/plain";
 import { alertWindow, cohenKappa, controlWindows, kappaText, shuffledOrder, type Verdict } from "../lib/review";
@@ -51,9 +50,8 @@ export function ReviewPage() {
   };
 
   return (
-    <main className="page" id="main">
-      <nav className="crumbs" aria-label="Ruta"><Link to="/admin">Herramientas de investigación</Link><span aria-hidden="true">›</span><span>Revisión experta</span></nav>
-      <PageHead kicker="Herramientas de investigación" kickerIcon="flask" title="Revisión experta"
+    <PageFrame>
+      <PageHead title="Revisión experta"
         sub="Tramos de datos mezclados, unos con alerta y otros sin ella, sin decir cuál es cuál. Quien revisa decide si ve una desviación relevante del patrón normal; la página calcula el acuerdo con el sistema." />
       <div className="stack">
         <section className="panel stack-sm" aria-labelledby="kappa-title">
@@ -93,7 +91,7 @@ export function ReviewPage() {
           <div><button className="btn btn-secondary btn-sm" type="button" onClick={prepare} disabled={busy}>{busy ? "Agregando…" : "Agregar a la cola las alertas nuevas"}</button></div>
         )}
       </div>
-    </main>
+    </PageFrame>
   );
 }
 

@@ -12,6 +12,9 @@ interface AuthState {
   /** True after an explicit logout, so guards do not remember the page for whoever signs in next. */
   loggedOut: boolean;
   refreshRole: () => Promise<Role | null>;
+  /** After updateProfile: Firebase changes the user object in place, so the screens that show its name
+   * (the account menu of the top bar) are told to draw again. */
+  refreshProfile: () => void;
   logout: () => Promise<void>;
 }
 
@@ -30,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
   const [loggedOut, setLoggedOut] = useState(false);
+  const [, setProfileTick] = useState(0);
 
   // User and role are set together so no screen ever sees a signed-in user without its role loaded.
   useEffect(() => onAuthStateChanged(auth, async (u) => {
@@ -47,10 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return r;
   }, []);
 
+  const refreshProfile = useCallback(() => setProfileTick((t) => t + 1), []);
+
   const logout = useCallback(() => { setLoggedOut(true); return signOut(auth); }, []);
 
   return (
-    <AuthContext.Provider value={{ user, role, isAdmin: role === "admin", loading, loggedOut, refreshRole, logout }}>
+    <AuthContext.Provider value={{ user, role, isAdmin: role === "admin", loading, loggedOut, refreshRole, refreshProfile, logout }}>
       {children}
     </AuthContext.Provider>
   );
