@@ -21,6 +21,17 @@
 @font-face { font-family: "Source Sans 3"; font-style: italic; font-weight: 200 900; font-display: swap;
   src: url("/fonts/SourceSans3-italic-latin.woff2") format("woff2");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+/* The title fonts of the two styles (the latin subsets served by Google Fonts, OFL). Fraunces is the instance
+   SOFT 100, WONK 0 (soft, no wonky letters). Nobody downloads them unless their style is on. */
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 600 700; font-display: swap;
+  src: url("/fonts/Fraunces-soft-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Lilita One"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("/fonts/LilitaOne-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Bungee"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("/fonts/Bungee-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 
 /* ── Tokens ─────────────────────────────────────────────────────────────── */
@@ -72,6 +83,7 @@
   --color-selection: rgba(31, 95, 208, 0.20);
   --color-on-accent: #ffffff;     /* text on a filled control (accent, danger or success fill) */
   --color-focus-on-dark: #8fb5ff; /* focus ring on the chrome: 8.6:1 */
+  --color-focus: #1f5fd0;         /* The focus ring, the same in every style (5.1 to 5.7:1 on their grounds) */
   /* Filled controls (a primary button, a checked box, the current step, a badge): the accent and the level colours as fills
      behind white text. Light: the same colours; dark: deeper ones, because there the accent and the levels are light (text). */
   --color-accent-fill: var(--color-accent);
@@ -93,6 +105,7 @@
      palest, so it never dominates a chart). */
   --chart-line: #16181c;
   --chart-baseline: rgba(31, 95, 208, 0.12);   /* the dog's normal band */
+  --chart-band-edge: var(--color-focus);       /* its edge: cobalt in every style */
   --chart-grid: rgba(22, 24, 28, 0.08);
   --chart-mark: var(--color-status-amber);     /* moments outside the normal */
   --chart-detail: rgba(22, 24, 28, 0.32);      /* the raw values behind an average */
@@ -114,7 +127,8 @@
   /* Type: one family for the interface (Source Sans 3, local). Source Serif 4 stays for the titles of the Vista para
      el veterinario (a document that is read and printed). */
   --font-ui: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-heading: var(--font-ui);
+  --font-heading: var(--font-ui);   /* titles: a style may change it */
+  --font-figure: var(--font-ui);    /* figures (Health Score, heart rate, temperature): never changed by a style */
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
   /* Six fixed sizes in rem with visible steps; the display size grows once, from 1024 px. Nothing is smaller than 12 px. */
@@ -217,7 +231,7 @@
     --color-edge: rgba(255, 255, 255, 0.06); --color-chrome-edge: rgba(255, 255, 255, 0.07); --color-key: #3a3d44; --color-popover: #26282e;
     --color-accent: #7ea8ff; --color-accent-hover: #a6c2ff; --color-accent-soft: #1c2a46;
     --color-accent-wash: rgba(126, 168, 255, 0.14); --color-selection: rgba(126, 168, 255, 0.32);
-    --color-on-accent: #ffffff; --color-focus-on-dark: #8fb5ff;
+    --color-on-accent: #ffffff; --color-focus-on-dark: #8fb5ff; --color-focus: #7ea8ff;
     --color-accent-fill: #2a66dc; --color-accent-fill-hover: #326fe4; --color-danger-fill: #c63b34; --color-success-fill: #1f7a45; --color-fill-ink: #000000;
     --color-status-green: #5ccf86; --color-status-green-bg: #13301f;
     --color-status-amber: #f0b14a; --color-status-amber-bg: #392a0d;
@@ -249,7 +263,7 @@
     --color-edge: rgba(255, 255, 255, 0.06); --color-chrome-edge: rgba(255, 255, 255, 0.07); --color-key: #3a3d44; --color-popover: #26282e;
     --color-accent: #7ea8ff; --color-accent-hover: #a6c2ff; --color-accent-soft: #1c2a46;
     --color-accent-wash: rgba(126, 168, 255, 0.14); --color-selection: rgba(126, 168, 255, 0.32);
-    --color-on-accent: #ffffff; --color-focus-on-dark: #8fb5ff;
+    --color-on-accent: #ffffff; --color-focus-on-dark: #8fb5ff; --color-focus: #7ea8ff;
     --color-accent-fill: #2a66dc; --color-accent-fill-hover: #326fe4; --color-danger-fill: #c63b34; --color-success-fill: #1f7a45; --color-fill-ink: #000000;
     --color-status-green: #5ccf86; --color-status-green-bg: #13301f;
     --color-status-amber: #f0b14a; --color-status-amber-bg: #392a0d;
@@ -264,6 +278,138 @@
     --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 14px 32px rgba(0, 0, 0, 0.40);
     --shadow-3: 0 8px 20px rgba(0, 0, 0, 0.55), 0 24px 48px rgba(0, 0, 0, 0.45);
     --shadow-key: 0 1px 2px rgba(0, 0, 0, 0.50), 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* ── Styles ──────────────────────────────────────────────────── */
+/* A personality on top of the light or dark scheme: :root[data-palette], independent of data-theme. Each style gives new
+   values to the same tokens, written once with light-dark() (the scheme above sets color-scheme). It never redefines the
+   level colours, the focus ring, the normal band of the charts nor the figure font: they are the same in every style.
+   Screen only: paper stays serene. «Cálido» (warm): cream grounds made from dog coats, an indigo accent (a hue dogs tell
+   apart well, and far from the three levels) and soft serif titles. «Extravagante» (eccentric): a neo-brutalist park,
+   ink borders, hard shadows, toy colours only as decoration and fills with ink text, and display titles. */
+@media screen {
+  :root[data-palette="calido"] {
+    --color-bg: light-dark(#f8f3e6, #18161a);
+    --color-sheet: light-dark(#fffdf6, #211e22);
+    --color-surface: light-dark(#efe7d4, #2c282c);
+    --color-surface-2: light-dark(#f6f0e2, #262327);
+    --color-text: light-dark(#25211a, #f2ede4);
+    --color-text-secondary: light-dark(#463e33, #d8cfc3);
+    --color-text-muted: light-dark(#655c4e, #c3b9ad);
+    --color-divider: light-dark(rgba(37, 33, 26, 0.14), rgba(255, 246, 232, 0.13));
+    --color-divider-soft: light-dark(rgba(37, 33, 26, 0.07), rgba(255, 246, 232, 0.07));
+    --color-divider-strong: light-dark(rgba(37, 33, 26, 0.24), rgba(255, 246, 232, 0.24));
+    --color-rule: light-dark(#25211a, #f2ede4);
+    --color-field-border: light-dark(#867b6a, #837a70);
+    --color-chrome: light-dark(#2a211b, #0f0c0a);
+    --color-chrome-raised: light-dark(#43372e, #2b241f);
+    --color-chrome-glass: light-dark(rgba(42, 33, 27, 0.88), rgba(15, 12, 10, 0.86));
+    --color-chrome-line: rgba(255, 246, 232, 0.10);
+    --color-on-dark: #f2ede4;
+    --color-on-dark-muted: light-dark(#cdbfae, #b9ad9f);
+    --color-ink-wash: light-dark(rgba(37, 33, 26, 0.06), rgba(255, 246, 232, 0.06));
+    --color-hover-wash: light-dark(rgba(37, 33, 26, 0.09), rgba(255, 246, 232, 0.09));
+    --color-scrollbar: light-dark(#a89c8a, #5a5149);
+    --color-bezel: light-dark(rgba(37, 33, 26, 0.045), rgba(0, 0, 0, 0.28));
+    --color-scroll-edge: light-dark(rgba(37, 33, 26, 0.18), rgba(0, 0, 0, 0.55));
+    --color-lift: light-dark(rgba(255, 253, 246, 0.9), rgba(255, 246, 232, 0.07));
+    --color-glass: light-dark(rgba(255, 253, 246, 0.74), rgba(50, 45, 48, 0.62));
+    --color-glass-line: light-dark(rgba(255, 253, 246, 0.85), rgba(255, 246, 232, 0.10));
+    --color-edge: light-dark(transparent, rgba(255, 246, 232, 0.06));
+    --color-chrome-edge: light-dark(transparent, rgba(255, 246, 232, 0.07));
+    --color-key: light-dark(#fffdf6, #3d383d);
+    --color-popover: light-dark(#fffdf6, #2e2a2e);
+    --color-accent: light-dark(#3a4cb4, #a7b3ff);
+    --color-accent-hover: light-dark(#2d3c94, #c6cdff);
+    --color-accent-soft: light-dark(#e5e8fa, #22284a);
+    --color-accent-wash: light-dark(rgba(58, 76, 180, 0.10), rgba(167, 179, 255, 0.14));
+    --color-selection: light-dark(rgba(58, 76, 180, 0.20), rgba(167, 179, 255, 0.30));
+    --color-accent-fill: light-dark(#3a4cb4, #4053c4);
+    --color-accent-fill-hover: light-dark(#2d3c94, #4b5ed2);
+    --chart-line: light-dark(#25211a, #f2ede4);
+    --chart-grid: light-dark(rgba(37, 33, 26, 0.08), rgba(255, 246, 232, 0.08));
+    --chart-detail: light-dark(rgba(37, 33, 26, 0.32), rgba(242, 237, 228, 0.34));
+    --chart-highlight: light-dark(rgba(37, 33, 26, 0.07), rgba(255, 246, 232, 0.07));
+    --beh-rest: light-dark(#d6ccb9, #4d463f);
+    --beh-none: light-dark(#f1eadb, #262327);
+    --shadow-1: 0 1px 2px light-dark(rgba(37, 33, 26, 0.06), rgba(0, 0, 0, 0.40)), 0 4px 16px light-dark(rgba(37, 33, 26, 0.07), rgba(0, 0, 0, 0.28));
+    --shadow-2: 0 2px 6px light-dark(rgba(37, 33, 26, 0.07), rgba(0, 0, 0, 0.45)), 0 14px 32px light-dark(rgba(37, 33, 26, 0.11), rgba(0, 0, 0, 0.40));
+    --shadow-3: 0 8px 20px light-dark(rgba(37, 33, 26, 0.18), rgba(0, 0, 0, 0.55)), 0 24px 48px light-dark(rgba(37, 33, 26, 0.16), rgba(0, 0, 0, 0.45));
+    --shadow-key: 0 1px 2px light-dark(rgba(37, 33, 26, 0.10), rgba(0, 0, 0, 0.50)), 0 2px 8px light-dark(rgba(37, 33, 26, 0.08), rgba(0, 0, 0, 0.35));
+    --font-heading: "Fraunces", Georgia, "Times New Roman", serif;
+    --tracking-hero: -0.02em;
+    --tracking-display: -0.015em;
+    --decor-ink: light-dark(#9a8b73, #8f8478);   /* the line drawing of the empty states */
+    --decor-empty: url("/decor/perro-y-persona.svg");
+  }
+  :root[data-palette="extravagante"] {
+    --fun-ink: light-dark(#111111, #fff1d0);   /* borders and hard shadows */
+    --fun-on: #111111;                         /* text on a toy fill, in light and dark */
+    --fun-ball: #d9f24a;                       /* tennis ball: the primary button and the current section */
+    --fun-gum: #ff9ecf;
+    --fun-pool: #7cd3ff;
+    --fun-lilac: #c8b6ff;
+    --color-bg: light-dark(#fff1d0, #17140f);
+    --color-sheet: light-dark(#ffffff, #221e17);
+    --color-surface: light-dark(#f7e6bd, #322c22);
+    --color-surface-2: light-dark(#fff8e7, #2a251d);
+    --color-text: light-dark(#111111, #fff1d0);
+    --color-text-secondary: light-dark(#2e2a24, #eadfc4);
+    --color-text-muted: light-dark(#4d473d, #cdc1a3);
+    --color-divider: light-dark(rgba(17, 17, 17, 0.18), rgba(255, 241, 208, 0.18));
+    --color-divider-soft: light-dark(rgba(17, 17, 17, 0.09), rgba(255, 241, 208, 0.09));
+    --color-divider-strong: var(--fun-ink);
+    --color-rule: var(--fun-ink);
+    --color-field-border: var(--fun-ink);
+    --color-chrome: light-dark(#111111, #0a0907);
+    --color-chrome-raised: light-dark(#2e2b26, #2e291f);
+    --color-chrome-glass: light-dark(rgba(17, 17, 17, 0.92), rgba(10, 9, 7, 0.90));
+    --color-chrome-line: rgba(255, 241, 208, 0.14);
+    --color-on-dark: #fff1d0;
+    --color-on-dark-muted: #d9cdb0;
+    --color-ink-wash: light-dark(rgba(17, 17, 17, 0.06), rgba(255, 241, 208, 0.06));
+    --color-hover-wash: light-dark(rgba(17, 17, 17, 0.09), rgba(255, 241, 208, 0.09));
+    --color-scrollbar: var(--fun-ink);
+    --color-bezel: transparent;
+    --color-scroll-edge: light-dark(rgba(17, 17, 17, 0.22), rgba(0, 0, 0, 0.55));
+    --color-lift: transparent;
+    --color-glass: light-dark(#ffffff, #2a251d);
+    --color-glass-line: var(--fun-ink);
+    --color-edge: var(--fun-ink);
+    --color-chrome-edge: var(--fun-ink);
+    --color-key: light-dark(#ffffff, #3a3428);
+    --color-popover: light-dark(#ffffff, #2a251d);
+    --color-accent: light-dark(#4b2bd6, #c7b5ff);
+    --color-accent-hover: light-dark(#3a1fb0, #ddd1ff);
+    --color-accent-soft: light-dark(#ece6ff, #2c2550);
+    --color-accent-wash: light-dark(rgba(75, 43, 214, 0.10), rgba(199, 181, 255, 0.14));
+    --color-selection: light-dark(rgba(75, 43, 214, 0.22), rgba(199, 181, 255, 0.30));
+    --color-accent-fill: light-dark(#4b2bd6, #5b3be0);
+    --color-accent-fill-hover: light-dark(#3a1fb0, #6a4cf0);
+    --chart-line: light-dark(#111111, #fff1d0);
+    --chart-grid: light-dark(rgba(17, 17, 17, 0.10), rgba(255, 241, 208, 0.09));
+    --chart-detail: light-dark(rgba(17, 17, 17, 0.32), rgba(255, 241, 208, 0.34));
+    --chart-highlight: light-dark(rgba(17, 17, 17, 0.07), rgba(255, 241, 208, 0.07));
+    --beh-rest: light-dark(#d9ccae, #4d463b);
+    --beh-none: light-dark(#fbefd2, #2a251d);
+    --radius-xl: 18px;
+    --radius-card: 14px;
+    --radius-lg: 12px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --shadow-1: 4px 4px 0 var(--fun-ink);
+    --shadow-2: 6px 6px 0 var(--fun-ink);
+    --shadow-3: 6px 6px 0 var(--fun-ink);
+    --shadow-key: 2px 2px 0 var(--fun-ink);
+    --font-heading: "Lilita One", "Source Sans 3", system-ui, sans-serif;
+    --tracking-hero: 0em;
+    --tracking-display: 0em;
+    --tracking-title: 0.005em;
+    --tracking-headline: 0.01em;
+    --decor-empty: url("/decor/hueso-y-pelota.svg");
+    --decor-fence: url("/decor/valla.svg");
+    font-synthesis-weight: none;   /* Lilita One has one weight: titles never get a fake bold */
   }
 }
 
@@ -284,7 +430,7 @@ a { color: var(--color-accent); text-underline-offset: 3px; }
 @media (hover: hover) and (pointer: fine) { a:hover { color: var(--color-accent-hover); } }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus { outline: none; }
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 ::selection { background: var(--color-selection); color: var(--color-text); }
 .auth-brand ::selection, .offline ::selection, .proto ::selection, .chart-tip ::selection,
 .topbar ::selection, .tabbar ::selection { background: var(--color-chrome-raised); color: var(--color-on-dark); }
@@ -368,7 +514,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: var(--space-2); background: var(--color-popover); color: var(--color-text); border: 1px solid var(--color-divider);
   border-radius: var(--radius-md); box-shadow: var(--shadow-3);
 }
-.user-menu-panel :focus-visible { outline-color: var(--color-accent); }
+.user-menu-panel :focus-visible { outline-color: var(--color-focus); }
 .user-menu-head { display: grid; gap: 2px; padding: var(--space-2) var(--space-3) var(--space-3); margin-bottom: var(--space-1); border-bottom: 1px solid var(--color-divider-soft); }
 .user-menu-head strong { font-size: var(--fs-body); overflow-wrap: anywhere; }
 .user-menu-head span { font-size: var(--fs-footnote); color: var(--color-text-muted); overflow-wrap: anywhere; }
@@ -538,9 +684,9 @@ html { scroll-padding-top: 5rem; }
 /* On a phone the link itself is a 44 px target (its padding is cancelled by a negative margin, so the card does not grow). */
 @media (max-width: 720px) { .dog-name a { display: inline-block; padding-block: 8px; margin-block: -8px; } }
 .dog-name a:focus-visible { outline: none; }
-.dog-card:has(.dog-name a:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.dog-card:has(.dog-name a:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .dog-card .alert-banner, .dog-card .card-more, .dog-card .well .btn, .dog-card .learned-banner a, .dog-card .learned-banner .btn { position: relative; z-index: 1; }
-.dog-phrase { font-family: var(--font-heading); font-size: var(--fs-body); line-height: 1.3; margin: 0; text-wrap: balance; }
+.dog-phrase { font-family: var(--font-ui); font-size: var(--fs-body); line-height: 1.3; margin: 0; text-wrap: balance; }
 /* Old data: the last state, small, under the phrase that says when the data stopped. */
 .last-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--color-text-secondary); }
 .dog-card-state { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -879,13 +1025,13 @@ legend.field-label { padding: 0; margin-bottom: 2px; }
     }
     .select option::checkmark { order: 1; margin-left: auto; color: var(--color-accent); }
     .select option:checked { font-weight: var(--fw-strong); background: var(--color-accent-wash); }
-    .select option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+    .select option:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
     .select option:disabled { color: var(--color-text-muted); cursor: not-allowed; }
   }
   @media (forced-colors: none) and (hover: hover) and (pointer: fine) { .select option:hover:not(:disabled) { background: var(--color-hover-wash); } }
 }
 @media (hover: hover) and (pointer: fine) { .input:hover, .select:hover { border-color: var(--color-text); } }
-.input:focus-visible, .select:focus-visible { border-color: var(--color-accent); outline-offset: 0; box-shadow: 0 0 0 4px var(--color-accent-wash); }
+.input:focus-visible, .select:focus-visible { border-color: var(--color-focus); outline-offset: 0; box-shadow: 0 0 0 4px var(--color-accent-wash); }
 .input[aria-invalid="true"] { border-color: var(--color-status-red); }
 .input[aria-invalid="true"]:focus-visible { border-color: var(--color-status-red); outline-color: var(--color-status-red); box-shadow: 0 0 0 4px var(--color-status-red-bg); }
 /* The date field: Chromium draws its own fields and glyph; they take the palette (the calendar that opens is the
@@ -950,7 +1096,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--color-sheet); border: 2px solid var(--color-accent); box-shadow: var(--shadow-1); }
 input[type="range"]:focus-visible { outline: none; }
-input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media (max-width: 720px) { input[type="range"] { height: var(--tap); } }
 @media (forced-colors: active) { input[type="range"] { appearance: auto; -webkit-appearance: auto; } }
 
@@ -999,6 +1145,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px 2px 8px; border-radius: var(--radius-pill);
   font-size: var(--fs-caption); font-weight: var(--fw-strong); line-height: 1.35; white-space: nowrap; vertical-align: middle;
   background: var(--color-surface); color: var(--color-text); border: 1px solid transparent;
+  font-family: var(--font-ui);   /* a level is read the same in every style, also inside a title */
 }
 .tag-green { background: var(--color-status-green-bg); color: var(--color-status-green); }
 .tag-amber { background: var(--color-status-amber-bg); color: var(--color-status-amber); }
@@ -1010,7 +1157,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
 .gauge { position: relative; display: grid; place-items: center; }
 .gauge svg { display: block; width: 100%; height: auto; }
 .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 4.5%; }
-.gauge-value { font-family: var(--font-heading); font-weight: var(--fw-strong); line-height: 1; font-variant-numeric: tabular-nums; }
+.gauge-value { font-family: var(--font-figure); font-weight: var(--fw-strong); line-height: 1; font-variant-numeric: tabular-nums; }
 .gauge-unit { font-size: var(--fs-caption); color: var(--color-text-muted); margin-top: 1px; }
 .gauge-cut { stroke: var(--color-sheet); stroke-width: 2; }
 .gauge-label { font-family: var(--font-ui); fill: var(--color-text-muted); }   /* size set per gauge: 10 px rendered */
@@ -1086,7 +1233,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: var(--space-4) var(--space-6); }
 .stat { border-top: 1px solid var(--color-divider); padding: var(--space-3) 0 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .stat-label { font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--color-text-muted); }
-.stat-value { font-family: var(--font-heading); font-size: var(--fs-lead); font-weight: var(--fw-display); line-height: 1.1; letter-spacing: var(--tracking-display); font-variant-numeric: tabular-nums; }
+.stat-value { font-family: var(--font-figure); font-size: var(--fs-lead); font-weight: var(--fw-display); line-height: 1.1; letter-spacing: var(--tracking-display); font-variant-numeric: tabular-nums; }
 .stat-value-sm { font-size: var(--fs-headline); font-weight: var(--fw-strong); letter-spacing: var(--tracking-headline); line-height: 1.25; padding-top: 0.3em; }
 .stat-note { font-size: var(--fs-caption); color: var(--color-text-muted); }
 .stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
@@ -1112,9 +1259,9 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
 .chart-now span { font-size: var(--fs-footnote); color: var(--color-text-muted); }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px var(--space-4); font-size: var(--fs-footnote); color: var(--color-text-secondary); }
 .legend-key { display: inline-flex; align-items: center; gap: 6px; }
-.key-band { width: 14px; height: 10px; background: var(--chart-baseline); border-block: 1px solid var(--color-accent); display: inline-block; }
+.key-band { width: 14px; height: 10px; background: var(--chart-baseline); border-block: 1px solid var(--chart-band-edge); display: inline-block; }
 /* The dog's normal band: the tint alone is too faint to read as a range (1.2:1), so it gets thin edges (3:1 or more). */
-.chart-band-edge { stroke: var(--color-accent); stroke-width: 1; }
+.chart-band-edge { stroke: var(--chart-band-edge); stroke-width: 1; }
 .key-mark { width: 8px; height: 8px; border-radius: 50%; background: var(--chart-mark); display: inline-block; }
 .key-line { width: 16px; height: 0; border-top: 2.5px solid var(--chart-line); border-radius: 2px; display: inline-block; }
 .key-detail { width: 16px; height: 0; border-top: 1px solid var(--chart-detail); display: inline-block; }
@@ -1218,7 +1365,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
 .live-now { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
 .live-now div { background: var(--color-surface-2); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); min-width: 0; }
 .live-now dt { font-size: var(--fs-caption); color: var(--color-text-muted); }
-.live-now dd { margin: 0; font-family: var(--font-heading); font-size: var(--fs-title); font-weight: var(--fw-strong); letter-spacing: var(--tracking-title); line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.live-now dd { margin: 0; font-family: var(--font-figure); font-size: var(--fs-title); font-weight: var(--fw-strong); letter-spacing: var(--tracking-title); line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .live-now-note { display: block; font-family: var(--font-ui); font-size: var(--fs-caption); font-weight: var(--fw-regular); letter-spacing: 0; color: var(--color-text-muted); margin-top: 2px; }
 @media (max-width: 720px) { .live-now { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -1361,7 +1508,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
 .reason-icon { width: 36px; height: 36px; justify-self: center; display: grid; place-items: center; border-radius: 50%;
   background: var(--level-bg, var(--color-status-amber-bg)); color: var(--level-color, var(--color-status-amber)); }
 .reason-name { font-size: var(--fs-footnote); font-weight: var(--fw-strong); color: var(--color-text-secondary); }
-.reason-value { font-family: var(--font-heading); font-size: var(--fs-headline); font-weight: var(--fw-strong); line-height: 1.1; letter-spacing: var(--tracking-headline); font-variant-numeric: tabular-nums; }
+.reason-value { font-family: var(--font-figure); font-size: var(--fs-headline); font-weight: var(--fw-strong); line-height: 1.1; letter-spacing: var(--tracking-headline); font-variant-numeric: tabular-nums; }
 .reason-unit { font-size: var(--fs-footnote); font-weight: var(--fw-medium); color: var(--color-text-secondary); letter-spacing: 0; }
 .reason-range { font-size: var(--fs-footnote); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .reason:first-child .reason-icon { width: 48px; height: 48px; }
@@ -1557,7 +1704,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { outline: 2px solid var
 .dropzone[data-over="true"] { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .upload-confirm { box-shadow: var(--shadow-1); }
 /* The file input is visually hidden: its focus shows on the button that stands for it. */
-.drop-actions input[type="file"]:focus-visible + .btn { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.drop-actions input[type="file"]:focus-visible + .btn { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .checklist:focus-visible { outline-offset: 4px; }
 .checklist li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: var(--space-2); align-items: start; font-size: var(--fs-footnote); line-height: 1.45; }
@@ -2037,7 +2184,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
 .day-band-wrap { position: relative; display: grid; gap: var(--space-1); }
 .day-band { position: relative; border-radius: 8px; cursor: crosshair; touch-action: pan-y; }
 .day-band > svg { display: block; width: 100%; height: 56px; }
-.day-band:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.day-band:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .day-empty { fill: var(--beh-none); }
 .day-cell[data-group="rest"], .day-swatch[data-group="rest"] { fill: var(--beh-rest); background: var(--beh-rest); }
 .day-cell[data-group="walk"], .day-swatch[data-group="walk"] { fill: var(--beh-walk); background: var(--beh-walk); }
@@ -2164,7 +2311,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
   transition: background-color var(--dur-hover) var(--ease-hover), border-color var(--dur-hover) var(--ease-hover), box-shadow var(--dur-hover) var(--ease-hover);
 }
 @media (hover: hover) and (pointer: fine) { .review-verdict:not([data-checked="true"]):hover { background: var(--color-surface-2); border-color: var(--color-field-border); } }
-.review-verdict:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.review-verdict:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .review-verdict input:focus-visible { outline: none; }
 .review-verdict[data-checked="true"] { border-color: var(--color-accent-fill); background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px var(--color-accent-fill); font-weight: var(--fw-strong); }
 .review-card textarea.input { min-height: 5rem; resize: vertical; line-height: 1.45; }
@@ -2190,7 +2337,7 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
 .week-bar[data-empty="true"] .week-bar-track { background: transparent; box-shadow: inset 0 0 0 1px var(--color-divider-soft); }
 .week-value { font-variant-numeric: tabular-nums; }
 .btn-plain { appearance: none; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; width: 100%; min-height: var(--tap); }
-.btn-plain:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 6px; }
+.btn-plain:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 6px; }
 @media (forced-colors: active) { .week-bar-fill { forced-color-adjust: none; background: Highlight; } .week-bar-track { box-shadow: inset 0 0 0 1px CanvasText; } }
 /* The chosen day of «La semana», partial days and the alert key. */
 .week-bar[data-current="true"] .week-bar-track { box-shadow: inset 0 0 0 2px var(--color-accent); }
@@ -2212,3 +2359,119 @@ details.disclosure[open] summary .icon { transform: rotate(90deg); }
 /* The two hours of the quiet hours, side by side (stacked under 360 px). */
 .quiet-hours { display: grid; grid-template-columns: repeat(2, minmax(0, 9rem)); gap: var(--space-3); margin-left: 28px; }
 @media (max-width: 359px) { .quiet-hours { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Styles: decoration, the eccentric components and the switches ── */
+/* The decoration is a drawing above the icon of an empty state and, in the eccentric style, a park fence along the top of
+   the footer: never behind text. Forced colours, more contrast and the serious screens turn it off. */
+.empty::before { content: none; }
+@media screen {
+  :root[data-palette] .empty::before { content: ""; display: block; width: 168px; height: 92px; }
+  :root[data-palette="calido"] .empty::before {
+    background-color: var(--decor-ink);
+    -webkit-mask: var(--decor-empty) center / contain no-repeat; mask: var(--decor-empty) center / contain no-repeat;
+  }
+  :root[data-palette="extravagante"] .empty::before { background: var(--decor-empty) center / contain no-repeat; }
+  :root[data-palette="extravagante"] .footer { border-top: 0; padding-top: 0; }
+  :root[data-palette="extravagante"] .footer::before {
+    content: ""; display: block; height: 18px; margin: 0 calc(-1 * var(--gutter)) var(--space-4); background-color: var(--fun-ink);
+    -webkit-mask: var(--decor-fence) left bottom / 24px 18px repeat-x; mask: var(--decor-fence) left bottom / 24px 18px repeat-x;
+  }
+
+  /* The eccentric park: ink borders and hard shadows on every card, pill buttons that sink when pressed, the current
+     section as a tennis ball, the thesis badge as a sign. Toy colours carry ink text and are never a level. */
+  :root[data-palette="extravagante"] :is(.panel, .empty, .kpi) { border-width: 3px; }
+  :root[data-palette="extravagante"] .topbar { box-shadow: inset 0 -2px 0 var(--color-chrome-edge); }   /* a hard shadow would leave a notch at its left end */
+  :root[data-palette="extravagante"] .bezel { padding: 0; box-shadow: none; }   /* the ink border is the frame: no second tray around it */
+  :root[data-palette="extravagante"] :is(.seg, .tabs) { border: 2px solid var(--fun-ink); }
+  :root[data-palette="extravagante"] :is(.input, .select) { border-width: 2px; }
+  :root[data-palette="extravagante"] .btn:is(.btn-primary, .btn-secondary):not(:disabled):not([aria-disabled="true"]) {
+    border: 2px solid var(--fun-ink); box-shadow: 3px 3px 0 var(--fun-ink);
+  }
+  :root[data-palette="extravagante"] .btn-primary:not(:disabled):not([aria-disabled="true"]) { background: var(--fun-ball); color: var(--fun-on); }
+  :root[data-palette="extravagante"] .btn-primary:active:not(:disabled):not([aria-disabled="true"]) { background: #c6de35; color: var(--fun-on); }
+  @media (hover: hover) and (pointer: fine) {
+    :root[data-palette="extravagante"] .btn-primary:hover:not(:disabled):not([aria-disabled="true"]) { background: #e6fb7a; color: var(--fun-on); }
+    :root[data-palette="extravagante"] .btn-secondary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--fun-lilac); color: var(--fun-on); }
+  }
+  :root[data-palette="extravagante"] :is(.topbar-link, .tabbar-link)[aria-current] { background: var(--fun-ball); color: var(--fun-on); }
+  :root[data-palette="extravagante"] .topbar-badge {
+    font-family: "Bungee", var(--font-ui); font-weight: 400; letter-spacing: 0.02em; background: var(--fun-gum); color: var(--fun-on); border-color: transparent;
+  }
+  :root[data-palette="extravagante"] .user-avatar { background: var(--fun-ball); color: var(--fun-on); }
+  :root[data-palette="extravagante"] .kpi[data-tone="neutral"] .kpi-icon { background: var(--fun-pool); color: var(--fun-on); }
+  :root[data-palette="extravagante"] .kpi[data-tone="neutral"]:last-child .kpi-icon { background: var(--fun-lilac); }
+  :root[data-palette="extravagante"] .dog-list li:nth-child(3n+1) .avatar { background: var(--fun-gum); color: var(--fun-on); }
+  :root[data-palette="extravagante"] .dog-list li:nth-child(3n+2) .avatar { background: var(--fun-pool); color: var(--fun-on); }
+  :root[data-palette="extravagante"] .dog-list li:nth-child(3n) .avatar { background: var(--fun-lilac); color: var(--fun-on); }
+}
+
+/* Small, short movements that the person triggers, only when motion is welcome: a button sinks into its shadow, an avatar
+   wags, the ball of an empty state bounces once (WCAG 2.2.2 and 2.3.3: nothing moves by itself for long, nothing flashes). */
+@keyframes fun-bounce { 0% { transform: translateY(-14px); } 45% { transform: translateY(0); } 65% { transform: translateY(-5px); } 85%, 100% { transform: translateY(0); } }
+@keyframes fun-wag { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-8deg); } 70% { transform: rotate(8deg); } }
+@media screen and (prefers-reduced-motion: no-preference) {
+  :root[data-palette="extravagante"] .empty::before { animation: fun-bounce 700ms var(--ease-out) 1 both; }
+  :root[data-palette="extravagante"] .btn:is(.btn-primary, .btn-secondary):active:not(:disabled):not([aria-disabled="true"]) {
+    transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--fun-ink);
+  }
+}
+@media screen and (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  :root[data-palette="extravagante"] :is(.dog-list-name:hover .avatar, .kpi:hover .kpi-icon) { animation: fun-wag 320ms ease-in-out 1; }
+}
+
+/* The serious places keep the eccentric style sober: the detail of an alert, «Tus datos» and the password (class .sober),
+   and any screen with a dog in «Revisar» or a critical alert: no display titles, no drawing, no movement. */
+:root[data-palette="extravagante"] .sober {
+  --font-heading: var(--font-ui);
+  --tracking-hero: -0.03em; --tracking-display: -0.025em; --tracking-title: -0.015em; --tracking-headline: -0.01em;
+}
+:root[data-palette] .sober .empty::before { display: none; }
+:root[data-palette="extravagante"]:has(.dog-card[data-level="red"], .dog-state[data-level="red"], .alert-banner[data-level="red"], .severity-group[data-severity="red"]) :is(.empty, .footer)::before { display: none; }
+:root[data-palette="extravagante"]:has(.dog-card[data-level="red"], .dog-state[data-level="red"], .alert-banner[data-level="red"], .severity-group[data-severity="red"]) :is(.avatar, .kpi-icon) { animation: none; }
+@media (forced-colors: active), (prefers-contrast: more) {
+  :root[data-palette] :is(.empty, .footer)::before { display: none; }
+}
+
+/* The style picker of Apariencia: three cards, each a preview in its own colours and title font, whatever style
+   is on, so the person sees what each one looks like before choosing it. */
+.style-picker { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.style-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+@media (max-width: 720px) { .style-options { grid-template-columns: minmax(0, 1fr); } }
+.style-option { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-3); border-radius: var(--radius-md); border: 2px solid var(--color-divider); background: var(--color-sheet); }
+.style-option input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.style-option label { display: flex; flex-direction: column; gap: var(--space-2); cursor: pointer; }
+.style-option label::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.style-option:has(input:checked) { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.style-option:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .style-option:hover:not(:has(input:checked)) { border-color: var(--color-field-border); } }
+.style-name { display: flex; align-items: center; gap: 6px; padding-inline: var(--space-1); font-size: var(--fs-body); font-weight: var(--fw-strong); }
+.style-name .icon { color: var(--color-accent); }
+.style-desc { padding-inline: var(--space-1); font-size: var(--fs-footnote); line-height: 1.4; color: var(--color-text-muted); }
+.style-preview { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 8px; background: var(--sp-bg); color: var(--sp-text); overflow: hidden; }
+.sp-bar { height: 10px; border-radius: 5px; background: var(--sp-chrome); }
+.sp-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px 10px; background: var(--sp-card); border-radius: var(--sp-radius); border: var(--sp-border); box-shadow: var(--sp-shadow); }
+.sp-title { font-family: var(--sp-font); font-weight: var(--sp-weight); font-size: 1.25rem; line-height: 1.1; }
+.sp-pill { padding: 2px 10px; border-radius: 999px; background: var(--sp-accent); color: var(--sp-on); font-size: var(--fs-caption); font-weight: 600; border: var(--sp-pill-border); }
+.style-option[data-style="sereno"] {
+  --sp-bg: light-dark(#f1f2f4, #141519); --sp-card: light-dark(#fcfcfd, #1d1e23); --sp-text: light-dark(#16181c, #eceef1);
+  --sp-chrome: light-dark(#17191e, #0b0c0f); --sp-accent: light-dark(#1f5fd0, #2a66dc); --sp-on: #ffffff;
+  --sp-font: "Source Sans 3", system-ui, sans-serif; --sp-weight: 700; --sp-radius: 8px; --sp-border: 0; --sp-pill-border: 0;
+  --sp-shadow: 0 1px 2px rgba(17, 21, 28, 0.10), 0 2px 8px rgba(17, 21, 28, 0.08);
+}
+.style-option[data-style="calido"] {
+  --sp-bg: light-dark(#f8f3e6, #18161a); --sp-card: light-dark(#fffdf6, #211e22); --sp-text: light-dark(#25211a, #f2ede4);
+  --sp-chrome: light-dark(#2a211b, #0f0c0a); --sp-accent: light-dark(#3a4cb4, #4053c4); --sp-on: #ffffff;
+  --sp-font: "Fraunces", Georgia, serif; --sp-weight: 700; --sp-radius: 8px; --sp-border: 0; --sp-pill-border: 0;
+  --sp-shadow: 0 1px 2px rgba(37, 33, 26, 0.10), 0 2px 8px rgba(37, 33, 26, 0.08);
+}
+.style-option[data-style="extravagante"] {
+  --sp-bg: light-dark(#fff1d0, #17140f); --sp-card: light-dark(#ffffff, #221e17); --sp-text: light-dark(#111111, #fff1d0);
+  --sp-chrome: light-dark(#111111, #0a0907); --sp-accent: #d9f24a; --sp-on: #111111;
+  --sp-font: "Lilita One", system-ui, sans-serif; --sp-weight: 400; --sp-radius: 6px;
+  --sp-border: 2px solid light-dark(#111111, #fff1d0); --sp-pill-border: 2px solid #111111; --sp-shadow: 3px 3px 0 light-dark(#111111, #fff1d0);
+}
+.style-option[data-style="extravagante"] .sp-title { font-synthesis-weight: none; }
+@media (forced-colors: active) {
+  .style-option:has(input:checked) { border-color: Highlight; }
+  .sp-card, .sp-pill { border: 1px solid CanvasText; }
+}

@@ -63,6 +63,32 @@ for (const width of [390, 1440]) {
   for (const b of await page.$$("xpath/.//button[contains(., 'Cerrar sesión')]")) if (await b.isVisible()) { await b.click(); break; }
   await sleep(1500);
 }
+// The two styles, light and dark at 1440 px and light at 390 px, on the owner's main screens.
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(BASE + "/acceso", { waitUntil: "load" });
+await page.waitForSelector("#a-email");
+await page.type("#a-email", "lucia.paredes@example.com"); await page.type("#a-pass", "demo-1234");
+await page.click("button[type=submit]");
+await page.waitForFunction(() => location.pathname === "/", { timeout: 20000 });
+await sleep(1500);
+const firstAlert = await (async () => { await spaGo("/alertas?vista=historial"); return page.$eval("#panel-historial td[data-title] a", (a) => a.getAttribute("href")).catch(() => null); })();
+const stylePages = ["/", "/perros", "/alertas", "/alertas?vista=historial", "/perfil", "/configuracion", "/perros/toby", ...(firstAlert ? [firstAlert] : [])];
+for (const [width, schemes] of [[1440, ["light", "dark"]], [390, ["light"]]]) {
+  await page.setViewport({ width, height: width < 720 ? 844 : 900, isMobile: width < 720, hasTouch: width < 720 });
+  for (const palette of ["calido", "extravagante"]) {
+    for (const scheme of schemes) {
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+      await page.evaluate((p) => { localStorage.setItem("palette", p); document.documentElement.setAttribute("data-palette", p); }, palette);
+      for (const p of stylePages) { await spaGo(p); await audit(`${width} ${palette} ${scheme} ${p.replace(/\/alertas\/[^/?]+$/, "/alertas/:alerta")}`); }
+    }
+  }
+}
+await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+await page.evaluate(() => { localStorage.removeItem("palette"); document.documentElement.removeAttribute("data-palette"); });
+await spaGo("/perfil");
+for (const b of await page.$$("xpath/.//button[contains(., 'Cerrar sesión')]")) if (await b.isVisible()) { await b.click(); break; }
+await sleep(1500);
+
 // Research tools (admin, wide screen only).
 await page.goto(BASE + "/acceso", { waitUntil: "load" });
 await page.waitForSelector("#a-email");

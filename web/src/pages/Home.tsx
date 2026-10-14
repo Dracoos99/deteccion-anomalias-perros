@@ -12,6 +12,7 @@ import { useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog } from ".
 import { dashboardKpis, matchesFilter, matchesSearch, type DogFilter, type DogView } from "../lib/dashboard";
 import { freshness } from "../lib/live";
 import { FROM_HOME } from "../lib/nav";
+import { usePlayful } from "../lib/theme";
 import { attentionOrder, describeDog, isLearning, type HeldRanks } from "../lib/plain";
 
 const HIDE_KEY = (uid: string) => `onboarding-hidden:${uid}`;
@@ -22,6 +23,7 @@ function readHidden(uid: string): boolean {
 
 function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null }) {
   const hasDog = dogs.length > 0;
+  const playful = usePlayful();
   const waiting = dogs.find((d) => !d.status);
   const steps = [
     { title: "Crea tu cuenta", text: "Listo.", done: true, action: null },
@@ -42,7 +44,7 @@ function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null
     <div className="bezel welcome-bezel">
       <section className="panel onboarding-panel welcome" aria-labelledby="onb-title">
         <div className="welcome-main">
-          <h2 className="welcome-title" id="onb-title">{hasDog ? "Un paso más para empezar" : "Todavía no registras perros"}</h2>
+          <h2 className="welcome-title" id="onb-title">{hasDog ? "Un paso más para empezar" : playful ? "¡El parque está vacío!" : "Todavía no registras perros"}</h2>
           <p className="welcome-text">
             {hasDog ? "Cuando lleguen los primeros datos, aquí verás cómo está respecto a su patrón normal."
               : "Registra a tu perro para empezar. Cuando lleguen sus primeros datos, aquí verás cómo está."}

@@ -295,6 +295,34 @@ try {
   await clickText("button", "Guardar");
   check("Mi perfil saves the name and the top bar shows it", await waitText("Listo: se guardó tu nombre.")
     && await page.waitForFunction(() => document.querySelector(".user-menu-name")?.textContent === "Carmen Vidal Ruiz", { timeout: 10000 }).then(() => true, () => false));
+
+  // The styles. «Cálido» is applied and kept, the vet view stays serene, levels and figures keep their font.
+  const palette = () => page.evaluate(() => document.documentElement.dataset.palette ?? "sereno");
+  const fontOf = (sel) => page.$eval(sel, (el) => getComputedStyle(el).fontFamily).catch(() => "");
+  await page.click("label[for='style-calido']");
+  check("choosing «Cálido» applies the warm style and keeps it in this browser",
+    await palette() === "calido" && await page.evaluate(() => localStorage.getItem("palette")) === "calido");
+  await spaGo("/perros");
+  await page.waitForSelector(".dog-list .tag", { timeout: 10000 }).catch(() => {});
+  check("the warm style puts Fraunces in the titles and keeps the level tags in Source Sans 3",
+    (await fontOf("h1")).includes("Fraunces") && (await fontOf(".dog-list .tag")).includes("Source Sans 3"));
+  await page.goto(BASE + "/perros", { waitUntil: "load" });
+  await page.waitForSelector(".dog-list li", { timeout: 15000 }).catch(() => {});
+  check("the style survives a reload, with its title font preloaded", await palette() === "calido"
+    && await page.evaluate(() => !!document.querySelector('link[rel="preload"][href*="Fraunces"]')));
+  await spaGo(newDogPath + "/veterinario");
+  check("the vet view keeps the serene look", await palette() === "sereno");
+  await spaGo("/perfil");
+  check("leaving the vet view brings the chosen style back", await palette() === "calido");
+  await page.waitForSelector("label[for='style-extravagante']");
+  await page.click("label[for='style-extravagante']");
+  check("«Extravagante» puts Lilita One in the titles", await palette() === "extravagante" && (await fontOf("h1")).includes("Lilita One"));
+  await spaGo("/no-existe");
+  check("the eccentric style jokes only in a neutral moment: the page not found", await waitText("Aquí no hay ningún hueso enterrado"));
+  await spaGo("/perfil");
+  await page.waitForSelector("label[for='style-sereno']");
+  await page.click("label[for='style-sereno']");
+  check("«Sereno» goes back to the usual look", await palette() === "sereno" && await page.evaluate(() => localStorage.getItem("palette")) === null);
 } catch (e) {
   check("dog registration flow", false, e.message);
 }

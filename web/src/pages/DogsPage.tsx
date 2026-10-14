@@ -9,6 +9,7 @@ import { Callout, EmptyState, Icon, LevelTag, PageHead, StateTag, useNow, usePag
 import { db } from "../firebase";
 import { useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog, type Fusion } from "../data/hooks";
 import { matchesSearch } from "../lib/dashboard";
+import { usePlayful } from "../lib/theme";
 import { freshness } from "../lib/live";
 import { ageText, describeDog, isLearning } from "../lib/plain";
 
@@ -52,6 +53,7 @@ export function DogsPage() {
   const { data: open } = useOpenAlerts({ uid: user!.uid, isAdmin });
   const now = useNow(5000);
   const [search, setSearch] = useState("");
+  const playful = usePlayful();
   const newestOpen = new Map<string, Alert>();
   for (const a of open) {
     const prev = newestOpen.get(a.dogId);
@@ -82,7 +84,7 @@ export function DogsPage() {
             <p className="sr-only" role="status">Cargando tus perros…</p>
           </div>
         ) : !sorted.length ? (
-          <EmptyState icon="paw" title="Todavía no registras perros" text="Registra a tu perro para empezar a ver cómo está respecto a su patrón normal."
+          <EmptyState icon="paw" title={playful ? "El parque está vacío" : "Todavía no registras perros"} text="Registra a tu perro para empezar a ver cómo está respecto a su patrón normal."
             action={<Link className="btn btn-primary" to="/perros/nuevo"><Icon name="plus" />Registrar perro</Link>} />
         ) : !shown.length ? (
           <EmptyState icon="search" title="Ningún perro se llama así" text="Revisa el nombre o borra la búsqueda." />

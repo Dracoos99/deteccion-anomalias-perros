@@ -152,7 +152,7 @@ function PrivacyPanel({ uid }: { uid: string }) {
     }
   };
   return (
-    <section className="profile-section" aria-labelledby="p-privacy">
+    <section className="profile-section sober" aria-labelledby="p-privacy">
       <h2 className="section-title" id="p-privacy">Tus datos</h2>
       <p className="small muted">
         {consent ? `Autorizaste el tratamiento de tus datos personales el ${consent.toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })}. ` : ""}

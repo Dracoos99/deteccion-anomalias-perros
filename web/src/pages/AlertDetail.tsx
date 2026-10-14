@@ -132,7 +132,7 @@ export function AlertDetail() {
   if (loading) return <PageLoading text="Cargando la alerta…" />;
   if (error || !alert || !dogNow) {
     return (
-      <main className="page" id="main">
+      <main className="page sober" id="main">
         <EmptyState icon="info" title="No encontramos esta alerta" text="Puede que la dirección no sea correcta o que no tengas acceso."
           action={<Link className="btn btn-secondary" to="/alertas">Ir a Alertas</Link>} />
       </main>
@@ -175,8 +175,9 @@ export function AlertDetail() {
     ? <> y todavía continúa.</>
     : <>{startText.endsWith(".") ? "" : "."} {endSentence(`No llegan datos nuevos de ${dogName}${shownMs != null ? ` desde ${fmtAgo(new Date(shownMs))}` : ""}`)}</>;
 
+  // An alert is read sober in every style (no display titles, no drawings, no movement).
   return (
-    <main className="page" id="main">
+    <main className="page sober" id="main">
       <nav className="crumbs" aria-label="Ruta"><Link to="/alertas">Alertas</Link><span aria-hidden="true">›</span><Link to={`/perros/${alert.dogId}`}>{dogName}</Link></nav>
       <PageHead kicker={dogName} kickerIcon="paw" title={alertTitle(alert.reasons, alert.titleCode, going)} />
       <div className="stack">

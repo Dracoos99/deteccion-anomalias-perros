@@ -18,6 +18,7 @@ import { WeekHeatmap } from "../components/WeekHeatmap";
 import { EmptyState, Icon, PageLoading, Seg, Skeleton, fmtNum, usePageTitle } from "../components/ui";
 import { useActiveModels, useDog, useDogAlerts, useFusionConfig } from "../data/hooks";
 import { useDogTrend } from "../data/useDogTrend";
+import { useSerenePage } from "../lib/theme";
 import { shownDataMs, simulatedTime } from "../lib/live";
 import {
   BEHAVIOR_LABEL, LEARNING_TEXT, activityBand, aheadTag, ageText, alertStartMs, dateText, dateTimeText, datasetText, durationText, hrBand, orderReasons,
@@ -52,6 +53,8 @@ export function VetView() {
   const viewer = { uid: user!.uid, isAdmin };
   const { data: dog, loading } = useDog(dogId);
   usePageTitle(dog ? `${dog.name} · Vista para el veterinario` : "Vista para el veterinario");
+  // A document for a third party, so the serene look whatever style the owner chose.
+  useSerenePage();
   const { data: cfg } = useFusionConfig();
   const [days, setDays] = useState(7);
   const trend = useDogTrend(dog, viewer, days * 86_400_000, cfg);

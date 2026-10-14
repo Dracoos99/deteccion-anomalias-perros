@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 110" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <!-- A person and their dog, in one line weight: the decoration of the empty states in the warm theme (a mask, tinted by CSS). -->
+  <circle cx="58" cy="30" r="12"/>
+  <path d="M40 96C40 70 46 50 58 50S76 70 76 96"/>
+  <path d="M70 66C84 70 96 73 108 71"/>
+  <circle cx="124" cy="52" r="14"/>
+  <path d="M113 43C105 46 103 58 110 65"/>
+  <path d="M135 43C143 46 145 58 138 65"/>
+  <circle cx="119" cy="51" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="129" cy="51" r="1.6" fill="#000" stroke="none"/>
+  <circle cx="124" cy="58" r="2.2" fill="#000" stroke="none"/>
+  <path d="M114 67C106 77 104 90 108 96H150C154 84 148 71 134 66"/>
+  <path d="M121 80V96"/>
+  <path d="M150 92C162 90 167 80 162 71"/>
+  <path d="M92 37C84 31 84 22 89 21C91 21 92 23 92 24C92 23 93 21 95 21C100 22 100 31 92 37Z" fill="#000" stroke="none"/>
+  <path d="M24 99H176" stroke-dasharray="2 7"/>
+</svg>

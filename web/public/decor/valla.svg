@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 18">
+  <!-- One picket of a park fence, repeated along the top edge of the footer in the eccentric theme (a mask, tinted by CSS). -->
+  <path d="M8 18V6L12 1.5 16 6V18Z" fill="#000"/>
+  <rect x="0" y="9" width="24" height="3" fill="#000"/>
+</svg>

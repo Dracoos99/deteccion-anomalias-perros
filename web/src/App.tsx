@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { RequireAccount, RequireAdmin } from "./auth/guards";
 import { Shell } from "./components/Shell";
 import { EmptyState, PageLoading } from "./components/ui";
+import { usePlayful } from "./lib/theme";
 import { AuthPage } from "./pages/AuthPage";
 import { Home } from "./pages/Home";
 
@@ -26,9 +27,10 @@ const ReviewPage = lazy(() => import("./pages/ReviewPage").then((m) => ({ defaul
 const page = (el: ReactNode, shape?: "detail" | "sheet") => <Suspense fallback={<PageLoading shape={shape} />}>{el}</Suspense>;
 
 function NotFound() {
+  const playful = usePlayful();
   return (
     <main className="page" id="main">
-      <EmptyState icon="info" title="No encontramos esta página" text="Revisa la dirección o vuelve al inicio."
+      <EmptyState icon="info" title={playful ? "Aquí no hay ningún hueso enterrado" : "No encontramos esta página"} text="Revisa la dirección o vuelve al inicio."
         action={<Link className="btn btn-secondary" to="/">Ir al inicio</Link>} />
     </main>
   );

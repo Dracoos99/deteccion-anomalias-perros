@@ -7,9 +7,12 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f1f2f4" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141519" media="(prefers-color-scheme: dark)" />
-    <!-- the appearance chosen in Perfil (src/lib/theme.ts, same key), applied before the first frame, so a dark
-         choice never flashes the light boot frame. -->
-    <script>try { var t = localStorage.getItem("appearance"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
+    <!-- the appearance and the style chosen in Perfil (src/lib/theme.ts, same keys), applied before the
+         first frame, so a dark or warm choice never flashes the serene boot frame; the title font of a chosen style is
+         preloaded, and nobody else downloads it. -->
+    <script>try { var t = localStorage.getItem("appearance"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      var p = localStorage.getItem("palette"), f = p === "calido" ? "/fonts/Fraunces-soft-latin.woff2" : p === "extravagante" ? "/fonts/LilitaOne-latin.woff2" : "";
+      if (f) { document.documentElement.setAttribute("data-palette", p); var l = document.createElement("link"); l.rel = "preload"; l.as = "font"; l.type = "font/woff2"; l.crossOrigin = ""; l.href = f; document.head.appendChild(l); } } catch (e) {}</script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <!-- installable on the home screen (on the iPhone, only an installed app receives pushes). -->
     <link rel="manifest" href="/manifest.webmanifest" />

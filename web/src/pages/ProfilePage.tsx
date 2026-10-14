@@ -8,19 +8,50 @@ import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext";
 import { Callout, Icon, PageHead, Seg, usePageTitle } from "../components/ui";
 import { auth, db } from "../firebase";
-import { applyTheme, storedTheme, type Theme } from "../lib/theme";
+import { applyPalette, applyTheme, storedTheme, usePalette, type Palette, type Theme } from "../lib/theme";
 
 const NAME_MAX = 60;
 
-/** Automatic, light or dark, kept in this browser. */
+/** The three styles, each shown with a preview in its own colours and title font. */
+const STYLES: { id: Palette; name: string; icon: string; desc: string }[] = [
+  { id: "sereno", name: "Sereno", icon: "check", desc: "El de siempre: sobrio y claro." },
+  { id: "calido", name: "Cálido", icon: "heart", desc: "Crema, índigo y títulos con serifa suave. El índigo está entre los colores que tu perro distingue mejor." },
+  { id: "extravagante", name: "Extravagante", icon: "zap", desc: "Para divertirse: colores de juguete, bordes gruesos y un poco de humor donde no hay nada serio." },
+];
+
+/** The mode (automatic, light or dark) and the style, both kept in this browser. */
 function AppearancePanel() {
   const [theme, setTheme] = useState<Theme>(storedTheme);
+  const palette = usePalette();
   const choose = (t: Theme) => { applyTheme(t); setTheme(t); };
   return (
     <section className="profile-section" aria-labelledby="p-appearance">
       <h2 className="section-title" id="p-appearance">Apariencia</h2>
-      <p className="small muted">Automática sigue el modo claro u oscuro de tu equipo. Se guarda en este navegador.</p>
-      <Seg label="Apariencia" value={theme} onChange={choose} options={[{ value: "auto", label: "Automática" }, { value: "light", label: "Clara" }, { value: "dark", label: "Oscura" }]} />
+      <div className="field">
+        <span className="field-label" id="p-mode">Modo</span>
+        <p className="small muted">Automática sigue el modo claro u oscuro de tu equipo. Se guarda en este navegador.</p>
+        <Seg label="Modo" value={theme} onChange={choose} options={[{ value: "auto", label: "Automática" }, { value: "light", label: "Clara" }, { value: "dark", label: "Oscura" }]} />
+      </div>
+      <fieldset className="style-picker">
+        <legend className="field-label">Estilo</legend>
+        <p className="small muted">Los niveles, las alertas y la Vista para el veterinario se ven igual en todos los estilos.</p>
+        <div className="style-options">
+          {STYLES.map((s) => (
+            <div key={s.id} className="style-option" data-style={s.id}>
+              <input type="radio" name="style" id={`style-${s.id}`} value={s.id} checked={palette === s.id}
+                onChange={() => applyPalette(s.id)} aria-describedby={`style-${s.id}-desc`} />
+              <label htmlFor={`style-${s.id}`}>
+                <span className="style-preview" aria-hidden="true">
+                  <span className="sp-bar" />
+                  <span className="sp-card"><span className="sp-title">Toby</span><span className="sp-pill">Ver detalle</span></span>
+                </span>
+                <span className="style-name"><Icon name={s.icon} size={16} />{s.name}</span>
+              </label>
+              <span className="style-desc" id={`style-${s.id}-desc`}>{s.desc}</span>
+            </div>
+          ))}
+        </div>
+      </fieldset>
     </section>
   );
 }
@@ -56,7 +87,7 @@ function CredentialsPanel() {
     catch { setPwd("error"); }
   };
   return (
-    <section className="profile-section" aria-labelledby="p-credentials">
+    <section className="profile-section sober" aria-labelledby="p-credentials">
       <h2 className="section-title" id="p-credentials">Datos de acceso</h2>
       <form className="stack-sm" onSubmit={saveName}>
         <div className="field">
