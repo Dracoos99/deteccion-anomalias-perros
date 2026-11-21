@@ -36,7 +36,7 @@ def test_smoothing_is_causal_within_a_phase_and_restarts_at_gaps():
     meta = stream([0, 200, 400, 1000])
     probs = np.stack([onehot(2), onehot(2), onehot(0, 0.6), onehot(0, 0.6)])
     out, rows = smooth_sequence(probs, meta, 6, STEP)
-    by_row = dict(zip(rows.tolist(), out))
+    by_row = dict(zip(rows.tolist(), out, strict=True))
     assert by_row[2].argmax() == 2              # one doubtful window does not flip a lying dog
     assert by_row[3].argmax() == 0              # after a gap nothing is carried over
     assert np.allclose(by_row[0], probs[0])     # the first window of a stream is itself
@@ -46,7 +46,7 @@ def test_streams_of_different_recordings_never_mix():
     meta = pd.concat([stream([0, 200], "a.parquet"), stream([0, 200], "b.parquet")], ignore_index=True)
     probs = np.stack([onehot(2), onehot(2), onehot(5), onehot(5)])
     out, rows = smooth_sequence(probs, meta, 20, STEP)
-    by_row = dict(zip(rows.tolist(), out))
+    by_row = dict(zip(rows.tolist(), out, strict=True))
     assert by_row[2].argmax() == 5 and np.allclose(by_row[2], probs[2])
 
 

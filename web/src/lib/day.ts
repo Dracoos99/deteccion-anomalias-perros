@@ -14,7 +14,6 @@ export const DAY_GROUPS: DayGroup[] = ["rest", "walk", "trot", "play", "sniff"];
 export const GROUP_OF: Record<Behavior, DayGroup> = { sit: "rest", stand: "rest", lie: "rest", walk: "walk", trot: "trot", play: "play", sniff: "sniff" };
 export const GROUP_LABEL: Record<DayGroup, string> = { rest: "Descansando", walk: "Caminando", trot: "Trotando", play: "Jugando", sniff: "Olfateando" };
 /** Lower case, for sentences («jugó menos que de costumbre» is said by groupVerb). */
-export const GROUP_NOUN: Record<DayGroup, string> = { rest: "descanso", walk: "caminata", trot: "trote", play: "juego", sniff: "olfateo" };
 
 const WINDOW_MS = 2_000;
 type Counts = Record<DayGroup, number>;

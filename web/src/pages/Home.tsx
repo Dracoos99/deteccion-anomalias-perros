@@ -8,7 +8,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DogCard } from "../components/DogCard";
 import { Callout, EmptyState, Icon, Notice, PageHead, Seg, useNow, usePageTitle } from "../components/ui";
-import { useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog } from "../data/hooks";
+import { openCountText, useDogs, useFusionConfig, useOpenAlerts, type Alert, type Dog } from "../data/hooks";
 import { dashboardKpis, matchesFilter, matchesSearch, type DogFilter, type DogView } from "../lib/dashboard";
 import { freshness } from "../lib/live";
 import { FROM_HOME } from "../lib/nav";
@@ -76,7 +76,7 @@ function Onboarding({ dogs, onHide }: { dogs: Dog[]; onHide: (() => void) | null
 type Tone = "neutral" | "green" | "amber" | "red";
 
 /** One figure of the top bar: its icon, the number and what it counts. The colour of a state goes with its icon and words. */
-function Kpi({ icon, label, value, tone }: { icon: string; label: string; value: number; tone: Tone }) {
+function Kpi({ icon, label, value, tone }: { icon: string; label: string; value: number | string; tone: Tone }) {
   return (
     <div className="kpi" data-tone={tone}>
       <span className="kpi-icon" aria-hidden="true"><Icon name={icon} size={18} /></span>
@@ -186,7 +186,7 @@ export function Home() {
             <section className="kpis" aria-label="Resumen">
               <Kpi icon="paw" label="Total de perros" value={kpis.total} tone="neutral" />
               <Kpi icon="check-circle" label="En estado normal" value={kpis.normal} tone={kpis.normal ? "green" : "neutral"} />
-              <Kpi icon={alertTone === "red" ? "alert-octagon" : "alert-triangle"} label={kpis.alerts === 1 ? "Alerta activa" : "Alertas activas"} value={kpis.alerts} tone={alertTone} />
+              <Kpi icon={alertTone === "red" ? "alert-octagon" : "alert-triangle"} label={kpis.alerts === 1 ? "Alerta activa" : "Alertas activas"} value={openCountText(kpis.alerts, openAll.length)} tone={alertTone} />
               <Kpi icon="wifi-off" label="Sin datos recientes" value={kpis.nodata} tone="neutral" />
             </section>
             {showGuide && <Onboarding dogs={sorted} onHide={hide} />}

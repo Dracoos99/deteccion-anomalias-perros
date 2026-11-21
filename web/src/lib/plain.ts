@@ -330,7 +330,7 @@ export function namesText(names: string[]): string {
   return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
 }
 
-/** A dog for the Inicio summary: `stale` when its newest data are old (not its current state), `openAlert` when it has
+/** A dog for the Inicio order: `stale` when its newest data are old (not its current state), `openAlert` when it has
  * an alert still to review, `alertEnded` when that alert's episode already ended (its banner says «ya pasó»). */
 type DogLevel = { name: string; level: DogStatus<unknown>["level"] | null; learning?: boolean; stale?: boolean; openAlert?: boolean; alertEnded?: boolean;
   /** «Todo normal» with the movement or the heart rate just out of its band (DogSummary.slight). */
@@ -346,12 +346,6 @@ export function attentionRank(d: DogLevel): number {
   if (d.stale || d.learning) return d.openAlert ? 2 : 4;
   if (d.sensorOff) return 1;
   return d.level === "red" ? 0 : d.level === "amber" ? 1 : d.openAlert ? 2 : 3;
-}
-
-/** Inicio order: the dogs that need a look first (Revisar, Atención, then a new alert), then the rest, those still
- * learning their pattern, and those without data; by name. `level` is the stable one. */
-export function byAttention<T extends DogLevel>(dogs: T[]): T[] {
-  return [...dogs].sort((a, b) => attentionRank(a) - attentionRank(b) || a.name.localeCompare(b.name, "es"));
 }
 
 /** How long a dog that needs a look less than before keeps its place on Inicio. */
@@ -375,57 +369,6 @@ export function attentionOrder<T extends DogLevel & { id: string }>(dogs: T[], h
   }
   const ids = [...dogs].sort((a, b) => next.get(a.id)!.rank - next.get(b.id)!.rank || a.name.localeCompare(b.name, "es")).map((d) => d.id);
   return { ids, held: next };
-}
-
-/** One sentence above the Inicio cards: how the owner's dogs are, the ones that need a look first. Null without data.
- * A dog still learning its normal pattern is never said to be "within its normal pattern"; a
- * dog whose data stopped is not described in the present; and nothing reads "Todo en orden" while an alert waits.
- * A dog whose new alert already ended gets its own sentence and is not counted again among those
- * «como de costumbre»; counts use the real total, «tus» for an owner and «los» for the research account
- * (`all`), and the dogs without data yet are said apart. */
-export function homeSummary(dogs: DogLevel[], opts: { all?: boolean } = {}): string | null {
-  // Grouped by level below; within each group, by name.
-  const byName = [...dogs].sort((a, b) => a.name.localeCompare(b.name, "es"));
-  const withData = byName.filter((d) => d.level);
-  if (!withData.length) return null;
-  const noData = byName.filter((d) => !d.level).map((d) => d.name);
-  // A collar that seems off is said apart, before anything about the dogs whose data do arrive.
-  const collar = withData.filter((d) => !d.stale && d.sensorOff).map((d) => d.name);
-  const current = withData.filter((d) => !d.stale && !d.sensorOff);
-  const of = (l: string) => current.filter((d) => d.level === l && !(l === "green" && d.learning)).map((d) => d.name);
-  const red = of("red"), amber = of("amber");
-  // Back to its usual after an alert that already ended: one sentence says both.
-  // A dog in «Todo normal» whose card shows a vital in amber is not said to be «dentro de su patrón normal» nor
-  // «como de costumbre» (also when its alert already ended); its alert, if any, gets its own sentence below.
-  const slight = current.filter((d) => d.level === "green" && !d.learning && d.slight).map((d) => d.name);
-  const passed = current.filter((d) => d.level === "green" && !d.learning && d.openAlert && d.alertEnded && !slight.includes(d.name)).map((d) => d.name);
-  const green = of("green").filter((n) => !passed.includes(n) && !slight.includes(n));
-  const learning = current.filter((d) => d.level === "green" && d.learning).map((d) => d.name);
-  const withAlert = withData.filter((d) => d.openAlert).map((d) => d.name);
-  const stale = withData.filter((d) => d.stale).map((d) => d.name);
-  const flagged = red.length + amber.length;
-  // A dog already named above for its level needs no second sentence for its alert (its card shows the banner).
-  const alertOnly = withAlert.filter((n) => !red.includes(n) && !amber.includes(n) && !passed.includes(n));
-  const named = flagged + passed.length + slight.length + collar.length > 0;
-  const yours = opts.all ? "los" : "tus";
-  const parts: string[] = [];
-  if (collar.length) parts.push(`Revisa el collar de ${namesText(collar)}: no llegan su movimiento, su ritmo cardiaco ni su temperatura.`);
-  if (red.length) parts.push(`${namesText(red)} ${red.length > 1 ? "se alejaron" : "se alejó"} de su patrón normal; revisa cómo ${red.length > 1 ? "están" : "está"}.`);
-  if (amber.length) parts.push(`${namesText(amber)} ${amber.length > 1 ? "tienen" : "tiene"} un cambio leve.`);
-  if (slight.length) parts.push(`${namesText(slight)} ${slight.length > 1 ? "tienen" : "tiene"} un dato un poco fuera de lo habitual.`);
-  if (passed.length) parts.push(`${namesText(passed)} ${passed.length > 1 ? "tienen alertas nuevas que ya pasaron; ahora están" : "tiene una alerta nueva que ya pasó; ahora está"} como de costumbre.`);
-  if (!named && !withAlert.length) {
-    // «Todo en orden» only when it is true of every dog.
-    if (green.length > 1 && green.length === dogs.length) parts.push(`Todo en orden: ${yours} ${green.length} perros están dentro de su patrón normal.`);
-    else if (green.length > 3) parts.push(`De ${yours} ${dogs.length} perros, ${green.length} están dentro de su patrón normal.`);
-    else if (green.length) parts.push(`${namesText(green)} ${green.length > 1 ? "están" : "está"} dentro de su patrón normal.`);
-  } else if (green.length > 3) parts.push(named ? `Los otros ${green.length} están como de costumbre.` : `De ${yours} ${dogs.length} perros, ${green.length} están como de costumbre.`);
-  else if (green.length) parts.push(`${namesText(green)} ${green.length > 1 ? "están" : "está"} como de costumbre.`);
-  if (alertOnly.length) parts.push(`${namesText(alertOnly)} ${alertOnly.length > 1 ? "tienen alertas nuevas" : "tiene una alerta nueva"}.`);
-  if (stale.length) parts.push(`No recibimos datos recientes de ${namesText(stale)}.`);
-  if (learning.length) parts.push(`Estamos aprendiendo el patrón normal de ${namesText(learning)}.`);
-  if (noData.length) parts.push(`Todavía no hay datos de ${noData.length > 3 ? `${noData.length} perros` : namesText(noData)}.`);
-  return parts.join(" ");
 }
 
 const NOW_TEXT: Record<Behavior, [string, string]> = {

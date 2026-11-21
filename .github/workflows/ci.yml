@@ -42,6 +42,11 @@ jobs:
           npm ci --prefix web
           npm ci --prefix simulator
 
+      - name: Lint (TypeScript, JavaScript and Python)
+        run: |
+          npm run lint
+          pipx run ruff==0.17.5 check ml
+
       - name: Unit tests (engine, models, simulator, web)
         run: npm run test:unit
 

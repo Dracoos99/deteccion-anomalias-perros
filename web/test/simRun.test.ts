@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CLOUD_START_LIMIT_MS, START_LIMIT_MS, overGoal, runPhase, type RunLike } from "../src/lib/simRun";
+import { RUN_ABANDONED_MS } from "../../shared/runs";
+import { CLOUD_START_LIMIT_MS, START_LIMIT_MS, holdsDogs, overGoal, runPhase, type RunLike } from "../src/lib/simRun";
 
 const T0 = Date.UTC(2026, 9, 8, 23, 0);
 const ms = (t: number) => ({ toMillis: () => t });
@@ -29,6 +30,20 @@ describe("phase of a simulator run", () => {
     expect(runPhase(run({ worker: null }), later)).toBe("waiting");
     expect(runPhase(run({ state: "stopped", endedBy: "duration" }), later)).toBe("finished");
     expect(runPhase(run({ state: "stopped" }), later)).toBe("stopped");
+  });
+  it("says «Se interrumpió» when the process stopped beating, and frees the dogs", () => {
+    const blocks = { blocksWritten: 900, avgLatencyMs: 600, startedAt: null, stoppedAt: null };
+    const late = T0 + RUN_ABANDONED_MS + 1;
+    expect(runPhase(run({ stats: blocks }), T0 + RUN_ABANDONED_MS)).toBe("running");
+    expect(runPhase(run({ stats: blocks }), late)).toBe("interrupted");
+    expect(runPhase(run({ state: "paused" }), late)).toBe("interrupted");
+    expect(holdsDogs(run({ stats: blocks }), T0 + 60_000)).toBe(true);
+    expect(holdsDogs(run({ stats: blocks }), late)).toBe(false);
+    // Closed by another process, and closed by the job's own limit.
+    expect(runPhase(run({ state: "stopped", endedBy: "abandoned" }), late)).toBe("interrupted");
+    expect(runPhase(run({ state: "stopped", endedBy: "limit" }), late)).toBe("stopped");
+    // Waiting for a process, never interrupted.
+    expect(runPhase(run({ worker: null }), late)).toBe("waiting");
   });
   it("marks a latency over the goal of 5 s", () => {
     expect(overGoal(5_660)).toBe(true);

@@ -32,19 +32,23 @@ service cloud.firestore {
         return p is map && p.keys().hasOnly(['red', 'amber', 'quiet']) && p.get('red', true) is bool
           && p.get('amber', true) is bool && validQuiet(p.get('quiet', null));
       }
+      // The name of Mi perfil and an optional phone. Only a field that changes is checked, so an older profile never blocks saving the other fields. The
+      // name keeps the 80 characters of setInitialRole.
+      function validContact(u, changed) {
+        return (!changed.hasAny(['displayName']) || (u.displayName is string && u.displayName.size() > 0 && u.displayName.size() <= 80))
+          && (!changed.hasAny(['phone']) || u.phone == null || (u.phone is string && u.phone.size() <= 30));
+      }
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       // The profile (with its role and consent) is created by setInitialRole. The client may only edit
       // its own contact and notification fields, never the role.
       allow create: if false;
-      // At most 10 browsers with notifications per account. AlertsCleared marks when the person
-      // cleared their own Alertas list (for every dog or for one); it hides nothing from anyone else.
+      // At most 10 browsers with notifications per account. retired alertsCleared (the «Limpiar
+      // lista», gone): profiles that have it keep it, nobody writes it.
       allow update: if signedIn() && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'fcmTokens', 'notificationPrefs', 'alertsCleared'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'fcmTokens', 'notificationPrefs'])
+        && validContact(request.resource.data, request.resource.data.diff(resource.data).affectedKeys())
         && request.resource.data.get('fcmTokens', []).size() <= 10
-        && validPrefs(request.resource.data.get('notificationPrefs', {}))
-        && request.resource.data.get('alertsCleared', {}) is map
-        && request.resource.data.get('alertsCleared', {}).keys().hasOnly(['all', 'byDog'])
-        && request.resource.data.get('alertsCleared', {}).get('byDog', {}).size() <= 200;
+        && validPrefs(request.resource.data.get('notificationPrefs', {}));
       allow delete: if isAdmin();
     }
 
@@ -55,7 +59,9 @@ service cloud.firestore {
       }
       allow read: if canReadDogData(resource.data);
       // Owners manage their dogs except ownerId, status and baseline (written by Functions). «Quitar perro»
-      // archives a dog (active: false) instead of deleting it; the app lists only active dogs.
+      // archives a dog (active: false) instead of deleting it; the app lists only active dogs. Only an admin
+      // deletes a dog document; an owner deletes a dog for good with the Function deleteMyData, which also
+      // deletes its readings, results, trends and alerts, so nothing is left orphaned.
       allow create: if isAdmin()
         || (isOwner() && validDog(request.resource.data)
             && request.resource.data.ownerId == request.auth.uid
@@ -64,7 +70,7 @@ service cloud.firestore {
         || (isOwner() && resource.data.ownerId == request.auth.uid
             && validDog(request.resource.data)
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerId', 'status', 'baseline']));
-      allow delete: if isAdmin() || (isOwner() && resource.data.ownerId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     match /readings/{readingId} {
@@ -80,6 +86,10 @@ service cloud.firestore {
             && !request.resource.data.keys().hasAny(['injectedAnomaly', 'injectedAnomalies'])
             && request.resource.data.imu is list && request.resource.data.imu.size() <= 6000
             && request.resource.data.hr is list && request.resource.data.hr.size() <= 10
+            // The block's time and rate as the upload writes them, and a temperature that is a number or nothing.
+            && request.resource.data.blockStart is timestamp
+            && request.resource.data.imuHz == 100
+            && (request.resource.data.get('temp', null) == null || request.resource.data.temp is number)
             && upload(request.resource.data.sourceRef).ownerId == request.auth.uid
             && upload(request.resource.data.sourceRef).dogId == request.resource.data.dogId);
       allow update, delete: if false;

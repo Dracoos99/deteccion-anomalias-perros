@@ -110,7 +110,7 @@ def main() -> None:
     t0 = time.time()
     f, cols, splits = load_features(C.VEHKAOJA_OUT)
     rf_metrics, rf = random_forest(f, cols, splits)
-    importances = sorted(zip(cols, rf.feature_importances_), key=lambda t: -t[1])[:15]
+    importances = sorted(zip(cols, rf.feature_importances_, strict=True), key=lambda t: -t[1])[:15]
     metrics = {"random_forest": rf_metrics | {"params": {k: v for k, v in RF_PARAMS.items() if k != "n_jobs"},
                                               "top_features": [[c, round(float(v), 4)] for c, v in importances]},
                "isolation_forest": isolation_forest(f, cols, splits), "features": len(cols), "seconds": round(time.time() - t0)}

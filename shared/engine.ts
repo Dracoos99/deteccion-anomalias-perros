@@ -362,6 +362,146 @@ export function titleCodeFor(prev: string | null | undefined, reasons: AlertReas
   return primaryReason(reasons)?.code ?? null;
 }
 
+/** A gap before this block. It restarts the streaks, the trigger run and the smoothing, flags gap:n (the missing
+ * 2 s windows) and returns the seconds missing, so the stable score weighs its first window by the time passed. */
+function resetAfterGap(st: EngineState, prev: EngineState, blockStartMs: number, keepHr: number, flags: string[]): number {
+  if (prev.lastBlockStartMs == null) return 0;
+  const prevEnd = prev.lastBlockEndMs ?? prev.lastBlockStartMs + BLOCK_SECONDS * 1000;
+  const gapS = (blockStartMs - prevEnd) / 1000;
+  if (gapS <= WINDOW_S / 2) return 0;
+  flags.push(`gap:${Math.round(gapS / WINDOW_S)}`);
+  st.streak = { hr: 0, temp: 0 };
+  st.hrRun = 0;
+  st.behaviorEma = null;
+  st.triggerRun = 0;
+  st.triggerRunStartMs = null;
+  st.runReasons = null;
+  if (gapS > keepHr) st.hrBuffer = [];
+  return gapS;
+}
+
+/** Heart-rate buffer after each window, and the autoencoder's error ratio of each. The pushes depend on nothing else, so
+ * the autoencoder scores the whole block in one batch. It reads only 60 contiguous seconds: a block with fewer
+ * than 10 values (the sensor lost the signal) or a gap between blocks restarts the count, because joining two stretches
+ * makes a jump the model never saw in training. `warmup`: some window had no full sequence yet. */
+function heartRateWindows(st: EngineState, hrValues: number[], nWin: number, blockSeconds: number, keepHr: number,
+  physio: NonNullable<BlockInput["physio"]> | null, hrMean: number | null, hrStd: number): { hrAfter: number[][]; hrRatios: (number | null)[]; warmup: boolean } {
+  const hrAfter: number[][] = [];
+  const runAfter: number[] = [];
+  const fullHr = hrValues.length >= blockSeconds;
+  let run = st.hrRun ?? 0;
+  for (let w = 0; w < nWin; w++) {
+    const lo = Math.floor((w * hrValues.length) / nWin), hi = Math.floor(((w + 1) * hrValues.length) / nWin);
+    st.hrBuffer.push(...hrValues.slice(lo, hi));
+    if (st.hrBuffer.length > keepHr) st.hrBuffer.splice(0, st.hrBuffer.length - keepHr);
+    hrAfter.push(st.hrBuffer.slice());
+    run = fullHr ? run + hi - lo : 0;
+    runAfter.push(run);
+  }
+  st.hrRun = run;
+  const hrRatios: (number | null)[] = new Array(nWin).fill(null);
+  let warmup = false;
+  if (physio && hrMean != null) {
+    const L = physio.meta.sequenceLength;
+    const seqs = hrAfter.map((b, w) => (runAfter[w] >= L ? sequenceZ(b, hrMean, hrStd, L) : null));
+    const ready = seqs.flatMap((z, i) => (z ? [i] : []));
+    if (ready.length < nWin) warmup = true;
+    if (ready.length) {
+      const errors = physio.score(ready.map((i) => seqs[i]!));
+      ready.forEach((i, j) => { hrRatios[i] = errors[j] / physio.meta.threshold; });
+    }
+  }
+  return { hrAfter, hrRatios, warmup };
+}
+
+/** What results/{readingId} stores of a block: the scores and level of its last window and the signals behind them. */
+function blockResult(windows: WindowEval[], lastProbs: number[] | null, temp: number | null): BlockEval["result"] {
+  const last = windows[windows.length - 1];
+  const measured = windows.filter((w) => w.active != null);
+  return {
+    rB: round(last.rB, 3), rP: round(last.rP, 3), rT: round(last.rT, 3), healthScore: last.healthScore, level: last.level,
+    stableHealthScore: last.stableHealthScore!, stableLevel: last.stableLevel!,
+    predictedBehavior: last.predicted,
+    behaviorProbs: lastProbs?.map((p) => round(p, 4)) ?? null,
+    signals: {
+      activeFraction: measured.length ? measured.filter((w) => w.active).length / measured.length : 0,
+      activityRatio: last.activityRatio == null ? null : round(last.activityRatio, 4),
+      noveltyRatio: last.noveltyRatio == null ? null : round(last.noveltyRatio, 4),
+      hr: last.hr == null ? null : round(last.hr, 1),
+      temp,
+      hrRatio: last.hrRatio == null ? null : round(last.hrRatio, 3),
+    },
+  };
+}
+
+/** Alert episodes: opens, updates or
+ * closes the episode in `st` from the windows of this block. winReasons: the reasons of each triggering window;
+ * runAfterW: those of the trigger run after each window (earlier blocks included). */
+function updateEpisode(st: EngineState, blockStartMs: number, windows: WindowEval[], winReasons: (ReasonSet | null)[],
+  runAfterW: (ReasonSet | null)[], cfg: EngineConfig, alertId: string): { alert: AlertAction | null; closed: ClosedEpisode | null } {
+  let alert: AlertAction | null = null;
+  let closed: ClosedEpisode | null = null;
+  // Without an open episode, only windows from the first armed one count; the alert starts where its
+  // uninterrupted trigger began (possibly in an earlier block).
+  const openAt = st.episode ? 0 : windows.findIndex((w) => w.armed);
+  const counted = openAt < 0 ? [] : windows.slice(openAt);
+  const triggered = counted.filter((w) => w.trigger);
+  if (triggered.length) {
+    const runStart = windows[openAt].runStartMs;
+    const firstTriggerMs = st.episode ? blockStartMs + windows.findIndex((w) => w.trigger) * WINDOW_MS
+      : runStart ?? blockStartMs + openAt * WINDOW_MS;
+    const lastTriggerEndMs = blockStartMs + (windows.map((w) => w.trigger).lastIndexOf(true) + 1) * WINDOW_MS;
+    const worst = triggered.reduce((a, b) => (b.healthScore < a.healthScore ? b : a));
+    const severity: "amber" | "red" = counted.some((w) => w.trigger && w.level === "red") ? "red" : "amber";
+    // The alert names every variable that left its range while the trigger held, not only those of
+    // its last window. Before, a fever that ended while low activity kept the trigger alive was replaced by the
+    // activity in the next update, and the alert of a fever stopped naming the temperature.
+    const ep0 = st.episode;
+    let set: ReasonSet | null = ep0 ? (ep0.reasons ? { reasons: ep0.reasons, fallback: ep0.fallback ?? false } : null) : runAfterW[openAt];
+    for (let i = ep0 ? 0 : openAt + 1; i < windows.length; i++) if (winReasons[i]) set = mergeReasons(set, winReasons[i]!);
+    const merged = set?.reasons ?? [];
+    const components = [...new Set(merged.map((r) => r.component))];
+    if (!ep0) {
+      const titleCode = titleCodeFor(null, merged, false);
+      const reasons = titleFirst(merged, titleCode);
+      st.episode = { alertId: alertId, severity, minHealthScore: worst.healthScore, components, windowsSinceTrigger: 0,
+        startMs: firstTriggerMs, reasons, fallback: set?.fallback ?? false, titleCode };
+      st.openAlerts += 1;
+      alert = { action: "open", alertId: alertId, severity, healthScore: worst.healthScore, reasons, titleCode, startedAtMs: firstTriggerMs };
+    } else {
+      const escalates = severity === "red" && ep0.severity === "amber";
+      // States from before have no reasons: a new component rewrites the alert, as it did then.
+      const changed = ep0.reasons
+        ? reasonsChanged({ reasons: ep0.reasons, fallback: ep0.fallback ?? false }, set!)
+        : components.some((c) => !ep0.components.includes(c));
+      const worse = worst.healthScore <= ep0.minHealthScore - 5;
+      if (escalates || changed || worse) {
+        ep0.severity = escalates ? "red" : ep0.severity;
+        ep0.minHealthScore = Math.min(ep0.minHealthScore, worst.healthScore);
+        ep0.components = [...new Set([...ep0.components, ...components])];
+        ep0.fallback = set?.fallback ?? false;
+        // States from before it have no titleCode; the first update chooses it.
+        ep0.titleCode = titleCodeFor(ep0.titleCode, merged, escalates);
+        ep0.reasons = titleFirst(merged, ep0.titleCode);
+        alert = { action: "update", alertId: ep0.alertId, severity: ep0.severity, healthScore: ep0.minHealthScore, reasons: ep0.reasons, titleCode: ep0.titleCode };
+      }
+      ep0.windowsSinceTrigger = 0;
+    }
+    // Windows after the last trigger inside this block still count towards closing the episode.
+    const lastTrigger = windows.map((w) => w.trigger).lastIndexOf(true);
+    st.episode!.windowsSinceTrigger = windows.length - 1 - lastTrigger;
+    st.episode!.lastTriggerMs = lastTriggerEndMs;
+  } else if (st.episode) {
+    st.episode.windowsSinceTrigger += windows.length;
+    if (st.episode.windowsSinceTrigger * (WINDOW_SAMPLES / 100) >= cfg.episodeGapS) {
+      // The episode ends where its last triggering window ended.
+      closed = { alertId: st.episode.alertId, endedAtMs: st.episode.lastTriggerMs ?? blockStartMs };
+      st.episode = null;
+    }
+  }
+  return { alert, closed };
+}
+
 /** Scores one block and returns the next per-dog state. alertId is used if this block opens an alert episode. */
 export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: BaselineStats | null, cfg: EngineConfig,
   opts: { alertId: string }): BlockEval {
@@ -379,65 +519,19 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
   if (!physio) flags.push("physio_rules");
   const fullScaleRatio = cfg.physio?.fullScaleRatio ?? physio?.meta.fullScaleRatio ?? 3;
   const criticalRatio = cfg.physio?.criticalRatio ?? physio?.meta.criticalRatio ?? 2;
-  let physioWarmup = false;
   // The buffer keeps what the level rule averages and what the autoencoder reads, whichever is longer.
   const keepHr = Math.max(cfg.hrAverageS, physio?.meta.sequenceLength ?? 0);
   const samples = Math.floor(input.imu.length / IMU_CHANNELS);
   const nWin = Math.max(1, Math.floor(samples / WINDOW_SAMPLES));
   const blockSeconds = nWin * WINDOW_S;
-  // Seconds of data missing before this block, so the stable score weighs its first window by the time passed.
-  let missingS = 0;
-  if (!outOfOrder && prev.lastBlockStartMs != null) {
-    // Blocks of 2 to 10 s, so the gap is measured from where the previous block ended; states from before
-    // it had 10 s blocks. gap:n counts the missing 2 s windows.
-    const prevEnd = prev.lastBlockEndMs ?? prev.lastBlockStartMs + BLOCK_SECONDS * 1000;
-    const gapS = (input.blockStartMs - prevEnd) / 1000;
-    if (gapS > WINDOW_S / 2) {
-      flags.push(`gap:${Math.round(gapS / WINDOW_S)}`);
-      st.streak = { hr: 0, temp: 0 };
-      st.hrRun = 0;
-      st.behaviorEma = null;
-      st.triggerRun = 0;
-      st.triggerRunStartMs = null;
-      st.runReasons = null;
-      missingS = gapS;
-      if (gapS > keepHr) st.hrBuffer = [];
-    }
-  }
+  const missingS = outOfOrder ? 0 : resetAfterGap(st, prev, input.blockStartMs, keepHr, flags);
   const alpha = emaAlpha(cfg);
   const alphaNovelty = emaAlpha(cfg, cfg.novelty.timeConstantS);
   const expected = model?.meta.noveltyQuantile ?? null;
   st.noveltyEma = st.noveltyEma ?? null;
-  // Heart-rate buffer after each window. The pushes depend on nothing else, so the autoencoder scores the whole block
-  // in one batch before the window loop. It reads only 60 contiguous seconds: a block with fewer than 10
-  // values (the sensor lost the signal) or a gap between blocks restarts the count, because joining two stretches
-  // makes a jump the model never saw in training.
-  const hrAfter: number[][] = [];
-  const runAfter: number[] = [];
-  const fullHr = input.hr.length >= blockSeconds;
-  let run = st.hrRun ?? 0;
-  for (let w = 0; w < nWin; w++) {
-    const lo = Math.floor((w * input.hr.length) / nWin), hi = Math.floor(((w + 1) * input.hr.length) / nWin);
-    st.hrBuffer.push(...input.hr.slice(lo, hi));
-    if (st.hrBuffer.length > keepHr) st.hrBuffer.splice(0, st.hrBuffer.length - keepHr);
-    hrAfter.push(st.hrBuffer.slice());
-    run = fullHr ? run + hi - lo : 0;
-    runAfter.push(run);
-  }
-  st.hrRun = run;
-  const hrRatios: (number | null)[] = new Array(nWin).fill(null);
   // A baseline without heart rate leaves both heart-rate rules off.
   const hrMean = baseline?.hrMean ?? null, hrStd = baseline?.hrStd ?? 0;
-  if (physio && hrMean != null) {
-    const L = physio.meta.sequenceLength;
-    const seqs = hrAfter.map((b, w) => (runAfter[w] >= L ? sequenceZ(b, hrMean, hrStd, L) : null));
-    const ready = seqs.flatMap((z, i) => (z ? [i] : []));
-    if (ready.length < nWin) physioWarmup = true;
-    if (ready.length) {
-      const errors = physio.score(ready.map((i) => seqs[i]!));
-      ready.forEach((i, j) => { hrRatios[i] = errors[j] / physio.meta.threshold; });
-    }
-  }
+  const { hrAfter, hrRatios, warmup: physioWarmup } = heartRateWindows(st, input.hr, nWin, blockSeconds, keepHr, physio, hrMean, hrStd);
 
   const windows: WindowEval[] = [];
   const tauB = model?.meta.smoothingTimeConstantS ?? 0;
@@ -531,85 +625,11 @@ export function evaluateBlock(input: BlockInput, prev: EngineState, baseline: Ba
   if (physioWarmup) flags.push("physio_warmup");
 
   const last = windows[windows.length - 1];
-  const measured = windows.filter((w) => w.active != null);
-  const result = {
-    rB: round(last.rB, 3), rP: round(last.rP, 3), rT: round(last.rT, 3), healthScore: last.healthScore, level: last.level,
-    stableHealthScore: last.stableHealthScore!, stableLevel: last.stableLevel!,
-    predictedBehavior: last.predicted,
-    behaviorProbs: model?.probs[windows.length - 1]?.map((p) => round(p, 4)) ?? null,
-    signals: {
-      activeFraction: measured.length ? measured.filter((w) => w.active).length / measured.length : 0,
-      activityRatio: last.activityRatio == null ? null : round(last.activityRatio, 4),
-      noveltyRatio: last.noveltyRatio == null ? null : round(last.noveltyRatio, 4),
-      hr: last.hr == null ? null : round(last.hr, 1),
-      temp: input.temp,
-      hrRatio: last.hrRatio == null ? null : round(last.hrRatio, 3),
-    },
-  };
+  const result = blockResult(windows, model?.probs[windows.length - 1] ?? null, input.temp);
 
   if (outOfOrder) return { windows, result, state: prev, flags, alert: null, closed: null, statusDue: false };
 
-  // Alert episodes.
-  let alert: AlertAction | null = null;
-  let closed: ClosedEpisode | null = null;
-  // Without an open episode, only windows from the first armed one count; the alert starts where its
-  // uninterrupted trigger began (possibly in an earlier block).
-  const openAt = st.episode ? 0 : windows.findIndex((w) => w.armed);
-  const counted = openAt < 0 ? [] : windows.slice(openAt);
-  const triggered = counted.filter((w) => w.trigger);
-  if (triggered.length) {
-    const runStart = windows[openAt].runStartMs;
-    const firstTriggerMs = st.episode ? input.blockStartMs + windows.findIndex((w) => w.trigger) * WINDOW_MS
-      : runStart ?? input.blockStartMs + openAt * WINDOW_MS;
-    const lastTriggerEndMs = input.blockStartMs + (windows.map((w) => w.trigger).lastIndexOf(true) + 1) * WINDOW_MS;
-    const worst = triggered.reduce((a, b) => (b.healthScore < a.healthScore ? b : a));
-    const severity: "amber" | "red" = counted.some((w) => w.trigger && w.level === "red") ? "red" : "amber";
-    // The alert names every variable that left its range while the trigger held, not only those of
-    // its last window. Before, a fever that ended while low activity kept the trigger alive was replaced by the
-    // activity in the next update, and the alert of a fever stopped naming the temperature.
-    const ep0 = st.episode;
-    let set: ReasonSet | null = ep0 ? (ep0.reasons ? { reasons: ep0.reasons, fallback: ep0.fallback ?? false } : null) : runAfterW[openAt];
-    for (let i = ep0 ? 0 : openAt + 1; i < windows.length; i++) if (winReasons[i]) set = mergeReasons(set, winReasons[i]!);
-    const merged = set?.reasons ?? [];
-    const components = [...new Set(merged.map((r) => r.component))];
-    if (!ep0) {
-      const titleCode = titleCodeFor(null, merged, false);
-      const reasons = titleFirst(merged, titleCode);
-      st.episode = { alertId: opts.alertId, severity, minHealthScore: worst.healthScore, components, windowsSinceTrigger: 0,
-        startMs: firstTriggerMs, reasons, fallback: set?.fallback ?? false, titleCode };
-      st.openAlerts += 1;
-      alert = { action: "open", alertId: opts.alertId, severity, healthScore: worst.healthScore, reasons, titleCode, startedAtMs: firstTriggerMs };
-    } else {
-      const escalates = severity === "red" && ep0.severity === "amber";
-      // States from before have no reasons: a new component rewrites the alert, as it did then.
-      const changed = ep0.reasons
-        ? reasonsChanged({ reasons: ep0.reasons, fallback: ep0.fallback ?? false }, set!)
-        : components.some((c) => !ep0.components.includes(c));
-      const worse = worst.healthScore <= ep0.minHealthScore - 5;
-      if (escalates || changed || worse) {
-        ep0.severity = escalates ? "red" : ep0.severity;
-        ep0.minHealthScore = Math.min(ep0.minHealthScore, worst.healthScore);
-        ep0.components = [...new Set([...ep0.components, ...components])];
-        ep0.fallback = set?.fallback ?? false;
-        // States from before it have no titleCode; the first update chooses it.
-        ep0.titleCode = titleCodeFor(ep0.titleCode, merged, escalates);
-        ep0.reasons = titleFirst(merged, ep0.titleCode);
-        alert = { action: "update", alertId: ep0.alertId, severity: ep0.severity, healthScore: ep0.minHealthScore, reasons: ep0.reasons, titleCode: ep0.titleCode };
-      }
-      ep0.windowsSinceTrigger = 0;
-    }
-    // Windows after the last trigger inside this block still count towards closing the episode.
-    const lastTrigger = windows.map((w) => w.trigger).lastIndexOf(true);
-    st.episode!.windowsSinceTrigger = windows.length - 1 - lastTrigger;
-    st.episode!.lastTriggerMs = lastTriggerEndMs;
-  } else if (st.episode) {
-    st.episode.windowsSinceTrigger += windows.length;
-    if (st.episode.windowsSinceTrigger * (WINDOW_SAMPLES / 100) >= cfg.episodeGapS) {
-      // The episode ends where its last triggering window ended.
-      closed = { alertId: st.episode.alertId, endedAtMs: st.episode.lastTriggerMs ?? input.blockStartMs };
-      st.episode = null;
-    }
-  }
+  const { alert, closed } = updateEpisode(st, input.blockStartMs, windows, winReasons, runAfterW, cfg, opts.alertId);
 
   // The trigger run that has not opened an alert yet carries its reasons to the next block.
   st.runReasons = st.episode ? null : runAcc;

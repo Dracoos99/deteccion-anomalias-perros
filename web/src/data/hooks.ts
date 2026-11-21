@@ -237,14 +237,19 @@ export function useDogAlerts(dogId: string | undefined, viewer: Viewer, max = 10
   return state;
 }
 
-/** Open alerts of the viewer's dogs (Inicio banners), newest first. */
+/** How many open alerts the app follows live. A count that reaches it is shown as «100+», never as exact. */
+export const OPEN_ALERTS_MAX = 100;
+/** A count of open alerts as the app shows it: «100+» once the live list is full. */
+export const openCountText = (n: number, loaded: number) => (loaded >= OPEN_ALERTS_MAX ? `${OPEN_ALERTS_MAX}+` : String(n));
+
+/** Open alerts of the viewer's dogs (Inicio banners), newest first (also for an admin, index alerts: status, createdAt). */
 export function useOpenAlerts(viewer: Viewer): Live<Alert[]> {
   const [state, setState] = useState<Live<Alert[]>>({ data: [], loading: true, error: null });
   useEffect(() => {
     const alerts = collection(db, "alerts");
     const q = viewer.isAdmin
-      ? query(alerts, where("status", "==", "open"), limit(100))
-      : query(alerts, where("ownerId", "==", viewer.uid), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(100));
+      ? query(alerts, where("status", "==", "open"), orderBy("createdAt", "desc"), limit(OPEN_ALERTS_MAX))
+      : query(alerts, where("ownerId", "==", viewer.uid), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(OPEN_ALERTS_MAX));
     return onSnapshot(q,
       (snap) => setState({ data: snap.docs.map((d) => ({ id: d.id, ...(d.data() as AlertDoc<Timestamp>) })), loading: false, error: null }),
       (err) => setState({ data: [], loading: false, error: err.message }));

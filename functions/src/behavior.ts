@@ -8,6 +8,7 @@ import path from "node:path";
 import * as tf from "@tensorflow/tfjs";
 import { setWasmPaths } from "@tensorflow/tfjs-backend-wasm";
 import { normalizeWindows, type BehaviorModelMeta, type BehaviorOutput } from "./shared/behavior-model";
+import { logger } from "firebase-functions";
 
 export const BUNDLE_DIR = process.env.BEHAVIOR_MODEL_DIR ?? path.resolve(__dirname, "../models/behavior");
 
@@ -69,7 +70,7 @@ let loading: Promise<BehaviorRunner | null> | null = null;
 /** Global, loaded once per instance. Failures fall back to the rule. */
 export function getBehaviorRunner(): Promise<BehaviorRunner | null> {
   loading ??= loadBehaviorModel().catch((e) => {
-    console.error("behavior model not loaded; using the provisional movement rule", e);
+    logger.error("behavior model not loaded; using the provisional movement rule", { error: (e as Error).message });
     return null;
   });
   return loading;

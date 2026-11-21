@@ -168,7 +168,9 @@ check("the console opens at /admin on «Simulador & IA»", await waitPath("/admi
   && await page.waitForSelector(".console-tabs a[aria-current=page]", { timeout: 10000 }).then((el) => el.evaluate((a) => a.textContent.trim())).catch(() => "") === "Simulador & IA");
 check("the console has the tabs Ingesta CSV, Simulador & IA and Revisión experta",
   JSON.stringify(await navLabels(".console-tabs a")) === JSON.stringify(["Ingesta CSV", "Simulador & IA", "Revisión experta"]));
-await page.waitForFunction(() => document.body.innerText.includes("Nueva ejecución"), { timeout: 15000 }).catch(() => {});
+// «Nueva ejecución» is drawn at once; the runs list (or its empty state) only once the runs query answers.
+await page.waitForFunction(() => document.body.innerText.includes("Nueva ejecución")
+  && (document.body.innerText.includes("Ejecuciones recientes") || document.body.innerText.includes("Todavía no hay ejecuciones")), { timeout: 30000 }).catch(() => {});
 const adminText = await text();
 check("simulator panel shows config/fusion values", adminText.includes("0.4 · 0.4 · 0.2") && adminText.includes("Health Score < 60"));
 check("simulator panel lists runs or offers to create one", adminText.includes("Nueva ejecución") && (adminText.includes("Ejecuciones recientes") || adminText.includes("Todavía no hay ejecuciones")));

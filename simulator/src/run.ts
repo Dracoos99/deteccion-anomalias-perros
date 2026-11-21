@@ -19,6 +19,7 @@ import { computeBaseline } from "./baseline";
 import { ANOMALY_CATALOG, schedule } from "../../shared/anomalies";
 import type { EngineConfig } from "../../shared/engine";
 import { DEFAULT_FUSION_CONFIG, type DogDoc, type FusionConfig, type InjectionRequest, type SimulatorRunDoc } from "../../shared/types";
+import { RUN_ABANDONED_MS, runAbandoned } from "../../shared/runs";
 
 type RunState = SimulatorRunDoc["state"];
 /** next: 10 s block of the stream; parts: that block as it goes out.
@@ -35,6 +36,8 @@ export interface RunOptions {
   dataDir?: string;
   /** How long finish() waits for the results of the last blocks (0 when no Functions emulator is running). */
   drainMs?: number;
+  /** The run stops itself after this long (the Cloud Run job, before its task timeout). Absent: no limit. */
+  maxRunMs?: number;
   log?: (msg: string) => void;
 }
 
@@ -84,6 +87,7 @@ export class SimulatorRun {
   private nextAt = 0;
   private timer: NodeJS.Timeout | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
+  private limitTimer: NodeJS.Timeout | null = null;
   private handlingInjection = false;
   private finished = false;
   private resolveDone!: () => void;
@@ -112,10 +116,17 @@ export class SimulatorRun {
     this.timelineStartMs = run.stats?.startedAt?.toMillis?.() ?? Date.now();
     const cfg = await loadConfig(this.db);
 
-    // A dog in two active runs would interleave two timelines in its engine memory (dogState): not allowed.
+    // A dog in two active runs would interleave two timelines in its engine memory (dogState): not allowed. A
+    // run whose process stopped beating long ago no longer holds its dogs; it is marked as stopped and the start goes on.
     const busy = await this.db.collection("simulatorRuns").where("state", "in", ["running", "paused"])
       .where("dogIds", "array-contains-any", run.dogIds).get();
-    const clash = busy.docs.find((d) => d.id !== this.runId);
+    const others = busy.docs.filter((d) => d.id !== this.runId);
+    const now = Date.now();
+    for (const other of others.filter((d) => runAbandoned(d.data() as SimulatorRunDoc<Timestamp>, now))) {
+      await other.ref.update({ state: "stopped", endedBy: "abandoned", worker: null });
+      this.log(`la ejecución ${other.id} no daba señales desde hace más de ${RUN_ABANDONED_MS / 60_000} min: queda detenida`);
+    }
+    const clash = others.find((d) => !runAbandoned(d.data() as SimulatorRunDoc<Timestamp>, now));
     if (clash) {
       const shared = (clash.get("dogIds") as string[]).filter((id) => run.dogIds.includes(id));
       throw new Error(`${shared.join(", ")} ya está en la ejecución activa ${clash.id}. Detenla antes de iniciar otra con el mismo perro.`);
@@ -165,6 +176,8 @@ export class SimulatorRun {
           model && flags ? { version: model.meta.version, active: flags.active, imuMean: stats.mean, imuStd: stats.std } : null);
         await dogSnap.ref.update({ baseline: { ...baseline, computedAt: FieldValue.serverTimestamp() } });
         this.log(`línea base de ${dog.name} (${baseline.activitySource}): movimiento ${Math.round(baseline.activeRatioMean * 100)} %, FC ${baseline.hrMean} lpm, temperatura ${baseline.tempMean} °C`);
+        // A baseline takes about a minute; the heartbeat says the process is alive meanwhile.
+        await this.ref.update({ "worker.heartbeatAt": Timestamp.now() });
       }
       this.dogs.set(dogId, { stream, name: dog.name, ownerId: dog.ownerId, next: 0, parts: null, sub: 0, awaiting: null, awaitingSince: 0 });
     }
@@ -194,6 +207,7 @@ export class SimulatorRun {
     this.nextAt = Date.now();
     this.timer = setTimeout(() => this.tick(), 0);
     this.flushTimer = setInterval(() => void this.flushStats(), STATS_FLUSH_MS);
+    if (this.opts.maxRunMs) this.limitTimer = setTimeout(() => void this.stopAtLimit(), this.opts.maxRunMs);
     if (this.state === "stopped") await this.finish();
   }
 
@@ -372,10 +386,22 @@ export class SimulatorRun {
     await this.finish(reason);
   }
 
+  /** The process's own limit (the Cloud Run job): the run ends as «limit», not killed and left behind. */
+  private async stopAtLimit(): Promise<void> {
+    if (this.finished) return;
+    try {
+      await this.ref.update({ state: "stopped", endedBy: "limit" });
+    } catch (e) {
+      this.log(`no se pudo marcar como detenida: ${(e as Error).message}`);
+    }
+    await this.finish(`se alcanzó el límite de ${Math.round((this.opts.maxRunMs ?? 0) / 60_000)} min del proceso`);
+  }
+
   async finish(reason?: string): Promise<void> {
     if (this.finished) return;
     this.finished = true;
     if (this.timer) clearTimeout(this.timer);
+    if (this.limitTimer) clearTimeout(this.limitTimer);
     await this.drain(this.opts.drainMs ?? 30_000);
     if (this.flushTimer) clearInterval(this.flushTimer);
     await this.flushStats(true);

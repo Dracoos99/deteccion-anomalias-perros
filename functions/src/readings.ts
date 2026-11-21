@@ -13,13 +13,13 @@
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineInt } from "firebase-functions/params";
 import { logger } from "firebase-functions";
-import { FieldValue, Timestamp, getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, getFirestore, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { REGION, SCHEMA_VERSION } from "./config";
 import { prefilterBlock } from "./prefilter";
 // ./behavior (TF.js) is imported lazily: loading it at import time slows the CLI's code analysis (10 s limit).
 const behaviorModule = () => import("./behavior");
 const physioModule = () => import("./physio");
-import { ENGINE_VERSION, evaluateBlock, initialState, type EngineConfig, type EngineState } from "./shared/engine";
+import { ENGINE_VERSION, evaluateBlock, initialState, type BlockEval, type EngineConfig, type EngineState } from "./shared/engine";
 import { DEFAULT_BASELINE_BLOCKS, baselineShare, learnBaseline, type BaselineAcc } from "./shared/baseline";
 import { readWindow } from "./shared/behavior-model";
 import { BEHAVIORS, DEFAULT_FUSION_CONFIG, type Behavior, type CsvUploadDoc, type DogDoc, type FusionConfig, type ReadingDoc } from "./shared/types";
@@ -69,6 +69,71 @@ interface TierState { docStart: number; index: number; slot: TrendSlot }
 
 const TIER_STATE_KEY = { trendsTenSec: "trendTenSec", trendsMinute: "trendMinute" } as const;
 const TEN_SEC_TTL_MS = 7 * 86_400_000;
+
+/** What the trend writers need of a block. */
+interface TrendInput { dogId: string; ownerId: string; blockStartMs: number; ev: BlockEval; hr: number[]; temp: number | null;
+  trend: TrendState | null; tierOf: (key: string) => TierState | null }
+
+/** Adds the block to its 5-minute slot and to the 1-minute and 10-second tiers, and writes the three:
+ * every block writes its slot, so a slot never waits for the next one. Returns the slots to keep in dogState. */
+function writeTrends(tx: Transaction, db: Firestore, t: TrendInput): { trend: TrendState; tiers: Record<string, TierState> } {
+  const { ev, blockStartMs } = t;
+  const day = dayKey(blockStartMs), index = slotIndex(blockStartMs);
+  const measured = ev.windows.filter((w) => w.active != null);
+  const summary: BlockSummary = {
+    healthScore: ev.result.healthScore, level: ev.result.level, windows: measured.length,
+    active: measured.filter((w) => w.active).length, novel: ev.windows.filter((w) => w.novel).length,
+    behaviors: ev.windows.map((w) => w.predicted), hr: t.hr, temp: t.temp,
+    // What the dog's movement band refers to, so the charts draw the same average the engine compares.
+    activityAvg: measured.flatMap((w) => (w.activityRatio == null ? [] : [w.activityRatio])),
+  };
+  const same = t.trend && t.trend.day === day && t.trend.index === index;
+  const trend: TrendState = { day, index, slot: addBlock(same ? t.trend!.slot : emptySlot(), summary), pending: 0 };
+  tx.set(db.doc(`trends/${trendDocId(t.dogId, trend.day)}`), {
+    dogId: t.dogId, ownerId: t.ownerId, day: trend.day, slotMinutes: SLOT_MINUTES, schemaVersion: SCHEMA_VERSION,
+    updatedAt: FieldValue.serverTimestamp(), slots: { [String(trend.index)]: trend.slot },
+  }, { merge: true });
+  // The 1-minute and 10-second tiers, in small documents.
+  const tiers: Record<string, TierState> = {};
+  for (const tier of [MINUTE_TIER, TEN_SEC_TIER] as TrendTier[]) {
+    const key = TIER_STATE_KEY[tier.collection];
+    const prevTier = t.tierOf(key);
+    const docStart = tierDocStart(tier, blockStartMs), tIndex = tierSlotIndex(tier, blockStartMs);
+    const keep = prevTier && prevTier.docStart === docStart && prevTier.index === tIndex;
+    const tierState: TierState = { docStart, index: tIndex, slot: addBlock(keep ? prevTier!.slot : emptySlot(), summary, tier.hrValues) };
+    tiers[key] = tierState;
+    tx.set(db.doc(`${tier.collection}/${tierDocId(tier, t.dogId, blockStartMs)}`), {
+      dogId: t.dogId, ownerId: t.ownerId, startMs: docStart, slotMs: tier.slotMs, schemaVersion: SCHEMA_VERSION,
+      updatedAt: FieldValue.serverTimestamp(), slots: { [String(tIndex)]: tierState.slot },
+      ...(tier.hrValues ? { expireAt: Timestamp.fromMillis(docStart + tier.docMs + TEN_SEC_TTL_MS) } : {}),
+    }, { merge: true });
+  }
+  return { trend, tiers };
+}
+
+/** Writes what the engine decided about the alert episode: a new alert, more reasons or severity for the open one, or its end. */
+function writeAlert(tx: Transaction, db: Firestore, ev: BlockEval,
+  a: { readingId: string; dogId: string; ownerId: string; dogName: string; blockStartMs: number }): void {
+  if (ev.alert) {
+    const alertRef = db.doc(`alerts/${ev.alert.alertId}`);
+    if (ev.alert.action === "open") {
+      tx.create(alertRef, {
+        dogId: a.dogId, resultId: a.readingId, lastResultId: a.readingId, ownerId: a.ownerId,
+        dogName: a.dogName, healthScore: ev.alert.healthScore, severity: ev.alert.severity, reasons: ev.alert.reasons,
+        titleCode: ev.alert.titleCode, status: "open", acknowledgedBy: null, acknowledgedAt: null, notified: false, provisional: true,
+        startedAt: Timestamp.fromMillis(ev.alert.startedAtMs ?? a.blockStartMs), endedAt: null,
+        schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Merge: never touches status or acknowledgement written by the owner.
+      tx.set(alertRef, { healthScore: ev.alert.healthScore, severity: ev.alert.severity, reasons: ev.alert.reasons,
+        titleCode: ev.alert.titleCode, lastResultId: a.readingId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+  }
+  if (ev.closed) {
+    tx.set(db.doc(`alerts/${ev.closed.alertId}`), { endedAt: Timestamp.fromMillis(ev.closed.endedAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+}
 
 export async function processReading(db: Firestore, readingId: string, reading: ReadingDoc<Timestamp>): Promise<ProcessOutcome> {
   const cfg = await getConfig(db);
@@ -139,61 +204,14 @@ export async function processReading(db: Firestore, readingId: string, reading: 
       ev.state.runReasons = null;
     }
     if (ev.state !== prev) {
-      const writeSlot = (t: TrendState) => tx.set(db.doc(`trends/${trendDocId(reading.dogId, t.day)}`), {
-        dogId: reading.dogId, ownerId: dog.ownerId, day: t.day, slotMinutes: SLOT_MINUTES, schemaVersion: SCHEMA_VERSION,
-        updatedAt: FieldValue.serverTimestamp(), slots: { [String(t.index)]: t.slot },
-      }, { merge: true });
-      const day = dayKey(blockStartMs), index = slotIndex(blockStartMs);
-      const measured = ev.windows.filter((w) => w.active != null);
-      const summary: BlockSummary = {
-        healthScore: ev.result.healthScore, level: ev.result.level, windows: measured.length,
-        active: measured.filter((w) => w.active).length, novel: ev.windows.filter((w) => w.novel).length,
-        behaviors: ev.windows.map((w) => w.predicted), hr: pre.hr, temp: pre.temp,
-        // What the dog's movement band refers to, so the charts draw the same average the engine compares.
-        activityAvg: measured.flatMap((w) => (w.activityRatio == null ? [] : [w.activityRatio])),
-      };
-      // Every block writes its slot, so a slot never waits for the next one.
-      const same = trend && trend.day === day && trend.index === index;
-      trend = { day, index, slot: addBlock(same ? trend!.slot : emptySlot(), summary), pending: 0 };
-      writeSlot(trend);
-      // The 1-minute and 10-second tiers, in small documents.
-      const tiers: Record<string, TierState> = {};
-      for (const tier of [MINUTE_TIER, TEN_SEC_TIER] as TrendTier[]) {
-        const key = TIER_STATE_KEY[tier.collection];
-        const prevTier = (stateSnap.exists ? stateSnap.get(key) : null) as TierState | null;
-        const docStart = tierDocStart(tier, blockStartMs), tIndex = tierSlotIndex(tier, blockStartMs);
-        const keep = prevTier && prevTier.docStart === docStart && prevTier.index === tIndex;
-        const tierState: TierState = { docStart, index: tIndex, slot: addBlock(keep ? prevTier!.slot : emptySlot(), summary, tier.hrValues) };
-        tiers[key] = tierState;
-        tx.set(db.doc(`${tier.collection}/${tierDocId(tier, reading.dogId, blockStartMs)}`), {
-          dogId: reading.dogId, ownerId: dog.ownerId, startMs: docStart, slotMs: tier.slotMs, schemaVersion: SCHEMA_VERSION,
-          updatedAt: FieldValue.serverTimestamp(), slots: { [String(tIndex)]: tierState.slot },
-          ...(tier.hrValues ? { expireAt: Timestamp.fromMillis(docStart + tier.docMs + TEN_SEC_TTL_MS) } : {}),
-        }, { merge: true });
-      }
+      const written = writeTrends(tx, db, { dogId: reading.dogId, ownerId: dog.ownerId, blockStartMs, ev, hr: pre.hr, temp: pre.temp,
+        trend, tierOf: (key) => (stateSnap.exists ? stateSnap.get(key) : null) as TierState | null });
+      trend = written.trend;
+      const tiers = written.tiers;
       tx.set(stateRef, { ...ev.state, trend, ...tiers, baselineAcc: acc, sensorOffSinceMs: offSince, updatedAt: FieldValue.serverTimestamp() });
     }
 
-    if (ev.alert) {
-      const alertRef = db.doc(`alerts/${ev.alert.alertId}`);
-      if (ev.alert.action === "open") {
-        tx.create(alertRef, {
-          dogId: reading.dogId, resultId: readingId, lastResultId: readingId, ownerId: dog.ownerId,
-          dogName: dog.name, healthScore: ev.alert.healthScore, severity: ev.alert.severity, reasons: ev.alert.reasons,
-          titleCode: ev.alert.titleCode, status: "open", acknowledgedBy: null, acknowledgedAt: null, notified: false, provisional: true,
-          startedAt: Timestamp.fromMillis(ev.alert.startedAtMs ?? blockStartMs), endedAt: null,
-          schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        // Merge: never touches status or acknowledgement written by the owner.
-        tx.set(alertRef, { healthScore: ev.alert.healthScore, severity: ev.alert.severity, reasons: ev.alert.reasons,
-          titleCode: ev.alert.titleCode, lastResultId: readingId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      }
-    }
-
-    if (ev.closed) {
-      tx.set(db.doc(`alerts/${ev.closed.alertId}`), { endedAt: Timestamp.fromMillis(ev.closed.endedAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
+    writeAlert(tx, db, ev, { readingId, dogId: reading.dogId, ownerId: dog.ownerId, dogName: dog.name, blockStartMs });
 
     if (upload) {
       // CSV progress: the app writes the blocks one after another and follows this counter.

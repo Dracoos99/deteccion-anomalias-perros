@@ -1,10 +1,11 @@
 /* State of a simulator run as the research panel shows it: pure functions, no Firestore, so the rules are
    tested apart from the page (web/test/simRun.test.ts). */
 import type { SimulatorRunDoc } from "@shared/types";
+import { runAbandoned } from "@shared/runs";
 
 type Millis = { toMillis?: () => number } | null | undefined;
 export type RunLike = Pick<SimulatorRunDoc<Millis>, "state" | "worker" | "endedBy" | "durationS" | "speed" | "dogIds" | "stats" | "cloudJob" | "createdAt">;
-export type Phase = "waiting" | "starting" | "stalled" | "running" | "paused" | "finished" | "stopped";
+export type Phase = "waiting" | "starting" | "stalled" | "running" | "paused" | "finished" | "stopped" | "interrupted";
 
 /** How long a run taken by a local simulator process may go without its first block before
  * the panel says it did not start. The process takes a run in under a second and writes its first block a few seconds
@@ -31,8 +32,10 @@ export function finishedByDuration(r: RunLike): boolean {
  * limit, counted from the latest of its creation and the process's last sign of life (`worker.heartbeatAt`); past it,
  * «No arrancó». */
 export function runPhase(r: RunLike, now: number): Phase {
-  if (r.state === "stopped") return finishedByDuration(r) ? "finished" : "stopped";
+  // «Se interrumpió» when its process stopped beating (shared/runs.ts), also after another process closed it.
+  if (r.state === "stopped") return r.endedBy === "abandoned" ? "interrupted" : finishedByDuration(r) ? "finished" : "stopped";
   if (!r.worker) return "waiting";
+  if (runAbandoned(r, now)) return "interrupted";
   if (r.state === "running" && !((r.stats?.blocksWritten ?? 0) > 0)) {
     const since = Math.max(r.createdAt?.toMillis?.() ?? 0, r.worker.heartbeatAt?.toMillis?.() ?? 0);
     const limit = r.cloudJob ? CLOUD_START_LIMIT_MS : START_LIMIT_MS;
@@ -40,6 +43,9 @@ export function runPhase(r: RunLike, now: number): Phase {
   }
   return r.state;
 }
+
+/** The runs that hold their dogs, which a new run cannot take: active and with a process alive. */
+export const holdsDogs = (r: RunLike, now: number) => r.state !== "stopped" && !runAbandoned(r, now);
 
 /** A latency over the goal says so in words, not only in colour. */
 export const overGoal = (ms: number | null | undefined) => ms != null && ms > LATENCY_GOAL_MS;

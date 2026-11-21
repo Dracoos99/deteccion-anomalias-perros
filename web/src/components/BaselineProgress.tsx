@@ -17,7 +17,7 @@ export function BaselineProgress({ dog, cfg, full = false }: { dog: Dog; cfg: Fu
   // «Casi listo» under a minute and a half, never «unos menos de 1 minuto» or «unos 1 min»; the percent stays with
   // its number.
   const left = info.leftMs >= 90_000 ? `Faltan unos ${durationText(info.leftMs)} de sus datos.` : "Casi listo.";
-  const pct = `${info.pct} %`;
+  const pct = `${info.pct}\u00a0%`;
   const line = info.stage === 1
     ? `Aprendiendo qué es normal para ${dog.name}: etapa 1 de 2, ${pct}. ${left}`
     : `Afinando cómo se mueve ${dog.name} con el modelo de conducta: etapa 2 de 2, ${pct}. ${left}`;

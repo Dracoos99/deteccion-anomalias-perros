@@ -10,7 +10,7 @@ import { db, usingEmulators } from "../firebase";
 import { Ago, Callout, EmptyState, Icon, LevelTag, PageFrame, PageHead, Seg, StateTag, fmtNum, useNow, usePageTitle } from "../components/ui";
 import { useActiveModels, useDogs, useFusionConfig, useRuns, type Dog, type Run } from "../data/hooks";
 import { datasetText, durationText } from "../lib/plain";
-import { learningStageMs, overGoal, runPhase, type Phase, type RunLike } from "../lib/simRun";
+import { holdsDogs, learningStageMs, overGoal, runPhase, type Phase, type RunLike } from "../lib/simRun";
 import { BehaviorCompare, RunPipeline } from "../components/RunInsights";
 
 const SPEEDS = [1, 2, 5, 10];
@@ -25,6 +25,7 @@ const PHASE: Record<Phase, { text: string; cls: string; icon: string }> = {
   paused: { text: "En pausa", cls: "tag-amber", icon: "pause" },
   finished: { text: "Terminada", cls: "tag-outline", icon: "check" },
   stopped: { text: "Detenida", cls: "tag-outline", icon: "square" },
+  interrupted: { text: "Se interrumpió", cls: "tag-amber", icon: "alert-triangle" },
 };
 
 /** State of a run as a tag: colour, icon and text (playing in green, paused and not started in amber, the rest
@@ -207,13 +208,89 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
   );
 }
 
+/** What the run needs said about its process: waiting for one, not started, interrupted, stopped at the job's
+ * limit, or an error. */
+function RunNotices({ run, phase }: { run: Run; phase: Phase }) {
+  const waiting = run.state !== "stopped" && !run.worker;
+  const stalled = phase === "stalled";
+  return (
+    <>
+      {waiting && (run.cloudJob && !run.cloudJob.error
+        ? <div className="callout"><Icon name="clock" size={16} style={{ marginTop: 1 }} /><div>Iniciando el simulador en la nube. La primera vez puede tardar alrededor de un minuto.</div></div>
+        : <Callout kind="error">{run.cloudJob?.error
+          ? <>No se pudo iniciar el simulador en la nube ({run.cloudJob.error}). Puedes ejecutarlo desde un equipo con <span className="mono">npm run sim -- serve</span>.</>
+          : <>Esperando al proceso del simulador. Ejecuta <span className="mono">npm run sim -- serve</span> en una terminal.</>}</Callout>)}
+      {stalled && (
+        <div className="callout callout-warn"><Icon name="alert-triangle" size={16} style={{ marginTop: 1, color: "var(--color-status-amber)" }} /><div>
+          <strong>No arrancó:</strong> revisa que el proceso del simulador esté encendido{run.cloudJob ? " (el trabajo de Cloud Run)" : <> (<span className="mono">npm run sim -- serve</span>)</>}. La primera ejecución después de cambiar el modelo de conducta recalcula la línea base de los perros y puede tardar unos minutos más.
+        </div></div>
+      )}
+      {/* A process that stopped beating, and the job's own limit. */}
+      {phase === "interrupted" && (
+        <div className="callout callout-warn"><Icon name="alert-triangle" size={16} style={{ marginTop: 1, color: "var(--color-status-amber)" }} /><div>
+          <strong>Se interrumpió:</strong> el proceso del simulador dejó de dar señales hace más de 15 minutos (por ejemplo, el trabajo de Cloud Run llegó a su límite de 6 horas). Sus perros quedan libres para otra ejecución{run.state !== "stopped" ? "; detenla para cerrarla" : ""}.
+        </div></div>
+      )}
+      {run.endedBy === "limit" && <div className="callout"><Icon name="info" size={16} style={{ marginTop: 1 }} /><div>Se detuvo sola al llegar al límite de 5 h 30 min del simulador en la nube. Para más tiempo, crea otra ejecución.</div></div>}
+      {run.error && <Callout kind="error">{run.error}</Callout>}
+    </>
+  );
+}
+
+/** The dogs of the run: the state of their last block and the anomaly being injected now. */
+function RunDogsTable({ run, dogs, active }: { run: Run; dogs: Map<string, Dog>; active: Run["injectionsLog"] }) {
+  return (
+    <section className="panel stack-sm" aria-labelledby="dogs-title">
+      <h2 className="panel-title" id="dogs-title">Perros de la ejecución</h2>
+      <div className="table-wrap" role="region" aria-label="Perros de la ejecución" tabIndex={0}>
+        <table className="table table-stack">
+          <thead><tr><th scope="col">Perro</th><th scope="col">Estado del último bloque</th><th scope="col" className="num">HS</th><th scope="col">Anomalía activa</th></tr></thead>
+          <tbody>{run.dogIds.map((id) => {
+            const d = dogs.get(id), st = d?.status;
+            const inj = active.filter((j) => j.dogId === id);
+            return (
+              <tr key={id}>
+                <td data-title><strong>{d?.name ?? id}</strong><div className="xs muted">{d?.breed}</div></td>
+                {/* A collar that seems off is a state of the sensor, and a dog still learning has no level yet. */}
+                <td data-label="Estado del último bloque">{st?.sensor === "no_wear" ? <StateTag level={st.level} sensorOff iconSize={12} />
+                  : st && !d?.baseline ? <StateTag level={st.level} learning iconSize={12} /> : <LevelTag level={st?.level} />}</td>
+                <td className="num tabular strong" data-label="HS">{st?.sensor === "no_wear" || (st && !d?.baseline) ? "—" : st?.healthScore ?? "—"}</td>
+                <td data-label="Anomalía activa" data-wide>{inj.length ? injectionsText(inj) : <span className="muted">—</span>}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** Latency of the run, from the write of each block to its result; over the goal (RNF-01) it says so in words. */
+function LatencyPanel({ stats: s }: { stats: Run["stats"] }) {
+  const sec = (ms: number | null | undefined) => (ms == null ? "—" : `${fmtNum(ms / 1000, 2)} s`);
+  const goalNote = (ms: number | null | undefined) => (overGoal(ms) ? <div className="stat-note out-of-range"><Icon name="alert-triangle" size={12} /> sobre la meta de 5 s</div> : null);
+  return (
+    <section className="panel stack-sm" aria-labelledby="lat-title">
+      <h2 className="panel-title" id="lat-title">Latencia medida</h2>
+      <div className="stats stats-3">
+        <div className="stat"><div className="stat-label">Promedio</div><div className="stat-value tabular">{sec(s.avgLatencyMs)}</div>{goalNote(s.avgLatencyMs)}</div>
+        <div className="stat"><div className="stat-label">Percentil 95</div><div className="stat-value tabular">{sec(s.p95LatencyMs)}</div>{goalNote(s.p95LatencyMs)}</div>
+        <div className="stat"><div className="stat-label">Máxima</div><div className="stat-value tabular">{sec(s.maxLatencyMs)}</div>{goalNote(s.maxLatencyMs)}</div>
+      </div>
+      <p className="xs muted">Desde la escritura de cada bloque en <span className="mono">readings</span> hasta su resultado (<span className="mono">results.latencyMs</span>), últimos 500 bloques.
+        {usingEmulators ? <strong> Medida en los emuladores locales:</strong> : null}{usingEmulators ? " no representa la latencia en la nube." : null}</p>
+      <div className="row small latency-goal"><Icon name="zap" size={15} />Meta del sistema: menos de 5 s (RNF-01).</div>
+    </section>
+  );
+}
+
 /** «Detener» asks first, on the page, when the run is in course or was created by another account; and
  * the panel stays on the stopped run, so the button never lands on another run under the pointer. */
 function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog>; uid: string; onKeep: (runId: string) => void }) {
   const ref = doc(db, "simulatorRuns", run.id);
   // «Iniciando» turns into «No arrancó» with the clock, not only with a new snapshot of the run.
   const now = useNow(5000);
-  const stalled = runPhase(run, now) === "stalled";
+  const phase = runPhase(run, now);
   const setState = (state: string) => updateDoc(ref, { state });
   const [confirmStop, setConfirmStop] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -234,10 +311,6 @@ function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog
     perDog >= j.endBlock ? " · terminada"
       : ended ? (perDog >= j.startBlock ? " · cortada: la ejecución terminó antes" : " · no llegó a aplicarse: la ejecución terminó antes")
         : perDog >= j.startBlock ? " · en curso" : "";
-  const waiting = run.state !== "stopped" && !run.worker;
-  const sec = (ms: number | null | undefined) => (ms == null ? "—" : `${fmtNum(ms / 1000, 2)} s`);
-  // A latency over the goal says so in words, with the colour of «Atención».
-  const goalNote = (ms: number | null | undefined) => (overGoal(ms) ? <div className="stat-note out-of-range"><Icon name="alert-triangle" size={12} /> sobre la meta de 5 s</div> : null);
   return (
     <>
     <div className="split split-run">
@@ -269,17 +342,7 @@ function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog
             </div>
           </div>
         )}
-        {waiting && (run.cloudJob && !run.cloudJob.error
-          ? <div className="callout"><Icon name="clock" size={16} style={{ marginTop: 1 }} /><div>Iniciando el simulador en la nube. La primera vez puede tardar alrededor de un minuto.</div></div>
-          : <Callout kind="error">{run.cloudJob?.error
-            ? <>No se pudo iniciar el simulador en la nube ({run.cloudJob.error}). Puedes ejecutarlo desde un equipo con <span className="mono">npm run sim -- serve</span>.</>
-            : <>Esperando al proceso del simulador. Ejecuta <span className="mono">npm run sim -- serve</span> en una terminal.</>}</Callout>)}
-        {stalled && (
-          <div className="callout callout-warn"><Icon name="alert-triangle" size={16} style={{ marginTop: 1, color: "var(--color-status-amber)" }} /><div>
-            <strong>No arrancó:</strong> revisa que el proceso del simulador esté encendido{run.cloudJob ? " (el trabajo de Cloud Run)" : <> (<span className="mono">npm run sim -- serve</span>)</>}. La primera ejecución después de cambiar el modelo de conducta recalcula la línea base de los perros y puede tardar unos minutos más.
-          </div></div>
-        )}
-        {run.error && <Callout kind="error">{run.error}</Callout>}
+        <RunNotices run={run} phase={phase} />
         <div className="stats">
           <div className="stat"><div className="stat-label">Perros</div><div className="stat-value">{run.dogIds.length}</div></div>
           <div className="stat"><div className="stat-label">Bloques escritos</div><div className="stat-value tabular">{fmtNum(s.blocksWritten)}</div>
@@ -290,43 +353,12 @@ function RunDetail({ run, dogs, uid, onKeep }: { run: Run; dogs: Map<string, Dog
       </section>
       </div>
 
-        <section className="panel stack-sm" aria-labelledby="dogs-title">
-          <h2 className="panel-title" id="dogs-title">Perros de la ejecución</h2>
-          <div className="table-wrap" role="region" aria-label="Perros de la ejecución" tabIndex={0}>
-            <table className="table table-stack">
-              <thead><tr><th scope="col">Perro</th><th scope="col">Estado del último bloque</th><th scope="col" className="num">HS</th><th scope="col">Anomalía activa</th></tr></thead>
-              <tbody>{run.dogIds.map((id) => {
-                const d = dogs.get(id), st = d?.status;
-                const inj = active.filter((j) => j.dogId === id);
-                return (
-                  <tr key={id}>
-                    <td data-title><strong>{d?.name ?? id}</strong><div className="xs muted">{d?.breed}</div></td>
-                    {/* A collar that seems off is a state of the sensor, and a dog still learning has no level yet. */}
-                    <td data-label="Estado del último bloque">{st?.sensor === "no_wear" ? <StateTag level={st.level} sensorOff iconSize={12} />
-                      : st && !d?.baseline ? <StateTag level={st.level} learning iconSize={12} /> : <LevelTag level={st?.level} />}</td>
-                    <td className="num tabular strong" data-label="HS">{st?.sensor === "no_wear" || (st && !d?.baseline) ? "—" : st?.healthScore ?? "—"}</td>
-                    <td data-label="Anomalía activa" data-wide>{inj.length ? injectionsText(inj) : <span className="muted">—</span>}</td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
-          </div>
-        </section>
+        <RunDogsTable run={run} dogs={dogs} active={active} />
       </div>
 
       <div className="stack">
         <InjectForm key={run.id} run={run} dogs={dogs} />
-        <section className="panel stack-sm" aria-labelledby="lat-title">
-          <h2 className="panel-title" id="lat-title">Latencia medida</h2>
-          <div className="stats stats-3">
-            <div className="stat"><div className="stat-label">Promedio</div><div className="stat-value tabular">{sec(s.avgLatencyMs)}</div>{goalNote(s.avgLatencyMs)}</div>
-            <div className="stat"><div className="stat-label">Percentil 95</div><div className="stat-value tabular">{sec(s.p95LatencyMs)}</div>{goalNote(s.p95LatencyMs)}</div>
-            <div className="stat"><div className="stat-label">Máxima</div><div className="stat-value tabular">{sec(s.maxLatencyMs)}</div>{goalNote(s.maxLatencyMs)}</div>
-          </div>
-          <p className="xs muted">Desde la escritura de cada bloque en <span className="mono">readings</span> hasta su resultado (<span className="mono">results.latencyMs</span>), últimos 500 bloques.
-            {usingEmulators ? <strong> Medida en los emuladores locales:</strong> : null}{usingEmulators ? " no representa la latencia en la nube." : null}</p>
-          <div className="row small latency-goal"><Icon name="zap" size={15} />Meta del sistema: menos de 5 s (RNF-01).</div>
-        </section>
+        <LatencyPanel stats={s} />
       </div>
     </div>
 
@@ -436,9 +468,9 @@ export function SimulatorPage() {
   const { data: allDogs } = useDogs({ kind: "all" });
   const dogs = useMemo(() => new Map(allDogs.map((d) => [d.id, d])), [allDogs]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = runs.find((r) => r.id === selectedId) ?? runs.find((r) => r.state !== "stopped") ?? runs[0];
-  // The dogs of the active runs, which a new run cannot take.
-  const busyDogs = useMemo(() => new Set(runs.filter((r) => r.state !== "stopped").flatMap((r) => r.dogIds)), [runs]);
+  const selected = runs.find((r) => r.id === selectedId) ?? runs.find((r) => holdsDogs(r, now)) ?? runs[0];
+  // The dogs of the active runs, which a new run cannot take. Not those of a run whose process stopped beating.
+  const busyDogs = useMemo(() => new Set(runs.filter((r) => holdsDogs(r, now)).flatMap((r) => r.dogIds)), [runs, now]);
   const showRun = (runId: string) => {
     setSelectedId(runId);
     window.requestAnimationFrame(() => {

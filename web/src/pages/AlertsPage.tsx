@@ -10,7 +10,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AlertItem, ReviewTag } from "../components/AlertItem";
 import { Callout, Icon, LEVELS, Notice, PageHead, useNow, usePageTitle } from "../components/ui";
-import { useAlerts, useDogs, useOpenAlerts, type Alert } from "../data/hooks";
+import { openCountText, useAlerts, useDogs, useOpenAlerts, type Alert } from "../data/hooks";
 import { applyBulk, newAlertIds } from "../lib/alertActions";
 import { UNDO_MS, bulkDoneText, bulkStorageKey, bulkUndoneText, restoreBulk, type BulkChange, type StoredBulk } from "../lib/bulkAlerts";
 import { freshness, simulatedTime } from "../lib/live";
@@ -43,7 +43,7 @@ function readStoredBulk(key: string): BulkDone | null {
 }
 
 /** Tabs that move with the arrow keys, Home and End (the tab pattern), each with its panel. */
-function TabList({ value, onChange, counts }: { value: Tab; onChange: (t: Tab) => void; counts: Partial<Record<Tab, number>> }) {
+function TabList({ value, onChange, counts }: { value: Tab; onChange: (t: Tab) => void; counts: Partial<Record<Tab, number | string>> }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = TABS.findIndex((t) => t.id === value);
@@ -192,7 +192,7 @@ export function AlertsPage() {
       </div>
       <div className="alert-center">
         <div className="alert-center-bar">
-          <TabList value={tab} onChange={setTab} counts={{ activas: openLoading || !active.length ? undefined : active.length }} />
+          <TabList value={tab} onChange={setTab} counts={{ activas: openLoading || !active.length ? undefined : openCountText(active.length, openOfAll.length) }} />
           {dogs.length > 1 && (
             <label className="row alert-dog-filter">
               <span className="small">Perro</span>

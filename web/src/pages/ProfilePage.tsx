@@ -10,7 +10,7 @@ import { Callout, Icon, PageHead, Seg, usePageTitle } from "../components/ui";
 import { auth, db } from "../firebase";
 import { applyPalette, applyTheme, storedTheme, usePalette, type Palette, type Theme } from "../lib/theme";
 
-const NAME_MAX = 60;
+const NAME_MAX = 80;   // the limit setInitialRole keeps (and firestore.rules)
 
 /** The three styles, each shown with a preview in its own colours and title font. */
 const STYLES: { id: Palette; name: string; icon: string; desc: string }[] = [

@@ -24,7 +24,7 @@ from sklearn.metrics import f1_score
 from . import config as C
 from .tfsetup import keras, tf
 from .dataset import load_sequences, load_windows
-from .train_behavior import (ACTIVE_CLASSES, BUNDLE_DIR, NOVELTY_QUANTILE, PARITY_PATH, classification_report, export_tfjs,
+from .train_behavior import (ACTIVE_CLASSES, BUNDLE_DIR, NOVELTY_QUANTILE, classification_report, export_tfjs,
                              git_commit, novelty_report)
 
 TAUS_S = (0, 2, 4, 6, 8, 12, 20)   # 0: no smoothing
@@ -45,7 +45,7 @@ def smooth_sequence(probs: np.ndarray, meta, tau_s: float, step: int) -> tuple[n
                 continue
             s = meta.loc[sel, "start"].to_numpy()
             ema = None
-            for r, st, prev in zip(sel, s, np.r_[-10**9, s[:-1]]):
+            for r, st, prev in zip(sel, s, np.r_[-10**9, s[:-1]], strict=True):
                 p = probs[r]
                 ema = p if ema is None or st - prev != step else ema + alpha * (p - ema)
                 keep.append(r)
@@ -96,7 +96,7 @@ def main() -> None:
 
     avg = {k: np.mean([p[k] for p in probs], axis=0) for k in ("val", "test", "test_unlabeled", "val_sequence", "test_sequence")}
     per_member = [{"seed": s, "val_macro_f1": round(float(f1_score(y_va, p["val"].argmax(1), average="macro")), 4),
-                   "test_macro_f1": round(float(f1_score(y_te, p["test"].argmax(1), average="macro")), 4)} for s, p in zip(seeds, probs)]
+                   "test_macro_f1": round(float(f1_score(y_te, p["test"].argmax(1), average="macro")), 4)} for s, p in zip(seeds, probs, strict=True)]
     for m in per_member:
         print(f"seed {m['seed']}: val {m['val_macro_f1']} · test {m['test_macro_f1']}")
 

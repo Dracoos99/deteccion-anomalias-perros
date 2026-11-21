@@ -22,6 +22,7 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { PROJECT_ID, USING_EMULATORS } from "./config";
 import { loadManifest } from "./data";
 import { SimulatorRun, createRun, runJob, serveRuns } from "./run";
+import { JOB_MAX_RUN_S } from "../../shared/runs";
 import { fetchRunData, jobWorkerId } from "./cloud";
 import { buildReport, formatReport } from "./report";
 import { runPhysioSweep, runSweep } from "./sweep";
@@ -90,6 +91,8 @@ async function main(): Promise<void> {
       const dataDir = process.env.SIM_DATA_URI ? await fetchRunData(firestore, runId, process.env.SIM_DATA_URI) : undefined;
       const outcome = await runJob(firestore, runId, {
         workerId: process.env.CLOUD_RUN_JOB ? jobWorkerId() : workerId, dataDir,
+        // Stop before the job's 6 h task timeout, so the run never stays «running» without a process.
+        maxRunMs: Number(process.env.SIM_MAX_RUN_S ?? JOB_MAX_RUN_S) * 1000,
         // Cloud Run sends SIGTERM when the job is cancelled or times out: the run is stopped, not left claimed.
         onRun: (run) => process.once("SIGTERM", () => void run.stop("el job se detuvo")),
       });

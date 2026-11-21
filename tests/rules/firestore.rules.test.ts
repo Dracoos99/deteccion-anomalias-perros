@@ -1,13 +1,14 @@
 // Security rules tests (run with: npm run test:rules). Cover the access matrix,,
 // (owners and a script-assigned admin; no vet role), (CSV uploads, notification tokens),
-// (clearing the Alertas list and undoing a review) (archiving a dog).
+// (undoing a review), (archiving a dog) (dogs deleted only by an admin or the Function, contact
+// fields and CSV blocks validated).
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 import {
   assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import {
-  Timestamp, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where,
+  Timestamp, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 
 let env: RulesTestEnvironment;
@@ -21,8 +22,8 @@ const anon = () => env.unauthenticatedContext().firestore();
 
 const dog1 = { name: "Toby", ownerId: "owner1", active: true, schemaVersion: 1,
   status: { healthScore: 88, level: "green", openAlerts: 1 } };
-const csvReading = { dogId: "dog1", ownerId: "owner1", source: "csv", sourceRef: "up1",
-  imuHz: 100, imu: [0, 0, 0, 0, 0, 0], hr: [], processed: false, schemaVersion: 1 };
+const csvReading = { dogId: "dog1", ownerId: "owner1", source: "csv", sourceRef: "up1", blockStart: Timestamp.fromMillis(1_760_000_000_000),
+  imuHz: 100, imu: [0, 0, 0, 0, 0, 0], hr: [], temp: 38.6, processed: false, schemaVersion: 1 };
 
 beforeAll(async () => {
   const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080").split(":");
@@ -77,9 +78,10 @@ describe("dogs", () => {
     await assertFails(updateDoc(doc(owner(), "dogs/dog1"), { ownerId: "owner2" }));
     await assertFails(updateDoc(doc(otherOwner(), "dogs/dog1"), { name: "X" }));
   });
-  it("only the owner (or admin) deletes", async () => {
+  it("only an admin deletes a dog document; the owner deletes for good through the Function", async () => {
     await assertFails(deleteDoc(doc(otherOwner(), "dogs/dog1")));
-    await assertSucceeds(deleteDoc(doc(owner(), "dogs/dog1")));
+    await assertFails(deleteDoc(doc(owner(), "dogs/dog1")));
+    await assertSucceeds(deleteDoc(doc(admin(), "dogs/dog1")));
   });
   it("the owner archives its dog («Quitar perro») and brings it back; nobody else can", async () => {
     await assertFails(updateDoc(doc(otherOwner(), "dogs/dog1"), { active: false }));
@@ -110,6 +112,14 @@ describe("readings", () => {
     await assertFails(setDoc(doc(owner(), "readings/b8"), { ...csvReading, sourceRef: "missing" }));
     await assertFails(setDoc(doc(owner(), "readings/b9"), { ...csvReading, imu: new Array(6006).fill(0) }));
     await assertFails(setDoc(doc(owner(), "readings/b10"), { ...csvReading, hr: new Array(11).fill(70) }));
+  });
+  it("a CSV block carries its time, 100 Hz and a temperature that is a number or nothing", async () => {
+    await assertSucceeds(setDoc(doc(owner(), "readings/b11"), { ...csvReading, temp: null }));
+    const { blockStart: _missing, ...noTime } = csvReading;
+    await assertFails(setDoc(doc(owner(), "readings/b12"), noTime));
+    await assertFails(setDoc(doc(owner(), "readings/b13"), { ...csvReading, blockStart: "2026-10-01" }));
+    await assertFails(setDoc(doc(owner(), "readings/b14"), { ...csvReading, imuHz: 50 }));
+    await assertFails(setDoc(doc(owner(), "readings/b15"), { ...csvReading, temp: "38.6" }));
   });
 });
 
@@ -217,16 +227,24 @@ describe("users", () => {
     await assertFails(getDoc(doc(owner(), "users/owner2")));
     await assertSucceeds(getDoc(doc(admin(), "users/owner2")));
   });
-  it("a user marks when it cleared its own Alertas list, for every dog or one, and undoes it", async () => {
-    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.byDog.dog1": serverTimestamp() }));
-    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.all": deleteField() }));
-    await assertFails(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.other": serverTimestamp() }));
-    await assertFails(updateDoc(doc(owner(), "users/owner1"), { alertsCleared: "all" }));
-    await assertFails(updateDoc(doc(owner(), "users/owner1"),
-      { "alertsCleared.byDog": Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`d${i}`, new Date()])) }));
-    await assertFails(updateDoc(doc(otherOwner(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
-    await assertFails(updateDoc(doc(admin(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
+  it("the name is text of 1 to 80 characters and the phone short text or nothing", async () => {
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { displayName: "L".repeat(80) }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { displayName: "" }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { displayName: "L".repeat(81) }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { displayName: 42 }));
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { phone: null }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { phone: "9".repeat(31) }));
+  });
+  it("an older profile that does not meet the contact checks can still save its other fields", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users/owner1"), { role: "owner", displayName: "", email: "l@example.com", phone: 12345 });
+    });
+    await assertSucceeds(updateDoc(doc(owner(), "users/owner1"), { notificationPrefs: { red: true, amber: false } }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { displayName: "L".repeat(81) }));
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { phone: 999 }));
+  });
+  it("nobody writes the retired «Limpiar lista» mark any more", async () => {
+    await assertFails(updateDoc(doc(owner(), "users/owner1"), { "alertsCleared.all": serverTimestamp() }));
   });
 });
 

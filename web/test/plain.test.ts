@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_FUSION_CONFIG, type AlertReason, type DogStatus } from "../../shared/types";
 import {
-  DATASET_TEXT, ORDER_HOLD_MS, SCORE_HOLD_MS, activityFriendly, aheadNote, aheadTag, alertTitle, attentionOrder, attentionRank, axisTimeLabels, behaviorNow, byAttention,
-  chartTimeText, contextLine, dayHeading, datasetText, describeDog, durationText, endSentence, heartFar, heartFriendly, homeSummary, hrBand, coverageText, glueTime,
+  DATASET_TEXT, ORDER_HOLD_MS, SCORE_HOLD_MS, activityFriendly, aheadNote, aheadTag, alertTitle, attentionOrder, attentionRank, axisTimeLabels, behaviorNow,
+  chartTimeText, contextLine, dayHeading, datasetText, describeDog, durationText, endSentence, heartFar, heartFriendly, hrBand, coverageText, glueTime,
   isLearning, lastValue, namesText, orderReasons, primaryReason, reasonLabel, reasonRangeText, reasonUnit, scoreNote, shownScore, splitReasons, steadyScore,
   tempFriendly, titleReason, whatToDo, whenPhrase, whenText,
 } from "../src/lib/plain";
@@ -161,45 +161,22 @@ describe("stable level, learning and what to do", () => {
   });
 });
 
-describe("Inicio summary and order", () => {
-  const dogs = [
-    { name: "Toby", level: "green" as const }, { name: "Rocky", level: "red" as const },
-    { name: "Luna", level: "amber" as const }, { name: "Mora", level: null },
-  ];
+describe("Inicio order", () => {
+  const order = (dogs: { name: string; level: "green" | "amber" | "red" | null; learning?: boolean; openAlert?: boolean; stale?: boolean }[]) =>
+    attentionOrder(dogs.map((d) => ({ ...d, id: d.name })), new Map(), 0).ids;
   it("puts the dogs that need a look first, then the rest, then those without data", () => {
-    expect(byAttention(dogs).map((d) => d.name)).toEqual(["Rocky", "Luna", "Toby", "Mora"]);
+    expect(order([
+      { name: "Toby", level: "green" }, { name: "Rocky", level: "red" }, { name: "Luna", level: "amber" }, { name: "Mora", level: null },
+    ])).toEqual(["Rocky", "Luna", "Toby", "Mora"]);
   });
   it("puts a dog with a new alert before the others in «Todo normal», and one still learning after them", () => {
-    const more = [
-      { name: "Bruno", level: "green" as const }, { name: "Rocky", level: "green" as const, openAlert: true },
-      { name: "Nina", level: "green" as const, learning: true }, { name: "Luna", level: "amber" as const }, { name: "Max", level: null },
-    ];
-    expect(byAttention(more).map((d) => d.name)).toEqual(["Luna", "Rocky", "Bruno", "Nina", "Max"]);
+    expect(order([
+      { name: "Bruno", level: "green" }, { name: "Rocky", level: "green", openAlert: true },
+      { name: "Nina", level: "green", learning: true }, { name: "Luna", level: "amber" }, { name: "Max", level: null },
+    ])).toEqual(["Luna", "Rocky", "Bruno", "Nina", "Max"]);
   });
-  it("says first which dogs moved away from their normal pattern, without gendered words", () => {
-    // The dog without data is said apart.
-    expect(homeSummary(dogs)).toBe("Rocky se alejó de su patrón normal; revisa cómo está. Luna tiene un cambio leve. Toby está como de costumbre. Todavía no hay datos de Mora.");
-    expect(homeSummary([{ name: "Toby", level: "green" }])).toBe("Toby está dentro de su patrón normal.");
-    expect(homeSummary([{ name: "Toby", level: "green" }, { name: "Luna", level: "green" }])).toBe("Todo en orden: tus 2 perros están dentro de su patrón normal.");
-    expect(homeSummary([{ name: "Mora", level: null }])).toBeNull();
-    const many = ["Bruno", "Coco", "Kira", "Max"].map((name) => ({ name, level: "green" as const }));
-    expect(homeSummary([...many, { name: "Nala", level: "red" }, { name: "Simba", level: "red" }]))
-      .toBe("Nala y Simba se alejaron de su patrón normal; revisa cómo están. Los otros 4 están como de costumbre.");
+  it("joins names as a person writes them", () => {
     expect(namesText(["Bruno", "Coco", "Kira"])).toBe("Bruno, Coco y Kira");
-    // A dog without a baseline is learning, never "within its normal pattern".
-    expect(homeSummary([{ name: "Pelusa", level: "green", learning: true }])).toBe("Estamos aprendiendo el patrón normal de Pelusa.");
-    expect(homeSummary([{ name: "Toby", level: "green" }, { name: "Pelusa", level: "green", learning: true }]))
-      .toBe("Toby está dentro de su patrón normal. Estamos aprendiendo el patrón normal de Pelusa.");
-  });
-  it("never says «Todo en orden» while an alert waits, and does not describe old data in the present", () => {
-    expect(homeSummary([{ name: "Luna", level: "green" }, { name: "Rocky", level: "green", openAlert: true }, { name: "Toby", level: "green" }]))
-      .toBe("Luna, Rocky y Toby están como de costumbre. Rocky tiene una alerta nueva.");
-    expect(homeSummary([{ name: "Bartolomé", level: "green", stale: true }])).toBe("No recibimos datos recientes de Bartolomé.");
-    expect(homeSummary([{ name: "Toby", level: "green" }, { name: "Bartolomé", level: "red", stale: true }]))
-      .toBe("Toby está dentro de su patrón normal. No recibimos datos recientes de Bartolomé.");
-    // A dog named for its level is not named again for its alert.
-    expect(homeSummary([{ name: "Rocky", level: "red", openAlert: true }, { name: "Luna", level: "green" }]))
-      .toBe("Rocky se alejó de su patrón normal; revisa cómo está. Luna está como de costumbre.");
   });
 });
 
@@ -274,22 +251,6 @@ describe(" of the alert's name, the phrase and what to do", () => {
   });
 });
 
-describe(" of the Inicio summary", () => {
-  it("says a dog whose new alert already ended is back to its usual, and does not count it twice", () => {
-    expect(homeSummary([{ name: "Luna", level: "green" }, { name: "Rocky", level: "green" }, { name: "Toby", level: "green", openAlert: true, alertEnded: true }]))
-      .toBe("Toby tiene una alerta nueva que ya pasó; ahora está como de costumbre. Luna y Rocky están como de costumbre.");
-  });
-  it("counts with the real total, «los» for the research account, and the dogs without data apart", () => {
-    const withData = ["Luna", "Max", "Rocky", "Toby"].map((name) => ({ name, level: "green" as const }));
-    const without = ["Bruno", "Coco", "Kira", "Mora", "Nala", "Simba"].map((name) => ({ name, level: null }));
-    expect(homeSummary([...withData, { name: "Nina", level: "green", learning: true }, ...without], { all: true }))
-      .toBe("De los 11 perros, 4 están dentro de su patrón normal. Estamos aprendiendo el patrón normal de Nina. Todavía no hay datos de 6 perros.");
-    expect(homeSummary(withData, { all: true })).toBe("Todo en orden: los 4 perros están dentro de su patrón normal.");
-    expect(homeSummary([{ name: "Toby", level: "green" }, { name: "Luna", level: "green" }, { name: "Nina", level: null }]))
-      .toBe("Luna y Toby están dentro de su patrón normal. Todavía no hay datos de Nina.");
-  });
-});
-
 describe("times in words", () => {
   const now = new Date(2026, 9, 2, 15, 0).getTime();
   const sp = (x: string) => x.replace(/\s/g, " ");   // ICU puts no-break spaces before "a. m."
@@ -349,11 +310,10 @@ describe(" of the heart rate in the level shown and what to do", () => {
     // A red level stays red.
     expect(describeDog(status({ level: "red", healthScore: 40, stableLevel: "red", stableHealthScore: 40, lastHr: 130 }), baseline, cfg).level).toBe("red");
   });
-  it("names the far heart rate before the movement of the moment and agrees with the Inicio summary", () => {
+  it("names the far heart rate before the movement of the moment", () => {
     expect(describeDog(status({ ...green, lastHr: 130, lastActivityRatio: 0.6 }), baseline, cfg).phrase).toBe("Su corazón late mucho más rápido de lo habitual.");
-    const level = (name: string, over: Partial<DogStatus<unknown>>) => ({ name, level: describeDog(status({ ...green, ...over }), baseline, cfg).level });
-    expect(homeSummary([level("Luna", {}), level("Rocky", { lastHr: 135 }), level("Toby", {})])).toBe("Rocky tiene un cambio leve. Luna y Toby están como de costumbre.");
-    expect(homeSummary([level("Luna", {}), level("Rocky", { lastHr: 95 }), level("Toby", {})])).toBe("Todo en orden: tus 3 perros están dentro de su patrón normal.");
+    expect(describeDog(status({ ...green, lastHr: 135 }), baseline, cfg).level).toBe("amber");
+    expect(describeDog(status({ ...green, lastHr: 95 }), baseline, cfg).level).toBe("green");
   });
   it("says what to look at by the cause, and promises an alert only when a rule would open one", () => {
     const next = " Si el cambio sigue unos minutos, verás una alerta con los pasos a seguir.";
@@ -410,7 +370,8 @@ describe(" of two Health Scores, old data and the order of Inicio", () => {
   });
   it("does not put a dog first for the level of data that stopped arriving", () => {
     expect(attentionRank({ name: "Bruno", level: "amber", stale: true })).toBe(4);
-    expect(byAttention([{ name: "Bruno", level: "red" as const, stale: true }, { name: "Toby", level: "green" as const }]).map((d) => d.name)).toEqual(["Toby", "Bruno"]);
+    expect(attentionOrder([{ id: "bruno", name: "Bruno", level: "red" as const, stale: true }, { id: "toby", name: "Toby", level: "green" as const }], new Map(), 0).ids)
+      .toEqual(["toby", "bruno"]);
   });
 });
 

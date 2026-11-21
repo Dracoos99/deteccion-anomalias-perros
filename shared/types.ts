@@ -31,7 +31,6 @@ export interface UserDoc<T = unknown> {
   notificationPrefs?: { red: boolean; amber: boolean; quiet?: QuietHours | null };
   /** When this person last cleared their Alertas list, for every dog (`all`) or for one (`byDog`). Alerts
    * created until then leave their list; they stay in the dog's history and in the vet view. */
-  alertsCleared?: { all?: T; byDog?: Record<string, T> };
   /** RNF-03 (Ley N.° 29733): when the user accepted the processing of personal data at sign-up. */
   privacyConsentAt?: T;
   schemaVersion: number;
@@ -291,8 +290,10 @@ export interface SimulatorRunDoc<T = unknown> {
   /** Optional automatic stop after this much simulated time. */
   durationS?: number | null;
   /** "duration" when the simulator stopped the run because it reached durationS, so the
-   * panel says «Terminada» and not «Detenida». Absent for runs stopped by hand and for older runs. */
-  endedBy?: "duration" | null;
+   * panel says «Terminada» and not «Detenida». "limit" when the Cloud Run job stopped it before its task
+   * timeout, "abandoned" when another process found it without a heartbeat (shared/runs.ts). Absent for runs stopped by
+   * hand and for older runs. */
+  endedBy?: "duration" | "limit" | "abandoned" | null;
   /** A «new dog» run: the simulator discards the dogs' baselines instead of computing them, so the Function
    * learns each one from the stream, as it would for a dog an owner registers. */
   learnBaseline?: boolean;

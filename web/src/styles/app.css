@@ -39,90 +39,90 @@
    no literal colours below this block. The --color-* names are also read by
    (the first block of variables): keep their names. */
 :root {
-  color-scheme: light;   /* the light theme; the dark one remaps these same tokens right after this block */
+  color-scheme: light;   /* on paper; on screen the block after this one chooses light, dark or the system's */
 
   /* Neutrals, slightly cool: the dark environment (navigation), the ground, the card and two wells. */
-  --color-bg: #f1f2f4;            /* ground: the page */
-  --color-sheet: #fcfcfd;         /* cards and panels */
-  --color-surface: #e8eaee;       /* wells, neutral tags, skeletons, the track of a segmented control */
-  --color-surface-2: #f2f3f6;     /* a quiet tile inside a card (the Health Score, a figure of the live panel) */
-  --color-text: #16181c;          /* ink */
-  --color-text-secondary: #3f434a;
-  --color-text-muted: #5b6069;    /* 5.6:1 on the ground, 5.2:1 on the deepest well */
-  --color-divider: rgba(22, 24, 28, 0.14);
-  --color-divider-soft: rgba(22, 24, 28, 0.07);
-  --color-divider-strong: rgba(22, 24, 28, 0.24);   /* the outline of a secondary button */
-  --color-rule: #16181c;
-  --color-field-border: #6b717b;  /* inputs and drop zone: 4.8:1 against the sheet (WCAG 1.4.11) */
-  --color-chrome: #17191e;        /* navigation: the dark environment around the work surface */
-  --color-chrome-raised: #2b2e35; /* the current section on it */
-  --color-chrome-glass: rgba(23, 25, 30, 0.86);   /* the floating tab bar, over the content it lets through */
-  --color-chrome-line: rgba(255, 255, 255, 0.10); /* hairlines and hover tint on the chrome */
-  --color-on-dark: #f2f3f5;       /* text on the chrome: 15.8:1 */
-  --color-on-dark-muted: #b4bac3; /* 9:1 on the chrome, 7:1 on the current section */
-  --color-ink-wash: rgba(22, 24, 28, 0.06);    /* hover tint of neutral controls on the sheet */
-  --color-hover-wash: rgba(22, 24, 28, 0.09);  /* the same on the track of a segmented control */
-  --color-scrollbar: #9aa0a8;     /* decorative: the scrollbar thumb */
-  --color-bezel: rgba(22, 24, 28, 0.04);       /* the tray around the one protagonist card of a screen */
-  --color-scroll-edge: rgba(22, 24, 28, 0.18); /* the shadow at the edge of a table that scrolls sideways */
-  --color-lift: rgba(255, 255, 255, 0.9);      /* the lit top edge of a raised surface */
-  --color-glass: rgba(252, 252, 253, 0.74);    /* the translucent pane that holds a large figure (references 04 and 05) */
-  --color-glass-line: rgba(255, 255, 255, 0.85);
+  --color-bg: light-dark(#f1f2f4, #141519);            /* ground: the page */
+  --color-sheet: light-dark(#fcfcfd, #1d1e23);         /* cards and panels */
+  --color-surface: light-dark(#e8eaee, #2b2d33);       /* wells, neutral tags, skeletons, the track of a segmented control */
+  --color-surface-2: light-dark(#f2f3f6, #25272c);     /* a quiet tile inside a card (the Health Score, a figure of the live panel) */
+  --color-text: light-dark(#16181c, #eceef1);          /* ink */
+  --color-text-secondary: light-dark(#3f434a, #c3c7ce);
+  --color-text-muted: light-dark(#5b6069, #9ea4ad);    /* 5.6:1 on the ground, 5.2:1 on the deepest well */
+  --color-divider: light-dark(rgba(22, 24, 28, 0.14), rgba(255, 255, 255, 0.13));
+  --color-divider-soft: light-dark(rgba(22, 24, 28, 0.07), rgba(255, 255, 255, 0.07));
+  --color-divider-strong: light-dark(rgba(22, 24, 28, 0.24), rgba(255, 255, 255, 0.24));   /* the outline of a secondary button */
+  --color-rule: light-dark(#16181c, #eceef1);
+  --color-field-border: light-dark(#6b717b, #80868f);  /* inputs and drop zone: 4.8:1 against the sheet (WCAG 1.4.11) */
+  --color-chrome: light-dark(#17191e, #0b0c0f);        /* navigation: the dark environment around the work surface */
+  --color-chrome-raised: light-dark(#2b2e35, #26292f); /* the current section on it */
+  --color-chrome-glass: light-dark(rgba(23, 25, 30, 0.86), rgba(14, 15, 19, 0.84));   /* the floating tab bar, over the content it lets through */
+  --color-chrome-line: light-dark(rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.09)); /* hairlines and hover tint on the chrome */
+  --color-on-dark: light-dark(#f2f3f5, #eceef1);       /* text on the chrome: 15.8:1 */
+  --color-on-dark-muted: light-dark(#b4bac3, #a8aeb7); /* 9:1 on the chrome, 7:1 on the current section */
+  --color-ink-wash: light-dark(rgba(22, 24, 28, 0.06), rgba(255, 255, 255, 0.06));    /* hover tint of neutral controls on the sheet */
+  --color-hover-wash: light-dark(rgba(22, 24, 28, 0.09), rgba(255, 255, 255, 0.09));  /* the same on the track of a segmented control */
+  --color-scrollbar: light-dark(#9aa0a8, #4d525b);     /* decorative: the scrollbar thumb */
+  --color-bezel: light-dark(rgba(22, 24, 28, 0.04), rgba(0, 0, 0, 0.28));       /* the tray around the one protagonist card of a screen */
+  --color-scroll-edge: light-dark(rgba(22, 24, 28, 0.18), rgba(0, 0, 0, 0.55)); /* the shadow at the edge of a table that scrolls sideways */
+  --color-lift: light-dark(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.07));      /* the lit top edge of a raised surface */
+  --color-glass: light-dark(rgba(252, 252, 253, 0.74), rgba(43, 45, 52, 0.62));    /* the translucent pane that holds a large figure (references 04 and 05) */
+  --color-glass-line: light-dark(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.10));
   /* Roles that are the same colour as another token in the light theme and a colour of their own in the dark one. */
-  --color-edge: transparent;                   /* the outline of a card: the shadow separates it in light, a hairline in dark */
-  --color-chrome-edge: transparent;            /* the edge of the navigation against the ground (dark: both are near black) */
-  --color-key: var(--color-sheet);             /* the chosen option of a segmented control or of the tabs, raised on its track */
-  --color-popover: var(--color-sheet);         /* what floats over the page: the open list of a select */
+  --color-edge: light-dark(transparent, rgba(255, 255, 255, 0.06));                   /* the outline of a card: the shadow separates it in light, a hairline in dark */
+  --color-chrome-edge: light-dark(transparent, rgba(255, 255, 255, 0.07));            /* the edge of the navigation against the ground (dark: both are near black) */
+  --color-key: light-dark(var(--color-sheet), #3a3d44);             /* the chosen option of a segmented control or of the tabs, raised on its track */
+  --color-popover: light-dark(var(--color-sheet), #26282e);         /* what floats over the page: the open list of a select */
 
   /* Accent: interactive elements only (buttons, links, focus, selection). Cobalt, kept apart from the green of
      «Todo normal». */
-  --color-accent: #1f5fd0;        /* 5.2:1 on the ground, 5.8:1 with white text */
-  --color-accent-hover: #174aa6;  /* 8.2:1 with white text */
-  --color-accent-soft: #e9f0fd;   /* accent text on it: 5.1:1 */
-  --color-accent-wash: rgba(31, 95, 208, 0.10);
-  --color-selection: rgba(31, 95, 208, 0.20);
+  --color-accent: light-dark(#1f5fd0, #7ea8ff);        /* 5.2:1 on the ground, 5.8:1 with white text */
+  --color-accent-hover: light-dark(#174aa6, #a6c2ff);  /* 8.2:1 with white text */
+  --color-accent-soft: light-dark(#e9f0fd, #1c2a46);   /* accent text on it: 5.1:1 */
+  --color-accent-wash: light-dark(rgba(31, 95, 208, 0.10), rgba(126, 168, 255, 0.14));
+  --color-selection: light-dark(rgba(31, 95, 208, 0.20), rgba(126, 168, 255, 0.32));
   --color-on-accent: #ffffff;     /* text on a filled control (accent, danger or success fill) */
   --color-focus-on-dark: #8fb5ff; /* focus ring on the chrome: 8.6:1 */
-  --color-focus: #1f5fd0;         /* The focus ring, the same in every style (5.1 to 5.7:1 on their grounds) */
+  --color-focus: light-dark(#1f5fd0, #7ea8ff);         /* The focus ring, the same in every style (5.1 to 5.7:1 on their grounds) */
   /* Filled controls (a primary button, a checked box, the current step, a badge): the accent and the level colours as fills
      behind white text. Light: the same colours; dark: deeper ones, because there the accent and the levels are light (text). */
-  --color-accent-fill: var(--color-accent);
-  --color-accent-fill-hover: var(--color-accent-hover);
-  --color-danger-fill: var(--color-status-red);
-  --color-success-fill: var(--color-status-green);
-  --color-fill-ink: var(--color-text);   /* what a filled control is mixed with while pressed */
+  --color-accent-fill: light-dark(var(--color-accent), #2a66dc);
+  --color-accent-fill-hover: light-dark(var(--color-accent-hover), #326fe4);
+  --color-danger-fill: light-dark(var(--color-status-red), #c63b34);
+  --color-success-fill: light-dark(var(--color-status-green), #1f7a45);
+  --color-fill-ink: light-dark(var(--color-text), #000000);   /* what a filled control is mixed with while pressed */
 
   /* Health Score levels: always paired with an icon and a text label */
-  --color-status-green: #1b6e3a;     /* 6.1:1 on the sheet */
-  --color-status-green-bg: #e3f1e6;  /* status text on it: 5.4:1 */
-  --color-status-amber: #8a5a00;     /* 5.8:1 on the sheet */
-  --color-status-amber-bg: #fdf0d5;  /* 5.3:1 */
-  --color-status-red: #b3261e;       /* 6.4:1 on the sheet */
-  --color-status-red-bg: #fbe4e2;    /* 5.4:1 */
+  --color-status-green: light-dark(#1b6e3a, #5ccf86);     /* 6.1:1 on the sheet */
+  --color-status-green-bg: light-dark(#e3f1e6, #13301f);  /* status text on it: 5.4:1 */
+  --color-status-amber: light-dark(#8a5a00, #f0b14a);     /* 5.8:1 on the sheet */
+  --color-status-amber-bg: light-dark(#fdf0d5, #392a0d);  /* 5.3:1 */
+  --color-status-red: light-dark(#b3261e, #ff8b82);       /* 6.4:1 on the sheet */
+  --color-status-red-bg: light-dark(#fbe4e2, #3f1b19);    /* 5.4:1 */
 
   /* Charts: an ink line for what the engine compares, a lighter line for the raw values behind it, the dog's
      normal band in a cobalt tint, amber for the moments outside it and softened level zones (the red one is the
      palest, so it never dominates a chart). */
-  --chart-line: #16181c;
-  --chart-baseline: rgba(31, 95, 208, 0.12);   /* the dog's normal band */
+  --chart-line: light-dark(#16181c, #eceef1);
+  --chart-baseline: light-dark(rgba(31, 95, 208, 0.12), rgba(126, 168, 255, 0.16));   /* the dog's normal band */
   --chart-band-edge: var(--color-focus);       /* its edge: cobalt in every style */
-  --chart-grid: rgba(22, 24, 28, 0.08);
+  --chart-grid: light-dark(rgba(22, 24, 28, 0.08), rgba(255, 255, 255, 0.08));
   --chart-mark: var(--color-status-amber);     /* moments outside the normal */
-  --chart-detail: rgba(22, 24, 28, 0.32);      /* the raw values behind an average */
-  --chart-highlight: rgba(22, 24, 28, 0.07);   /* the alert episode behind the series */
-  --chart-zone-green: color-mix(in srgb, var(--color-status-green-bg) 75%, var(--color-sheet));
-  --chart-zone-amber: color-mix(in srgb, var(--color-status-amber-bg) 80%, var(--color-sheet));
-  --chart-zone-red: color-mix(in srgb, var(--color-status-red-bg) 55%, var(--color-sheet));
+  --chart-detail: light-dark(rgba(22, 24, 28, 0.32), rgba(236, 238, 241, 0.34));      /* the raw values behind an average */
+  --chart-highlight: light-dark(rgba(22, 24, 28, 0.07), rgba(255, 255, 255, 0.07));   /* the alert episode behind the series */
+  --chart-zone-green: light-dark(color-mix(in srgb, var(--color-status-green-bg) 75%, var(--color-sheet)), color-mix(in srgb, var(--color-status-green-bg) 60%, var(--color-sheet)));
+  --chart-zone-amber: light-dark(color-mix(in srgb, var(--color-status-amber-bg) 80%, var(--color-sheet)), color-mix(in srgb, var(--color-status-amber-bg) 55%, var(--color-sheet)));
+  --chart-zone-red: light-dark(color-mix(in srgb, var(--color-status-red-bg) 55%, var(--color-sheet)), color-mix(in srgb, var(--color-status-red-bg) 40%, var(--color-sheet)));
   --chart-bar: var(--color-text-secondary);    /* horizontal bars of behaviours */
   /* Behaviours of «Su día» and of the research panel: the Okabe–Ito palette (distinguishable with the common
      colour-vision deficiencies), without the green, amber and red of the levels; rest is a quiet grey, so the eye goes to
      the moments of movement, and «none» is the empty track. */
-  --beh-rest: #cfd6df;
+  --beh-rest: light-dark(#cfd6df, #464b54);
   --beh-walk: #56b4e9;
   --beh-trot: #0072b2;
   --beh-play: #cc79a7;
   --beh-sniff: #009e73;
-  --beh-none: #eef1f4;
+  --beh-none: light-dark(#eef1f4, #25272c);
 
   /* Type: one family for the interface (Source Sans 3, local). Source Serif 4 stays for the titles of the Vista para
      el veterinario (a document that is read and printed). */
@@ -177,10 +177,10 @@
   --radius-sm: 10px;
 
   /* Elevation: three levels, soft and tinted with the ink, each with an offset and a blur. */
-  --shadow-1: 0 1px 2px rgba(17, 21, 28, 0.05), 0 4px 16px rgba(17, 21, 28, 0.06);   /* at rest */
-  --shadow-2: 0 2px 6px rgba(17, 21, 28, 0.06), 0 14px 32px rgba(17, 21, 28, 0.10);  /* under the mouse */
-  --shadow-3: 0 8px 20px rgba(17, 21, 28, 0.18), 0 24px 48px rgba(17, 21, 28, 0.16); /* floating */
-  --shadow-key: 0 1px 2px rgba(17, 21, 28, 0.10), 0 2px 8px rgba(17, 21, 28, 0.08);   /* the chosen option of a segmented control */
+  --shadow-1: 0 1px 2px light-dark(rgba(17, 21, 28, 0.05), rgba(0, 0, 0, 0.40)), 0 4px 16px light-dark(rgba(17, 21, 28, 0.06), rgba(0, 0, 0, 0.28));   /* at rest */
+  --shadow-2: 0 2px 6px light-dark(rgba(17, 21, 28, 0.06), rgba(0, 0, 0, 0.45)), 0 14px 32px light-dark(rgba(17, 21, 28, 0.10), rgba(0, 0, 0, 0.40));  /* under the mouse */
+  --shadow-3: 0 8px 20px light-dark(rgba(17, 21, 28, 0.18), rgba(0, 0, 0, 0.55)), 0 24px 48px light-dark(rgba(17, 21, 28, 0.16), rgba(0, 0, 0, 0.45)); /* floating */
+  --shadow-key: 0 1px 2px light-dark(rgba(17, 21, 28, 0.10), rgba(0, 0, 0, 0.50)), 0 2px 8px light-dark(rgba(17, 21, 28, 0.08), rgba(0, 0, 0, 0.35));   /* the chosen option of a segmented control */
 
   /* Motion: one strong ease-out curve and short durations, for responses and things that appear after an event. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);   /* presses, movement, things that appear */
@@ -194,7 +194,6 @@
   --page-pad-top: 32px;
   --panel-pad: 20px;
   --stack-gap: 16px;
-  --side-width: 224px;
 }
 @media (max-width: 720px) {
   :root { --gutter: 16px; --page-pad-top: 16px; --panel-pad: 16px; --stack-gap: 12px; }
@@ -209,76 +208,18 @@
   :root { --fs-lead: 2.125rem; --fs-hero: 3.5rem; }   /* 34 px and 56 px: the scale of the PO's references 04 and 06 */
 }
 
-/* ── Dark theme ──────────────────────────────────────────────── */
-/* The same tokens with dark values, never new rules for the components: the system's dark mode when the appearance is
-   «Automática» (no data-theme on <html>), or «Oscura» chosen in Perfil (data-theme="dark"); «Clara» (data-theme="light")
-   keeps the light theme on a dark system. Composed, not inverted: the navigation is the deepest plane (the frame), the
-   ground a near black, the cards a step lighter with a hairline (a shadow alone does not separate dark surfaces), the
-   wells lighter still. Text is off-white in three steps; the accent and the levels turn light so they read as text, and the
-   filled controls use deeper fills behind white text (AA both ways). Screen only: paper stays black on white (print rules). */
-@media screen and (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --color-bg: #141519; --color-sheet: #1d1e23; --color-surface: #2b2d33; --color-surface-2: #25272c;
-    --color-text: #eceef1; --color-text-secondary: #c3c7ce; --color-text-muted: #9ea4ad;
-    --color-divider: rgba(255, 255, 255, 0.13); --color-divider-soft: rgba(255, 255, 255, 0.07); --color-divider-strong: rgba(255, 255, 255, 0.24);
-    --color-rule: #eceef1; --color-field-border: #80868f;
-    --color-chrome: #0b0c0f; --color-chrome-raised: #26292f; --color-chrome-glass: rgba(14, 15, 19, 0.84); --color-chrome-line: rgba(255, 255, 255, 0.09);
-    --color-on-dark: #eceef1; --color-on-dark-muted: #a8aeb7;
-    --color-ink-wash: rgba(255, 255, 255, 0.06); --color-hover-wash: rgba(255, 255, 255, 0.09); --color-scrollbar: #4d525b;
-    --color-bezel: rgba(0, 0, 0, 0.28); --color-scroll-edge: rgba(0, 0, 0, 0.55); --color-lift: rgba(255, 255, 255, 0.07);
-    --color-glass: rgba(43, 45, 52, 0.62); --color-glass-line: rgba(255, 255, 255, 0.10);
-    --color-edge: rgba(255, 255, 255, 0.06); --color-chrome-edge: rgba(255, 255, 255, 0.07); --color-key: #3a3d44; --color-popover: #26282e;
-    --color-accent: #7ea8ff; --color-accent-hover: #a6c2ff; --color-accent-soft: #1c2a46;
-    --color-accent-wash: rgba(126, 168, 255, 0.14); --color-selection: rgba(126, 168, 255, 0.32);
-    --color-on-accent: #ffffff; --color-focus-on-dark: #8fb5ff; --color-focus: #7ea8ff;
-    --color-accent-fill: #2a66dc; --color-accent-fill-hover: #326fe4; --color-danger-fill: #c63b34; --color-success-fill: #1f7a45; --color-fill-ink: #000000;
-    --color-status-green: #5ccf86; --color-status-green-bg: #13301f;
-    --color-status-amber: #f0b14a; --color-status-amber-bg: #392a0d;
-    --color-status-red: #ff8b82; --color-status-red-bg: #3f1b19;
-    --chart-line: #eceef1; --chart-baseline: rgba(126, 168, 255, 0.16); --chart-grid: rgba(255, 255, 255, 0.08);
-    --chart-detail: rgba(236, 238, 241, 0.34); --chart-highlight: rgba(255, 255, 255, 0.07);
-    --chart-zone-green: color-mix(in srgb, var(--color-status-green-bg) 60%, var(--color-sheet));
-    --chart-zone-amber: color-mix(in srgb, var(--color-status-amber-bg) 55%, var(--color-sheet));
-    --chart-zone-red: color-mix(in srgb, var(--color-status-red-bg) 40%, var(--color-sheet));
-    --beh-rest: #464b54; --beh-walk: #56b4e9; --beh-trot: #0072b2; --beh-play: #cc79a7; --beh-sniff: #009e73; --beh-none: #25272c;
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40), 0 4px 16px rgba(0, 0, 0, 0.28);
-    --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 14px 32px rgba(0, 0, 0, 0.40);
-    --shadow-3: 0 8px 20px rgba(0, 0, 0, 0.55), 0 24px 48px rgba(0, 0, 0, 0.45);
-    --shadow-key: 0 1px 2px rgba(0, 0, 0, 0.50), 0 2px 8px rgba(0, 0, 0, 0.35);
-  }
-}
+/* ── Dark theme ─────────────────────────── */
+/* Each token that changes with the scheme is written once, above, as light-dark(light, dark); here the scheme is chosen:
+   the system's when the appearance is «Automática» (no data-theme on <html>), or the one chosen in Perfil. Composed, not
+   inverted: the navigation is the deepest plane, the ground a near black, the cards a step lighter with a hairline, the
+   wells lighter still; text is off-white in three steps; the accent and the levels turn light so they read as text, and
+   the filled controls use deeper fills behind white text (AA both ways). Screen only: on paper :root keeps
+   color-scheme: light, so print is always black on white (print rules). The build turns light-dark() into variables
+   set wherever color-scheme is declared: declare it only here and in :root. */
 @media screen {
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --color-bg: #141519; --color-sheet: #1d1e23; --color-surface: #2b2d33; --color-surface-2: #25272c;
-    --color-text: #eceef1; --color-text-secondary: #c3c7ce; --color-text-muted: #9ea4ad;
-    --color-divider: rgba(255, 255, 255, 0.13); --color-divider-soft: rgba(255, 255, 255, 0.07); --color-divider-strong: rgba(255, 255, 255, 0.24);
-    --color-rule: #eceef1; --color-field-border: #80868f;
-    --color-chrome: #0b0c0f; --color-chrome-raised: #26292f; --color-chrome-glass: rgba(14, 15, 19, 0.84); --color-chrome-line: rgba(255, 255, 255, 0.09);
-    --color-on-dark: #eceef1; --color-on-dark-muted: #a8aeb7;
-    --color-ink-wash: rgba(255, 255, 255, 0.06); --color-hover-wash: rgba(255, 255, 255, 0.09); --color-scrollbar: #4d525b;
-    --color-bezel: rgba(0, 0, 0, 0.28); --color-scroll-edge: rgba(0, 0, 0, 0.55); --color-lift: rgba(255, 255, 255, 0.07);
-    --color-glass: rgba(43, 45, 52, 0.62); --color-glass-line: rgba(255, 255, 255, 0.10);
-    --color-edge: rgba(255, 255, 255, 0.06); --color-chrome-edge: rgba(255, 255, 255, 0.07); --color-key: #3a3d44; --color-popover: #26282e;
-    --color-accent: #7ea8ff; --color-accent-hover: #a6c2ff; --color-accent-soft: #1c2a46;
-    --color-accent-wash: rgba(126, 168, 255, 0.14); --color-selection: rgba(126, 168, 255, 0.32);
-    --color-on-accent: #ffffff; --color-focus-on-dark: #8fb5ff; --color-focus: #7ea8ff;
-    --color-accent-fill: #2a66dc; --color-accent-fill-hover: #326fe4; --color-danger-fill: #c63b34; --color-success-fill: #1f7a45; --color-fill-ink: #000000;
-    --color-status-green: #5ccf86; --color-status-green-bg: #13301f;
-    --color-status-amber: #f0b14a; --color-status-amber-bg: #392a0d;
-    --color-status-red: #ff8b82; --color-status-red-bg: #3f1b19;
-    --chart-line: #eceef1; --chart-baseline: rgba(126, 168, 255, 0.16); --chart-grid: rgba(255, 255, 255, 0.08);
-    --chart-detail: rgba(236, 238, 241, 0.34); --chart-highlight: rgba(255, 255, 255, 0.07);
-    --chart-zone-green: color-mix(in srgb, var(--color-status-green-bg) 60%, var(--color-sheet));
-    --chart-zone-amber: color-mix(in srgb, var(--color-status-amber-bg) 55%, var(--color-sheet));
-    --chart-zone-red: color-mix(in srgb, var(--color-status-red-bg) 40%, var(--color-sheet));
-    --beh-rest: #464b54; --beh-walk: #56b4e9; --beh-trot: #0072b2; --beh-play: #cc79a7; --beh-sniff: #009e73; --beh-none: #25272c;
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40), 0 4px 16px rgba(0, 0, 0, 0.28);
-    --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 14px 32px rgba(0, 0, 0, 0.40);
-    --shadow-3: 0 8px 20px rgba(0, 0, 0, 0.55), 0 24px 48px rgba(0, 0, 0, 0.45);
-    --shadow-key: 0 1px 2px rgba(0, 0, 0, 0.50), 0 2px 8px rgba(0, 0, 0, 0.35);
-  }
+  :root { color-scheme: light dark; }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
 }
 
 /* ── Styles ──────────────────────────────────────────────────── */

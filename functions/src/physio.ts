@@ -8,6 +8,7 @@ import path from "node:path";
 import * as tf from "@tensorflow/tfjs";
 import { packSequences, type PhysioModelMeta, type PhysioScorer } from "./shared/physio-model";
 import { initBackend } from "./behavior";
+import { logger } from "firebase-functions";
 
 export const PHYSIO_BUNDLE_DIR = process.env.PHYSIO_MODEL_DIR ?? path.resolve(__dirname, "../models/physio");
 
@@ -45,7 +46,7 @@ let loading: Promise<PhysioRunner | null> | null = null;
 /** Global, loaded once per instance. Failures fall back to the provisional heart-rate rule. */
 export function getPhysioRunner(): Promise<PhysioRunner | null> {
   loading ??= loadPhysioModel().catch((e) => {
-    console.error("physiological model not loaded; using the provisional heart-rate rule", e);
+    logger.error("physiological model not loaded; using the provisional heart-rate rule", { error: (e as Error).message });
     return null;
   });
   return loading;

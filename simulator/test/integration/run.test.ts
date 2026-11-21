@@ -8,6 +8,7 @@ import { Timestamp, getFirestore, type Firestore } from "firebase-admin/firestor
 import { SIM_DATA_DIR } from "../../src/config";
 import { SimulatorRun, createRun, runJob, serveRuns } from "../../src/run";
 import { buildReport } from "../../src/report";
+import { RUN_ABANDONED_MS } from "../../../shared/runs";
 
 const PROJECT = "demo-perros-tesis";
 const MODEL_VERSION = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../functions/models/behavior/metadata.json"), "utf8")).version;
@@ -187,6 +188,23 @@ describe.skipIf(!hasData)("simulator end to end", () => {
     await expect(new SimulatorRun(db, second, { workerId: "test", log: quiet, drainMs: 0 }).start()).rejects.toThrow(/ya está en la ejecución activa/);
     expect((await db.collection("readings").get()).size).toBe(0);
   });
+
+  it("frees the dogs of a run whose process stopped beating, and closes it as abandoned", async () => {
+    const dead = await createRun(db, { dogIds: ["toby"], speed: 1, createdBy: "test", worker: "cloud-run:killed" });
+    await db.doc(`simulatorRuns/${dead}`).update({ "worker.heartbeatAt": Timestamp.fromMillis(Date.now() - RUN_ABANDONED_MS - 60_000) });
+    const next = await createRun(db, { dogIds: ["toby"], speed: 10, durationS: 20, createdBy: "test", worker: "test" });
+    const run = new SimulatorRun(db, next, { workerId: "test", log: quiet, drainMs: 30_000 });
+    await run.start();
+    await run.done;
+    expect((await db.doc(`simulatorRuns/${dead}`).get()).data()).toMatchObject({ state: "stopped", endedBy: "abandoned", worker: null });
+    expect((await db.doc(`simulatorRuns/${next}`).get()).get("stats.blocksWritten")).toBe(2);
+  }, 90_000);
+
+  it("stops itself at the process limit and says so", async () => {
+    const runId = await createRun(db, { dogIds: ["luna"], speed: 1, createdBy: "panel", worker: null });
+    expect(await runJob(db, runId, { workerId: "cloud-run:test", log: quiet, drainMs: 0, maxRunMs: 1_500 })).toBe("done");
+    expect((await db.doc(`simulatorRuns/${runId}`).get()).data()).toMatchObject({ state: "stopped", endedBy: "limit" });
+  }, 90_000);
 
   it("pauses and resumes from the run document, and rejects an invalid injection with a visible error", async () => {
     const runId = await createRun(db, { dogIds: ["luna"], speed: 10, createdBy: "test", worker: "test" });

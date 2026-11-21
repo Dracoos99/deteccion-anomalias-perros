@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_FUSION_CONFIG, type DogStatus } from "../../shared/types";
-import { attentionRank, describeDog, homeSummary } from "../src/lib/plain";
+import { attentionRank, describeDog } from "../src/lib/plain";
 
 const baseline = { activeRatioMean: 0.35, activeRatioStd: 0.08, hrMean: 70, hrStd: 5, tempMean: 38.6 };
 const status = (over: Partial<DogStatus<unknown>> = {}): DogStatus<unknown> => ({
@@ -16,9 +16,7 @@ describe("«Revisa el collar»", () => {
     expect(d.levelNote).toBeNull();
     expect(describeDog(status(), baseline, DEFAULT_FUSION_CONFIG).sensorOff).toBe(false);
   });
-  it("puts the dog first and says it apart in the Inicio summary", () => {
+  it("puts the dog first on Inicio", () => {
     expect(attentionRank({ name: "Toby", level: "green", sensorOff: true })).toBe(1);
-    expect(homeSummary([{ name: "Luna", level: "green" }, { name: "Toby", level: "green", sensorOff: true }]))
-      .toBe("Revisa el collar de Toby: no llegan su movimiento, su ritmo cardiaco ni su temperatura. Luna está como de costumbre.");
   });
 });

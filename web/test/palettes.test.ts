@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /* Every style, in light and dark, keeps WCAG 2.1 AA on the pairs that matter. The values are read from the
-   stylesheet itself (the serene:root block, its dark block and each:root[data-palette] block), resolving var and
+   stylesheet itself (the serene:root block and each:root[data-palette] block), resolving var and
    light-dark, so a token changed in app.css is checked here without copying it. */
 const css = readFileSync(new URL("../src/styles/app.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
@@ -21,7 +21,6 @@ function block(opening: string): Record<string, string> {
 }
 
 const sereneLight = block(":root {\n  color-scheme: light;");
-const sereneDark = block(':root[data-theme="dark"] {');
 const PALETTES = { sereno: {}, calido: block(':root[data-palette="calido"] {'), extravagante: block(':root[data-palette="extravagante"] {') };
 
 /** The top-level arguments of a function call that starts at `open` (the index of its parenthesis). */
@@ -92,7 +91,7 @@ describe("styles keep WCAG AA in light and dark", () => {
   for (const [name, palette] of Object.entries(PALETTES)) {
     for (const dark of [false, true]) {
       it(`${name}, ${dark ? "oscuro" : "claro"}`, () => {
-        const tokens = { ...sereneLight, ...(dark ? sereneDark : {}), ...palette };
+        const tokens = { ...sereneLight, ...palette };
         const pairs = name === "extravagante" ? [...PAIRS, ...FUN_PAIRS] : PAIRS;
         const failures = pairs.flatMap(([fg, bg, min]) => {
           const ratio = contrast(resolve(`var(--${fg})`, tokens, dark), resolve(`var(--${bg})`, tokens, dark));
@@ -109,7 +108,7 @@ describe("styles keep WCAG AA in light and dark", () => {
     // White text on the tennis ball would fail: that is why the eccentric style puts ink on its toy fills.
     const fun = { ...sereneLight, ...PALETTES.extravagante };
     expect(contrast("#ffffff", resolve("var(--fun-ball)", fun, false))).toBeLessThan(1.5);
-    expect(resolve("var(--color-divider-strong)", { ...sereneLight, ...sereneDark, ...PALETTES.extravagante }, true)).toBe("#fff1d0");
+    expect(resolve("var(--color-divider-strong)", { ...sereneLight, ...PALETTES.extravagante }, true)).toBe("#fff1d0");
   });
 
   it("never restyles the levels, the focus ring, the normal band or the figures", () => {

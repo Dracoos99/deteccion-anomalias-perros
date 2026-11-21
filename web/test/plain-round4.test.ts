@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_FUSION_CONFIG, type AlertReason, type DogStatus } from "../../shared/types";
 import {
-  SETTLE_FORGET_MS, SETTLE_HOLD_MS, alertGoing, alertTitle, contextLine, describeDog, homeSummary, messageInPast, reasonHolds, resetSettled, settleDev,
+  SETTLE_FORGET_MS, SETTLE_HOLD_MS, alertGoing, alertTitle, contextLine, describeDog, messageInPast, reasonHolds, resetSettled, settleDev,
 } from "../src/lib/plain";
 
 const cfg = DEFAULT_FUSION_CONFIG;
@@ -59,23 +59,11 @@ describe(" of the seal that does not blink, the present tense and the summary", 
     expect(describeDog(low, baseline, cfg).level).toBe("amber");
   });
 
-  it("marks a dog in «Todo normal» with a vital just out of its band, and the summary does not call it «dentro de su patrón normal»", () => {
+  it("marks a dog in «Todo normal» with a vital just out of its band", () => {
     expect(describeDog(status({ ...green, lastHr: 95 }), baseline, cfg).slight).toBe(true);
     expect(describeDog(status({ ...green, lastHr: 72 }), baseline, cfg).slight).toBe(false);
     expect(describeDog(status({ ...green, lastHr: 130 }), baseline, cfg).slight).toBe(false);   // far: «Atención», not slight
     expect(describeDog(null, baseline, cfg).slight).toBe(false);
-    expect(homeSummary([{ name: "Luna", level: "green" }, { name: "Rocky", level: "green", slight: true }, { name: "Toby", level: "green" }]))
-      .toBe("Rocky tiene un dato un poco fuera de lo habitual. Luna y Toby están como de costumbre.");
-    expect(homeSummary([{ name: "Luna", level: "green", slight: true }, { name: "Rocky", level: "green", slight: true }]))
-      .toBe("Luna y Rocky tienen un dato un poco fuera de lo habitual.");
-    // «Todo en orden» only when no dog has one.
-    expect(homeSummary([{ name: "Luna", level: "green" }, { name: "Toby", level: "green" }])).toBe("Todo en orden: tus 2 perros están dentro de su patrón normal.");
-    // A dog with an alert waiting keeps the sentence of its alert, and is not said to be «como de costumbre».
-    expect(homeSummary([{ name: "Luna", level: "green" }, { name: "Rocky", level: "green", slight: true, openAlert: true }]))
-      .toBe("Rocky tiene un dato un poco fuera de lo habitual. Luna está como de costumbre. Rocky tiene una alerta nueva.");
-    // Nor «ahora están como de costumbre» when its alert already ended but a vital is still out of its band.
-    expect(homeSummary([{ name: "Luna", level: "green", openAlert: true, alertEnded: true }, { name: "Rocky", level: "green", slight: true, openAlert: true, alertEnded: true }]))
-      .toBe("Rocky tiene un dato un poco fuera de lo habitual. Luna tiene una alerta nueva que ya pasó; ahora está como de costumbre. Rocky tiene una alerta nueva.");
   });
 
   it("speaks, while an alert goes on, of what holds the level now and not of a variable that already calmed", () => {
@@ -131,7 +119,6 @@ describe(" of the heart row follows the seal, the title follows its variable, th
     expect(graze.level).toBe("amber");
     expect(graze.phrase).toBe("Su corazón late mucho más rápido de lo habitual.");
     expect(graze.heart.label).toBe("Más rápido de lo habitual");
-    expect(homeSummary([{ name: "Rocky", level: graze.level, slight: graze.slight }])).toBe("Rocky tiene un cambio leve.");
     // Back for SETTLE_HOLD_MS: the seal goes down, the heart is still out of its band («un poco»).
     const later = at(status({ ...green, lastHr: 108 }), 4_000 + SETTLE_HOLD_MS);
     expect(later.level).toBe("green");

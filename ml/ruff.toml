@@ -1,0 +1,7 @@
+# Lint of the Python pipeline: real errors only, so CI fails on bugs and not on style.
+# F: pyflakes (unused or undefined names), E9: syntax and IO errors, B: bugbear (likely bugs).
+line-length = 140
+target-version = "py313"
+
+[lint]
+select = ["F", "E9", "B"]
