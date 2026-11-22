@@ -281,6 +281,8 @@ export const DEFAULT_FUSION_CONFIG: Omit<FusionConfig, "updatedBy" | "updatedAt"
 };
 
 export interface InjectionRequest { dogId: string; type: AnomalyType; magnitude: number; durationS: number }
+/** A queued injection: requestId keeps two equal requests apart in arrayUnion. */
+export type QueuedInjection = InjectionRequest & { requestId: string };
 
 export interface SimulatorRunDoc<T = unknown> {
   createdBy: string;
@@ -301,6 +303,9 @@ export interface SimulatorRunDoc<T = unknown> {
    * to set the model's prediction beside it in the panel. Off by default: it doubles the writes of a run. */
   recordTruth?: boolean;
   seed?: number;
+  /** Injections waiting for the simulator, appended with arrayUnion so none overwrites another. */
+  pendingInjections?: QueuedInjection[];
+  /** Older single slot: a second request before the simulator took the first one replaced it. Still read. */
   pendingInjection?: InjectionRequest | null;
   injectionsLog: (InjectionRequest & { id: string; startBlock: number; endBlock: number; at: T })[];
   /** Process executing the run (simulator CLI). null until a `sim serve` worker claims a run created from the panel. */

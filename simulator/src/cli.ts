@@ -18,7 +18,8 @@
 import os from "node:os";
 import { parseArgs } from "node:util";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type Firestore } from "firebase-admin/firestore";
+import { randomUUID } from "node:crypto";
 import { PROJECT_ID, USING_EMULATORS } from "./config";
 import { loadManifest } from "./data";
 import { SimulatorRun, createRun, runJob, serveRuns } from "./run";
@@ -32,7 +33,7 @@ import fs from "node:fs";
 import type { FusionConfig } from "../../shared/types";
 import { loadSimPhysioModel } from "./physio";
 import { ANOMALY_CATALOG, ANOMALY_TYPES, validateInjection } from "../../shared/anomalies";
-import type { AnomalyType, SimulatorRunDoc } from "../../shared/types";
+import type { AnomalyType, QueuedInjection, SimulatorRunDoc } from "../../shared/types";
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -106,7 +107,9 @@ async function main(): Promise<void> {
       const magnitude = values.magnitude != null ? Number(values.magnitude) : spec?.default;
       const durationS = Number(values.duration ?? 600);
       validateInjection(type, magnitude, durationS);
-      await setRun(need("run", values.run), { pendingInjection: { dogId: need("dog", values.dog), type, magnitude, durationS } });
+      // Queued with arrayUnion: several injections sent in a row all apply (one slot kept only the last one).
+      const req: QueuedInjection = { dogId: need("dog", values.dog), type: type as AnomalyType, magnitude, durationS, requestId: randomUUID() };
+      await db().doc(`simulatorRuns/${need("run", values.run)}`).update({ pendingInjections: FieldValue.arrayUnion(req) });
       console.log(`Inyección enviada: ${spec.label}, magnitud ${magnitude}, ${durationS} s.`);
       break;
     }

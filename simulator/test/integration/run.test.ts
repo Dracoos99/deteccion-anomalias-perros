@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { deleteApp, initializeApp, type App } from "firebase-admin/app";
-import { Timestamp, getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, getFirestore, type Firestore } from "firebase-admin/firestore";
 import { SIM_DATA_DIR } from "../../src/config";
 import { SimulatorRun, createRun, runJob, serveRuns } from "../../src/run";
 import { buildReport } from "../../src/report";
@@ -99,13 +99,22 @@ describe.skipIf(!hasData)("simulator end to end", () => {
 
   it("injects a fever from the run document and the Function opens an alert with the ground truth stored", async () => {
     const runId = await createRun(db, { dogIds: ["toby"], speed: 10, durationS: 150, createdBy: "test", worker: "test" });
-    await db.doc(`simulatorRuns/${runId}`).update({ pendingInjection: { dogId: "toby", type: "fever", magnitude: 2.0, durationS: 600 } });
+    // Two requests in a row, as the panel or the CLI queue them: both apply (a single slot kept only the last one).
+    const ref = db.doc(`simulatorRuns/${runId}`);
+    await ref.update({ pendingInjections: FieldValue.arrayUnion({ dogId: "toby", type: "fever", magnitude: 2.0, durationS: 600, requestId: "a" }) });
+    await ref.update({ pendingInjections: FieldValue.arrayUnion({ dogId: "toby", type: "tachycardia", magnitude: 0.5, durationS: 600, requestId: "b" }) });
     const run = new SimulatorRun(db, runId, { workerId: "test", log: quiet, drainMs: 60_000 });
     await run.start();
     await run.done;
-    const report = await waitFor(() => buildReport(db, runId), (r) => r.results === r.readings && r.injections[0]?.detected === true);
-    expect(report.injections).toHaveLength(1);
-    expect(report.injections[0]).toMatchObject({ dogId: "toby", type: "fever", detected: true });
+    const report = await waitFor(() => buildReport(db, runId), (r) => r.results === r.readings && r.injections.some((j) => j.type === "fever" && j.detected));
+    expect(report.injections.map((j) => j.type).sort()).toEqual(["fever", "tachycardia"]);
+    expect((await ref.get()).get("pendingInjections")).toEqual([]);
+    const fever = report.injections.find((j) => j.type === "fever")!;
+    expect(fever).toMatchObject({ dogId: "toby", detected: true });
+    // The alert block counts 10 s blocks, like the injection's range.
+    expect(fever.firstAlertBlock).toBeGreaterThanOrEqual(fever.startBlock);
+    expect(fever.firstAlertBlock).toBeLessThan(fever.endBlock + 6);
+    expect(fever.alertDelayS).toBe(fever.firstAlertBlock! * 10 - fever.startBlock * 10 + (fever.alertDelayS! % 10));
     const truth = (await db.doc(`readings/${runId}_toby_000010`).get()).get("injectedAnomaly");
     expect(truth).toMatchObject({ type: "fever", magnitude: 2, durationS: 600, offsetS: expect.any(Number) });
     const alert = (await db.collection("alerts").where("dogId", "==", "toby").get()).docs[0].data();

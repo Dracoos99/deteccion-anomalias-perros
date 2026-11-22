@@ -17,6 +17,7 @@
     "test:e2e:panel": "node tests/e2e/simulator-panel.mjs",
     "test:ml": "node scripts/ml.mjs -m pytest -q",
     "test:e2e:a11y": "node tests/e2e/a11y.mjs",
+    "test:e2e:attack": "node tests/e2e/attack.mjs",
     "lint": "eslint eslint.config.mjs vitest.config.ts functions scripts shared simulator tests web"
   },
   "devDependencies": {

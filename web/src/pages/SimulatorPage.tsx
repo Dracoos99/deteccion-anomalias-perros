@@ -2,7 +2,7 @@
    process (`npm run sim -- serve` picks up the ones created here); this page creates and controls them. */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { addDoc, collection, doc, serverTimestamp, updateDoc, type Timestamp } from "firebase/firestore";
+import { addDoc, arrayUnion, collection, doc, serverTimestamp, updateDoc, type Timestamp } from "firebase/firestore";
 import { ANOMALY_CATALOG, ANOMALY_TYPES, blocksFor, validateInjection } from "@shared/anomalies";
 import type { AnomalyType } from "@shared/types";
 import { useAuth } from "../auth/AuthContext";
@@ -77,7 +77,7 @@ function NewRun({ dogs, uid, busyDogs, onCreated, minBlocks }: { dogs: Dog[]; ui
     try {
       const ref = await addDoc(collection(db, "simulatorRuns"), {
         createdBy: uid, dogIds: selected, speed, state: "running", durationS: limit || null, seed: 0, learnBaseline: learn, recordTruth: truth,
-        pendingInjection: null, injectionsLog: [], worker: null, error: null,
+        pendingInjections: [], injectionsLog: [], worker: null, error: null,
         stats: { blocksWritten: 0, avgLatencyMs: null, p95LatencyMs: null, maxLatencyMs: null, resultsSeen: 0, startedAt: null, stoppedAt: null, lastBlockAt: null },
         schemaVersion: 1, createdAt: serverTimestamp(),
       });
@@ -157,7 +157,10 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
     if (preset) { setType(t); setMagnitude(m); setDurationS(d); }
     try {
       validateInjection(t, m, d);
-      await updateDoc(doc(db, "simulatorRuns", run.id), { pendingInjection: { dogId, type: t, magnitude: m, durationS: d } });
+      // Queued with arrayUnion: several sent in a row all apply (one slot kept only the last one).
+      await updateDoc(doc(db, "simulatorRuns", run.id), {
+        pendingInjections: arrayUnion({ dogId, type: t, magnitude: m, durationS: d, requestId: crypto.randomUUID() }),
+      });
       const what = `${ANOMALY_CATALOG.types[t].label.toLowerCase()}, ${magnitudeText(t, m)}, ${DURATION_LABELS[d]}`;
       // Without a process nothing applies it yet; the panel says so instead of «Enviada».
       setSent(run.worker
@@ -202,6 +205,9 @@ function InjectForm({ run, dogs }: { run: Run; dogs: Map<string, Dog> }) {
         <div className="field-hint">{blocksFor(durationS)} bloques de 10 s.</div></div>
       {error && <Callout kind="error">{error}</Callout>}
       {sent && <Callout kind="ok">{sent}</Callout>}
+      {(run.pendingInjections?.length ?? 0) > 1 && (
+        <p className="xs muted" role="status">{run.pendingInjections!.length} inyecciones en espera: se aplican todas juntas cuando el simulador las tome.</p>
+      )}
       <button className="btn btn-primary" type="button" onClick={() => inject()} disabled={run.state === "stopped"}><Icon name="flask" />Inyectar anomalía</button>
       <p className="xs muted">Cada bloque afectado guarda <span className="mono">injectedAnomaly</span> como verdad de referencia para la evaluación. La Cloud Function nunca la usa.</p>
     </section>

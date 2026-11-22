@@ -58,7 +58,7 @@ export async function createRun(db: Firestore, req: { dogIds: string[]; speed: n
   const ref = req.runId ? db.doc(`simulatorRuns/${req.runId}`) : db.collection("simulatorRuns").doc();
   await ref.create({
     createdBy: req.createdBy, dogIds: req.dogIds, speed: req.speed, state: "running", durationS: req.durationS ?? null, seed: 0,
-    learnBaseline: !!req.learnBaseline, recordTruth: !!req.recordTruth, pendingInjection: null, injectionsLog: [], error: null,
+    learnBaseline: !!req.learnBaseline, recordTruth: !!req.recordTruth, pendingInjections: [], injectionsLog: [], error: null,
     worker: req.worker ? { id: req.worker, host: os.hostname(), heartbeatAt: Timestamp.now() } : null,
     stats: { blocksWritten: 0, avgLatencyMs: null, p95LatencyMs: null, maxLatencyMs: null, resultsSeen: 0, startedAt: null, stoppedAt: null, lastBlockAt: null },
     schemaVersion: SCHEMA_VERSION, createdAt: FieldValue.serverTimestamp(),
@@ -89,6 +89,8 @@ export class SimulatorRun {
   private flushTimer: NodeJS.Timeout | null = null;
   private limitTimer: NodeJS.Timeout | null = null;
   private handlingInjection = false;
+  /** Set when a snapshot with queued injections arrives while a batch is being taken: take again afterwards. */
+  private injectionAgain = false;
   private finished = false;
   private resolveDone!: () => void;
   readonly done = new Promise<void>((r) => (this.resolveDone = r));
@@ -223,36 +225,52 @@ export class SimulatorRun {
       this.log(`estado: ${this.state}`);
       if (this.state === "stopped") return void this.finish();
     }
-    if (run.pendingInjection && !this.handlingInjection) void this.takeInjection(run.pendingInjection);
+    if (run.pendingInjection || run.pendingInjections?.length) {
+      if (this.handlingInjection) this.injectionAgain = true;
+      else void this.takeInjections();
+    }
   }
 
-  /** Moves pendingInjection to injectionsLog and schedules it from the dog's next block. */
-  private async takeInjection(req: InjectionRequest): Promise<void> {
+  /** Moves every queued injection to injectionsLog and schedules each from its dog's next block. */
+  private async takeInjections(): Promise<void> {
     this.handlingInjection = true;
+    this.injectionAgain = false;
     try {
-      await this.db.runTransaction(async (tx) => {
+      interface Taken { dog: SimDog; inj: ReturnType<typeof schedule>; req: InjectionRequest }
+      // Side effects only after the commit: a transaction may run its function more than once.
+      const taken = await this.db.runTransaction(async (tx) => {
         const cur = (await tx.get(this.ref)).data() as SimulatorRunDoc<Timestamp> | undefined;
-        const p = cur?.pendingInjection;
-        if (!p || JSON.stringify(p) !== JSON.stringify(req)) return;
-        const dog = this.dogs.get(p.dogId);
-        try {
-          if (!dog) throw new Error(`El perro ${p.dogId} no está en esta ejecución.`);
-          const id = `inj_${Date.now().toString(36)}_${p.dogId}`;
+        const queue: InjectionRequest[] = [...(cur?.pendingInjection ? [cur.pendingInjection] : []), ...(cur?.pendingInjections ?? [])];
+        if (!queue.length) return [] as Taken[];
+        const ok: Taken[] = [];
+        const errors: string[] = [];
+        const stamp = Date.now();
+        queue.forEach((q, i) => {
+          const p: InjectionRequest = { dogId: q.dogId, type: q.type, magnitude: q.magnitude, durationS: q.durationS };
+          const dog = this.dogs.get(p.dogId);
+          if (!dog) return void errors.push(`El perro ${p.dogId} no está en esta ejecución.`);
+          const id = `inj_${(stamp + i).toString(36)}_${p.dogId}`;
           // A 10 s block already split into 2 s parts keeps its signals: the injection starts with the next one.
-          const inj = schedule(id, p.type, p.magnitude, p.durationS, dog.parts ? dog.next + 1 : dog.next);
-          dog.stream.injections.push(inj);
-          tx.update(this.ref, {
-            pendingInjection: null, error: null,
-            injectionsLog: FieldValue.arrayUnion({ ...p, id, startBlock: inj.startBlock, endBlock: inj.endBlock, at: Timestamp.now() }),
-          });
-          this.log(`inyección ${ANOMALY_CATALOG.types[p.type].label} en ${dog.name}: magnitud ${p.magnitude}, ${p.durationS} s desde el bloque ${inj.startBlock}`);
-        } catch (e) {
-          tx.update(this.ref, { pendingInjection: null, error: (e as Error).message });
-          this.log(`inyección rechazada: ${(e as Error).message}`);
-        }
+          try { ok.push({ dog, req: p, inj: schedule(id, p.type, p.magnitude, p.durationS, dog.parts ? dog.next + 1 : dog.next) }); }
+          catch (e) { errors.push((e as Error).message); }
+        });
+        tx.update(this.ref, {
+          pendingInjection: null, pendingInjections: [], error: errors.length ? errors.join(" ") : null,
+          ...(ok.length ? { injectionsLog: FieldValue.arrayUnion(...ok.map(({ req, inj }) =>
+            ({ ...req, id: inj.id, startBlock: inj.startBlock, endBlock: inj.endBlock, at: Timestamp.now() }))) } : {}),
+        });
+        for (const e of errors) this.log(`inyección rechazada: ${e}`);
+        return ok;
       });
+      for (const { dog, inj, req } of taken) {
+        dog.stream.injections.push(inj);
+        this.log(`inyección ${ANOMALY_CATALOG.types[req.type].label} en ${dog.name}: magnitud ${req.magnitude}, ${req.durationS} s desde el bloque ${inj.startBlock}`);
+      }
+    } catch (e) {
+      this.log(`no se pudieron tomar las inyecciones: ${(e as Error).message}`);
     } finally {
       this.handlingInjection = false;
+      if (this.injectionAgain && !this.finished) void this.takeInjections();
     }
   }
 

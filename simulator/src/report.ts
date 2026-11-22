@@ -30,7 +30,8 @@ export interface RunReport {
   lostBlocks: number;
   latency: ReturnType<typeof summarize>;
   simulatedMinutes: number;
-  injections: { id: string; dogId: string; type: string; startBlock: number; endBlock: number; detected: boolean; firstAlertBlock: number | null }[];
+  /** startBlock, endBlock and firstAlertBlock count 10 s blocks; alertDelayS is the time from the start of the injection. */
+  injections: { id: string; dogId: string; type: string; startBlock: number; endBlock: number; detected: boolean; firstAlertBlock: number | null; alertDelayS: number | null }[];
   alertsWithoutInjection: number;
   /** Share of each predicted behavior in the results (null predictions excluded). */
   behaviorShare: Record<string, number>;
@@ -77,7 +78,10 @@ export async function buildReport(db: Firestore, runId: string): Promise<RunRepo
 
   const injections = log.map((j) => {
     const first = dogs.find((d) => d.dogId === j.dogId)?.alertsOpened.find((a) => a.duringInjection === j.id);
-    return { id: j.id, dogId: j.dogId, type: j.type, startBlock: j.startBlock, endBlock: j.endBlock, detected: !!first, firstAlertBlock: first?.block ?? null };
+    // Alert ids count 2 s windows; the injection, 10 s blocks: report both in blocks, and the delay in seconds.
+    const delayS = first ? first.block * WINDOW_SECONDS - j.startBlock * BLOCK_SECONDS : null;
+    return { id: j.id, dogId: j.dogId, type: j.type, startBlock: j.startBlock, endBlock: j.endBlock, detected: !!first,
+      firstAlertBlock: first ? Math.floor(first.block / WINDOWS_PER_BLOCK) : null, alertDelayS: delayS };
   });
   // In 2 s windows.
   const windowsExpected = run.durationS ? Math.ceil(run.durationS / BLOCK_SECONDS) * WINDOWS_PER_BLOCK * run.dogIds.length : null;
@@ -96,6 +100,8 @@ export async function buildReport(db: Firestore, runId: string): Promise<RunRepo
   };
 }
 
+const formatDelay = (s: number) => (s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`);
+
 export function formatReport(r: RunReport): string {
   const lines = [
     `Ejecución ${r.runId} (${r.state}, ×${r.speed}): ${r.dogs.length} perros, ${r.simulatedMinutes} min simulados`,
@@ -106,7 +112,7 @@ export function formatReport(r: RunReport): string {
     lines.push(`  ${d.dogId.padEnd(8)} ${String(d.readings).padStart(5)} bloques · niveles ${JSON.stringify(d.levels)} · alertas ${d.alertsOpened.length}` +
       (d.blockGaps.length ? ` · huecos ${d.blockGaps.join(",")}` : "") + (d.missingResults.length ? ` · sin resultado ${d.missingResults.length}` : ""));
   }
-  for (const j of r.injections) lines.push(`  inyección ${j.type} en ${j.dogId} (bloques ${j.startBlock}–${j.endBlock - 1}): ${j.detected ? `alerta en el bloque ${j.firstAlertBlock}` : "sin alerta"}`);
+  for (const j of r.injections) lines.push(`  inyección ${j.type} en ${j.dogId} (bloques ${j.startBlock}–${j.endBlock - 1}): ${j.detected ? `alerta en el bloque ${j.firstAlertBlock}, ${formatDelay(j.alertDelayS!)} después del inicio` : "sin alerta"}`);
   lines.push(`Alertas sin anomalía inyectada (reglas provisionales): ${r.alertsWithoutInjection}`);
   if (Object.keys(r.behaviorShare).length) lines.push(`Conductas predichas: ${Object.entries(r.behaviorShare).map(([k, v]) => `${k} ${Math.round(v * 100)} %`).join(", ")}`);
   lines.push(r.ok ? "Resultado: OK, sin bloques perdidos." : "Resultado: FALLA, hay bloques perdidos o faltantes.");
